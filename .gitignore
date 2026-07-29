@@ -1,0 +1,18 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+.svelte-kit/
+build/
+
+# local data
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# os
+.DS_Store
