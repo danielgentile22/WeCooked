@@ -1,6 +1,8 @@
 # We Cooked: Build Specification v1
 
-Status: build-ready. Written 2026-07-27.
+Status: build-ready. Written 2026-07-27. Amended 2026-07-29 after a pre-build
+review that resolved contradictions and gaps; those changes are recorded as
+ADR-024 to ADR-032.
 
 This document is the contract for building v1. A fresh agent session should be
 able to implement the whole application from this file without asking a design
@@ -141,7 +143,9 @@ meaning it is the way the recipe was written; the other is derived
 the cover. Cookbook-page captures live here alongside photos of finished dishes
 (ADR-009).
 
-**Job.** A unit of Claude work with a lifecycle the client can poll.
+**Job.** A unit of Claude work with a lifecycle the client can poll. For
+capture jobs the row is also the draft: until a human saves the review form,
+the extraction lives in the job row and nowhere else (ADR-024).
 
 **Shopping list.** A single active list, built from a set of (recipe, yield)
 pairs plus manually added lines (ADR-015).
@@ -232,8 +236,10 @@ CREATE TABLE recipe (
   title             TEXT NOT NULL,
   source_text       TEXT,                 -- "Ottolenghi, Simple, p.112"
   source_url        TEXT,
-  yield_count       REAL NOT NULL,        -- the ORIGINAL yield
   yield_unit        TEXT NOT NULL DEFAULT 'servings',
+                                          -- shared by every variation; the original
+                                          -- COUNT lives on the is_original variation,
+                                          -- nowhere else (ADR-030)
   prep_minutes      INTEGER,
   cook_minutes      INTEGER,
   notes             TEXT,                 -- human only, Claude never writes here
@@ -294,7 +300,11 @@ CREATE UNIQUE INDEX body_unique ON body(variation_id, unit_system);
 
 CREATE TABLE image (
   id             TEXT PRIMARY KEY,
-  recipe_id      TEXT NOT NULL REFERENCES recipe(id) ON DELETE CASCADE,
+  recipe_id      TEXT REFERENCES recipe(id) ON DELETE CASCADE,
+                                  -- NULL until the draft is saved: capture photos are
+                                  -- uploaded before any recipe exists, referenced by id
+                                  -- from the job's input_json, and claimed on save
+                                  -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
   width          INTEGER NOT NULL,
@@ -326,7 +336,7 @@ CREATE INDEX job_pending ON job(status, created_at) WHERE status IN ('queued','r
 
 CREATE TABLE job_quota (
   day   TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' in America/New_York
-  count INTEGER NOT NULL
+  count INTEGER NOT NULL    -- Claude API calls made, not jobs created (ADR-027)
 );
 
 CREATE TABLE shopping_list (
@@ -369,9 +379,10 @@ CREATE VIRTUAL TABLE recipe_fts USING fts5(
 Notes on the schema:
 
 - `content_version` bumps **only** on substantive edits: ingredients, steps, or
-  the original yield. Title, tags, notes, source, and images do not bump it
-  (ADR-012). Variations compare their `based_on_content_version` to it to know
-  they are stale.
+  the original yield (which is the `yield_count` of the `is_original` variation,
+  ADR-030). Title, tags, notes, source, and images do not bump it (ADR-012).
+  Variations compare their `based_on_content_version` to it to know they are
+  stale.
 - `variation_unique_yield` means you cannot have two variations at 6 portions.
   Asking for a yield that already exists switches to it instead of generating.
 - Deletion is always soft (ADR-013). Every read path filters
@@ -380,6 +391,17 @@ Notes on the schema:
 - `recipe_fts` is rebuilt from the source-unit body of the original variation on
   every save. Do not use triggers; a plain function called from the save path is
   easier to reason about and this is not a hot path.
+
+### 4.1 Migrations
+
+Schema changes after launch (a new tag value, a v2 table) are numbered SQL
+files in `migrations/`, applied at boot by a ~15-line runner: read
+`PRAGMA user_version`, apply each newer file in its own transaction, bump the
+pragma (ADR-032). No migration dependency or tool.
+
+Caveat to plan around: SQLite has no `ALTER COLUMN`, so changing a `CHECK`
+constraint (the ADR-007 tag lists) means create-new-table, copy, rename. That
+is a property of SQLite, not of the runner.
 
 ---
 
@@ -611,6 +633,15 @@ Merge these ingredient lists into one shopping list.
 - Do not add anything that is not in the input lists.
 ```
 
+Lines returned with `is_staple: true` are stored with `section = 'staples'`,
+which is why the schema's `CHECK` list has eight values and the prompt names
+seven.
+
+The `shopping_merge` **job** is the whole build: when the runner executes it,
+it first generates any missing variations inline via `scale` calls (each saved
+as a real variation, per ADR-015), then makes the single merge call (ADR-027).
+The client polls one job for the whole thing.
+
 ### 5.8 Images sent to Claude
 
 - Long edge resized to **2576 px**, JPEG quality 85.
@@ -627,10 +658,12 @@ Merge these ingredient lists into one shopping list.
 
 Three independent backstops, because each can fail on its own (ADR-016):
 
-1. **`DAILY_JOB_CAP = 50`** jobs per calendar day (America/New_York), enforced
-   in `job_quota` at insert time. Exceeding it returns a clear error to the UI
-   rather than silently queueing. A stuck loop at the cap costs about $4.50 a
-   day rather than an unbounded amount.
+1. **`DAILY_CALL_CAP = 50`** Claude calls per calendar day (America/New_York),
+   counted in `job_quota` and checked inside the API wrapper before every call
+   (ADR-027). Calls rather than jobs, because one shopping-list build job can
+   make several calls. Hitting the cap fails the job with a clear error rather
+   than silently queueing. A stuck loop at the cap costs about $4.50 a day
+   rather than an unbounded amount.
 2. **`maxRetries: 1`** on the SDK.
 3. **A spend limit set in the Anthropic Console**, which does not depend on the
    application code being correct.
@@ -673,13 +706,24 @@ minutes with a timeout message. No websockets for two users.
 | `fetch_failed` | timeout, DNS, 5xx | "Could not load that page. Paste the text instead?" |
 | `no_recipe_found` | model found nothing recipe-shaped | "Could not find a recipe there. Try pasting the text or a photo." |
 | `image_unreadable` | model could not read the photo | "Could not read that photo. Try again with more light, or crop tighter on the recipe." |
-| `quota_exceeded` | daily cap hit | "Daily limit reached (50 jobs). This usually means something is stuck." |
+| `quota_exceeded` | daily cap hit | "Daily limit reached (50 Claude calls). This usually means something is stuck." |
 | `api_error` | Anthropic 5xx or timeout | "Claude is unavailable right now. Try again in a minute." |
 | `interrupted` | server restarted mid-job | "That was interrupted by a restart. Tap to try again." |
 
 Every failed capture job leaves a **draft the user can open**: the review form,
 empty, with the source URL, pasted text, or photos already attached (ADR-004).
 A failure is never a dead end.
+
+### 6.5 The job row is the draft
+
+There is no draft state in the `recipe` table and no placeholder rows
+(ADR-024). Until Save, a capture lives entirely in its job row: `input_json`
+holds the source (URL, pasted text, or uploaded image ids), `result_json`
+holds the extraction once done. The review form is seeded from those. Photos
+uploaded before extraction have `recipe_id = NULL` and are claimed by the
+recipe on save. The browse list unions in queued, running, and failed capture
+jobs as cards ("extracting", "failed, tap to fix") above the saved recipes,
+so a recipe row always means a human confirmed it (Goal 1).
 
 ---
 
@@ -719,9 +763,11 @@ the universal escape hatch: it works for blocked sites, paywalled sites you are
 logged into on your phone, emails, and text messages.
 
 **Photo path.** Camera or library, **multiple images per extraction** (a
-two-page spread, or a recipe continued overleaf). Images are attached to the
-recipe with `role = 'capture'` and stay attached forever, so the source is
-always there when an extraction turns out to have dropped a step.
+two-page spread, or a recipe continued overleaf). Images upload before any
+recipe exists (`recipe_id` null, ids recorded in the job's `input_json`,
+ADR-024), get `role = 'capture'`, and are claimed by the recipe on save. They
+stay attached forever, so the source is always there when an extraction turns
+out to have dropped a step.
 
 **Manual path.** Straight to an empty review form. A first-class path, not an
 afterthought.
@@ -755,9 +801,13 @@ Save rules:
 
 - Required: title, yield count, at least one ingredient line.
 - Steps may be empty (a spice mix is a legal recipe).
-- Editing **either** body marks the variation `hand_edited` and enqueues a
-  `reconvert` job for the counterpart (ADR-019). Save returns immediately; the
-  counterpart updates within seconds.
+- Editing **either** body marks the variation `hand_edited`, moves `is_source`
+  to the edited body (ADR-028), and enqueues a `reconvert` job for the
+  counterpart (ADR-019). Save returns immediately; the counterpart updates
+  within seconds. While that reconvert is queued, running, or failed, the
+  counterpart body shows a banner: "Not yet updated from your edit" or
+  "Couldn't update, tap to retry" (ADR-028). Detected from the job table, no
+  schema for it.
 - Editing ingredients, steps, or the original yield bumps `content_version` and
   therefore marks scaled variations stale (ADR-012). Editing title, tags, notes,
   source, or images does not.
@@ -766,7 +816,8 @@ Save rules:
 ### 7.3 Browse and search
 
 One list, newest first. Each row: cover thumbnail, title, effort chip, damage
-chip.
+chip. Pending and failed capture jobs appear as cards at the top (section
+6.5); they are read from the `job` table, not phantom recipe rows.
 
 A search box filters as you type, server-side, over `recipe_fts` (title,
 ingredients, tags). Below it, tag chips act as filters, combined with AND across
@@ -787,7 +838,8 @@ Layout, top to bottom:
 - **Yield control**: chips for every existing variation (`4 · original`, `8`,
   `12`) plus a stepper for a new number. See 7.5 for the interaction rules.
 - **Unit toggle**: US / metric, remembered per device, with a small "as written"
-  marker on whichever is the source.
+  marker on whichever body carries `is_source`, which means the body a human
+  last authored; the other is always machine-converted (ADR-028).
 - Ingredients: a **collapsible sticky block** that stays reachable while
   scrolling the steps. Scroll position is never lost.
 - Steps.
@@ -828,8 +880,8 @@ triggers work** (ADR-012).
 
 | Variation | Behaviour |
 |---|---|
-| `hand_edited = 0` | Regenerates lazily on next open. No prompt, nothing is lost, and you never pay for variations you never open again. |
-| `hand_edited = 1` | Never touched automatically. Shows a banner: "The original changed after you edited this version." Two actions: **Recalculate** (warns that your edits will be lost, and soft-deletes the old body so it is recoverable from Trash) or **Keep mine** (dismisses permanently by advancing `based_on_content_version`). |
+| `hand_edited = 0` | Regenerates lazily on next open, stale-while-revalidate (ADR-029): the old body shows immediately with a banner "The original changed, updating this version…", the scale job runs behind it, and the body swaps in when done (banner flips to "updated"). On failure or a cap hit, the stale body stays fully usable and the banner reads "couldn't update, tap to retry". Cooking is never blocked, and you never pay for variations you never open again. |
+| `hand_edited = 1` | Never touched automatically. Shows a banner: "The original changed after you edited this version." Two actions: **Recalculate** (warns that your edits will be lost, then soft-deletes the whole variation into Trash and creates a fresh one at the same yield, ADR-025) or **Keep mine** (dismisses permanently by advancing `based_on_content_version`). |
 
 This asymmetry is the point: an untouched variation is a Claude call worth
 fractions of a cent, and a hand-edited one contains work done at the stove that
@@ -845,11 +897,15 @@ One active list (ADR-015).
 
 The build **uses variations, never raw originals**. If a 6-portion variation
 exists it is used, including any stove-side corrections. If it does not exist,
-it is generated first through the normal `scale` job and saved as a variation.
-Slightly more work than one big prompt, and it guarantees the shopping list and
-the recipe you cook from can never disagree.
+it is generated first and saved as a variation. Slightly more work than one
+big prompt, and it guarantees the shopping list and the recipe you cook from
+can never disagree.
 
-Then one `shopping_merge` job produces grouped items.
+The whole build is **one `shopping_merge` job** (ADR-027): the runner
+generates any missing variations inline via `scale` calls, then makes the
+merge call. One job to poll, survives a locked phone, and a mid-build failure
+is benign because variations saved before the failure persist, so a retry
+only pays for what is left.
 
 List behaviour:
 
@@ -871,9 +927,13 @@ List behaviour:
 
 ### 7.7 Trash
 
-One screen listing soft-deleted recipes, variations, and bodies replaced by a
-recalculation (ADR-013). Restore puts them back. Nothing purges automatically in
-v1; a few hundred rows weigh nothing.
+One screen listing soft-deleted recipes and variations (ADR-013). A
+recalculation replaces the whole variation, so the trashed row carries the
+hand-edited bodies with it (ADR-025); there is no separate body-level trash.
+Restore puts things back, and **Restore always wins** (ADR-025): if a live
+variation occupies the same yield, it is displaced into Trash and the restored
+one takes the slot, with a message saying so. Reversible in both directions.
+Nothing purges automatically in v1; a few hundred rows weigh nothing.
 
 Trash is the safety net for deletions, and the review form is the safety net for
 extractions. **Nothing catches a bad edit to an existing recipe**: edit history
@@ -949,15 +1009,32 @@ book built over years.
   `SESSION_SECRET`), one year expiry, `HttpOnly`, `Secure`, `SameSite=Lax`,
   `Path=/`. No session table: rotating `SESSION_SECRET` invalidates every
   session, which is the entire revocation story and is correct for two people.
-- Rate limit failed logins: 5 attempts per IP per 15 minutes, in memory. The
-  whole app is one long brute-force target otherwise.
+- **The year slides** (ADR-031): on any authenticated request whose cookie
+  issued-at is older than 30 days, re-issue a fresh cookie in the response.
+  Anyone using the app even monthly never sees the login screen again.
+- Rate limit failed logins: 5 attempts per IP per 15 minutes, in memory. Read
+  the client IP from the `Fly-Client-IP` header, not the socket address, or
+  every attempt appears to come from Fly's proxy. The whole app is one long
+  brute-force target otherwise.
 - Every route except `/login` and the health check requires the cookie. Enforce
   in a single `hooks.server.ts` handle, not per route, so a new route cannot
   forget.
 - Incident response if the password leaks: change it, redeploy, both people
   re-enter it once. That is the whole plan.
 
-### 8.6 PWA
+### 8.6 Serving images from R2
+
+The bucket is **private**; its contents include photographed pages of
+copyrighted cookbooks and photos from inside the house (ADR-026). The server
+generates presigned GET URLs (SigV4) when rendering a page, expiry 7 days
+(the SigV4 maximum), and phones fetch the bytes directly from R2, so free
+egress and zero Fly bandwidth are preserved.
+
+One line that matters: round the signing timestamp to the day, so URLs are
+stable for 24 hours and the browser cache works within a cooking session.
+A naively-signed URL changes on every render and defeats caching entirely.
+
+### 8.7 PWA
 
 - `manifest.webmanifest`: `name` "We Cooked", `short_name` "We Cooked",
   `display: standalone`, `theme_color`, `background_color`, icons at 180, 192,
@@ -1001,7 +1078,7 @@ issuance. Fly terminates TLS itself.
 | `LITESTREAM_*` | Replica credentials (may reuse the R2 pair) |
 | `CLAUDE_MODEL` | `claude-opus-5` |
 | `CLAUDE_EFFORT` | `medium` |
-| `DAILY_JOB_CAP` | `50` |
+| `DAILY_CALL_CAP` | `50` (Claude calls per day, ADR-027) |
 
 All set with `fly secrets set`. Locally they live in `.env`, which is
 gitignored **in the first commit**, before any key is ever written to it.
@@ -1044,8 +1121,9 @@ Each phase ends somewhere usable. Do not build phase N+1 before N works on a
 phone.
 
 1. **Skeleton.** SvelteKit app, Dockerfile, `fly.toml`, volume, SQLite with the
-   schema, `/healthz`, deployed at `wecooked.kitchen`. Auth and the session
-   cookie. Nothing else. Confirm it loads on both phones.
+   schema and the migration runner (section 4.1), `/healthz`, deployed at
+   `wecooked.kitchen`. Auth and the session cookie. Nothing else. Confirm it
+   loads on both phones.
 2. **Durability.** Litestream sidecar, R2 bucket, and the section 8.4 restore
    drill. Do this before there is anything worth losing, not after.
 3. **Manual recipes.** The review form, the recipe view, the browse list, soft
@@ -1082,7 +1160,8 @@ shopping list are produced before phase 3, and reviewed by the owner.
    recovery time is however long a `fly deploy` and a restore take. For a recipe
    book, correct.
 5. **Ingredient-aware unit conversion can be wrong**, and a wrong conversion in
-   baking ruins a bake. The "as written" marker means the source of truth is
-   always identifiable, which is the mitigation.
+   baking ruins a bake. The "as written" marker means the human-authored body
+   is always identifiable, even after edits, because `is_source` follows the
+   last hand-edited body (ADR-028). That is the mitigation.
 6. **Medium-effort token overhead is estimated, not documented.** Watch the
    first month's actual bill.
