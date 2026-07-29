@@ -1,0 +1,881 @@
+# We Cooked: Architecture Decision Records
+
+Every decision taken on 2026-07-27, with the options that were actually
+weighed and why the loser lost. Referenced from [SPEC.md](./SPEC.md) as
+`ADR-nn`. Evidence for the technical claims is in
+[research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
+
+Each record has the same shape: the question, the options considered, the
+decision, why, what it costs, and what would make it worth revisiting.
+
+---
+
+## ADR-001: SvelteKit, not server-rendered Python
+
+**Question.** What builds the app?
+
+**Options.**
+
+- **A. Python (FastAPI) with Jinja templates and htmx, no build step.** One
+  Dockerfile, one process, no npm. The most-exercised path for the Anthropic
+  SDK.
+- **B. Node/TypeScript with SvelteKit.** One language front to back, real
+  interactivity, small runtime shipped to the phone because Svelte compiles
+  away.
+- **C. Next.js / React.** The most tutorials and the most machinery.
+- **D. Go with templ.** Tiny image, fast boot, least pleasant for iterating on
+  LLM glue code.
+
+**Decision: B, SvelteKit with `adapter-node` and TypeScript.**
+
+**Why.** A was the initial recommendation and it was wrong for this app. The
+owner's requirements include "a very nice, smooth UI" as a stated hard
+requirement, plus client-side image processing (canvas decode, EXIF rotation,
+resize before upload), a polling job UI, a unit toggle, a portion stepper, and
+multi-select for shopping lists. That is the exact workload where htmx stops
+saving effort and starts costing it. Svelte compiles away rather than shipping a
+runtime, so the phone payload stays small, and view transitions are a documented
+one-liner via `onNavigate`.
+
+C loses on machinery for no benefit at this size. D loses because the Anthropic
+TypeScript and Python SDKs are the two mature ones and Go would mean more
+hand-rolling for a hobby app.
+
+**Costs.** A build step and a `node_modules`. Accepted.
+
+**Revisit if.** Never, realistically. This is a foundation decision.
+
+---
+
+## ADR-002: One service, not two
+
+**Question.** Does the Claude integration live in a separate backend?
+
+**Options.**
+
+- **A. One SvelteKit app**, server routes handle the API and the jobs.
+- **B. SvelteKit frontend plus a separate Python backend**, if Python is
+  preferred for the LLM work.
+
+**Decision: A.**
+
+**Why.** Two users. There is no argument for a second process, a second deploy,
+a second log stream, or a network hop between them. The Anthropic TypeScript and
+Python SDKs are at parity for streaming, retries, timeouts, typed responses, and
+image helpers, so the usual reason to reach for Python does not apply.
+
+**Costs.** If a genuinely heavy processing workload arrives later (video, large
+batch jobs), it will need extracting. That is a real but unlikely future.
+
+**Revisit if.** A feature arrives that needs a Python-only library.
+
+---
+
+## ADR-003: Ingredients are grouped plain strings, not parsed quantities
+
+**Question.** How are ingredients stored?
+
+**Options.**
+
+- **A. Flat list of plain strings.** "2 tbsp olive oil, plus more for
+  drizzling" is one string. Nothing parsed.
+- **B. Structured `{qty, unit, item, note}`.** Enables arithmetic scaling and
+  ingredient matching.
+- **C. Grouped plain strings.** Sections ("For the sauce") preserved, contents
+  still unparsed.
+
+**Decision: A plus C, that is, grouped plain strings.**
+
+**Why.** B is the trap. It looks like it unlocks scaling, but scaling a recipe is
+not multiplication (see ADR-012): doubling a curry does not double the chilli,
+and halving a cake changes the tin and the bake time. B would produce recipes
+that look scaled and cook badly, and it would make every extraction subtly
+wrong in a way that is tedious to correct (four fields per line instead of one).
+
+C over plain A because real cookbook recipes constantly have sub-components, and
+flattening "For the dough" into "For the filling" makes the recipe worse to read
+every single time you cook it. It is cheap now and annoying to retrofit.
+
+The unparsed string is only viable **because** Claude is in the loop at runtime.
+This decision and ADR-012 are the same decision viewed from two sides.
+
+**Costs.** No arithmetic is possible on ingredients without a Claude call. That
+is by design.
+
+**Revisit if.** Never. Structured quantities would be a rewrite of the data
+model and the value is illusory.
+
+---
+
+## ADR-004: Extraction lands in a review form before saving
+
+**Question.** What happens to a Claude extraction: save it, or confirm it?
+
+**Options.**
+
+- **A. Save immediately, edit later.** Fastest happy path.
+- **B. Editable review screen, confirm before save.** One extra tap.
+- **C. Review screen with low-confidence fields highlighted.**
+
+**Decision: B.**
+
+**Why.** The invariant this buys is "every recipe in the book has been read by a
+human once", which turns the book from probably-right into trustworthy. The cost
+is one tap. Under A you accumulate silently-wrong recipes and discover them
+mid-cook with flour on your hands, which is the worst possible moment.
+
+C was rejected because model self-reported confidence is unreliable, and it adds
+schema and UI for information you would skim past anyway. What replaced it is
+narrower and honest: `extraction_warnings`, a list of **concrete observable
+gaps** ("step 4 was cut off at the page edge"), not a confidence score.
+
+The structural payoff is larger than the correctness payoff: B means URL, paste,
+photo, and manual entry all terminate at the same screen, so there is exactly
+**one recipe editor** in the codebase.
+
+**Consequences.** Two follow-on rules were adopted with it. Manual entry is a
+first-class path, not an afterthought. And a failed extraction drops into the
+same form, empty, with the source attached, so failure is never a dead end.
+
+---
+
+## ADR-005: Cooking screen is one scroll with sticky ingredients
+
+**Question.** How is a recipe presented while cooking?
+
+**Options.**
+
+- **A. One scrollable page**, ingredients then steps.
+- **B. Step-by-step cards, one per screen, swipeable.**
+- **C. A, with the ingredient list kept reachable** (collapsible sticky block).
+
+**Decision: C, plus wake lock, tap-to-strike-through, and large type.**
+
+**Why.** A is the laziest and nearly right, but the constant scroll back to check
+"was it 2 eggs or 3" is the single most repeated annoyance in cooking from a
+phone. C fixes it with a sticky element, which is cheap.
+
+B was rejected on cooking grounds, not technical ones: card decks destroy the
+overview, hide what is coming next, and depend on step boundaries that an
+extraction chose arbitrarily.
+
+The three additions are each small and each removes a real irritation. Wake lock
+(`navigator.wakeLock`, available in iOS Safari since 16.4) is table stakes for a
+cooking app. Strike-through state is deliberately **ephemeral and per-device**:
+no DB write, no sync, cleared on leaving. This contrasts with shopping list ticks
+(ADR-015), which must sync, and the difference is that shopping happens with the
+two people in different places.
+
+**Explicitly cut.** Timers parsed from step text, voice control, "hey what's
+next".
+
+---
+
+## ADR-006: Text search plus Claude-assigned tags
+
+**Question.** How do you find a recipe among a few hundred?
+
+**Options.**
+
+- **A. One list plus a text filter** over title, ingredients, tags.
+- **B. A, plus tags you assign by hand.**
+- **C. Semantic search through Claude.**
+
+**Decision: A, with tags assigned by Claude at extraction (recorded as "A+").**
+
+**Why.** B fails on human behaviour: manual tagging is a chore that stops in week
+three, and half-tagged data is worse than none. The insight that resolves it is
+that the Claude call is **already happening** during extraction, so tags cost
+nothing extra and the human never does the chore. Tags then work as filter chips
+and as searchable text, and stay editable in the review form when one is wrong.
+
+C is genuinely the killer feature of an LLM recipe book and it is the strongest
+v2 candidate. It loses for v1 because it costs a round trip per search and
+cannot beat substring matching for "carbonara", which is most searches. It slots
+in cleanly later behind the same box: if the filter returns nothing, offer "ask
+Claude".
+
+**Consequence.** Tags must come from a fixed vocabulary or the chips become
+noise (ADR-007).
+
+---
+
+## ADR-007: Fixed tag vocabulary, including a damage rating
+
+**Question.** What tags exist, and who defines them?
+
+**Options.**
+
+- **A. Free-form tags from Claude.** It will emit "quick", "fast", and
+  "weeknight" for the same idea, and the chip row becomes unusable.
+- **B. A fixed closed vocabulary in the prompt.**
+
+**Decision: B**, five groups: meal type, cuisine, protein, effort, damage.
+
+**Rejected from the draft vocabulary.**
+
+- **Diet tags beyond vegetarian and vegan.** Gluten-free and dairy-free were
+  drafted and removed. They read as safety claims, and a model inferring them
+  from an ingredient list will eventually be wrong about soy sauce or stock.
+  Then vegetarian and vegan were dropped too when the owner replaced the group.
+  If anyone in the household ever has a real allergy, this needs handling
+  properly rather than as a tag.
+- **Method tags** (`one-pot`, `oven`, `grill`, `slow`, `no-cook`). Drafted, then
+  replaced by damage at the owner's request.
+
+**The damage tag** is the owner's idea and is the most distinctive thing in the
+app: how much of the kitchen this recipe destroys. A dish involving rice, a deep
+fry, and something in the oven wrecks the kitchen; a one-pot weeknight meal does
+near-zero damage.
+
+It is defined by an explicit counting rubric (in SPEC section 3.4) rather than
+by vibes, because a tag that means something different each time is worse than
+no tag. Three levels, `tidy` / `messy` / `carnage`, ordered so the chips sort
+sensibly. The suspected real use is a one-tap "what can we cook tonight that
+does not wreck the kitchen" filter.
+
+**Cardinality.** Cuisine is at most one, deliberately: recipes that are
+genuinely two cuisines are rare, and multi-select turns the filter into noise.
+Effort and damage are exactly one and required. Meal type is multi.
+
+**Accessibility.** Chips always carry their word. Meaning is never encoded in
+colour, and never in red versus green, which the owner cannot distinguish.
+
+**Revisit if.** A vocabulary value is missing. The lists live in the prompt and
+in a `CHECK` constraint, so adding one is a one-line change plus a migration of
+the constraint, not a migration of meaning.
+
+---
+
+## ADR-008: One shared password
+
+**Question.** How do two people log in?
+
+**Options.**
+
+- **A. A single shared password**, session cookie lasting a year.
+- **B. Two accounts with individual credentials.**
+- **C. Passkeys / WebAuthn.**
+- **D. Magic links by email.**
+- **E. Cloudflare Access in front of the app.**
+
+**Decision: A.**
+
+**Why.** The access boundary here is "us versus the internet", not "Daniel versus
+his wife". They share a kitchen and they share the book. B buys per-user
+attribution, which nobody wants, and costs a users table, a real login form, and
+password resets that would be handled by SSHing into a box.
+
+C is the nicest login on an iPhone (Face ID directly) but is real WebAuthn
+machinery, and device-loss recovery is a problem nobody should solve for a
+two-person recipe app. D means an email round trip every time a cookie expires.
+E was disqualified by research: Cloudflare Access has a documented maximum
+session length of one month, against a one-year requirement.
+
+In practice iOS Keychain saves the password, so re-entry is a Face ID prompt on
+the rare occasions it happens.
+
+**Non-negotiables adopted regardless.** HTTPS only, `HttpOnly` + `Secure` +
+`SameSite=Lax`, Argon2id hash in a secret rather than in the repo, and a hard
+rate limit on failed attempts.
+
+**Incident response.** If the password leaks: change it, redeploy, both people
+re-enter it once. That is the complete plan, and it is proportionate.
+
+**Revisit if.** Anyone outside the household needs access. B is a small
+migration, not a rewrite.
+
+---
+
+## ADR-009: Images are a list with a cover flag
+
+**Question.** How are photos modelled, given they serve two different jobs (the
+picture you look at, and the page Claude reads)?
+
+**Options.**
+
+- **A. One list of images per recipe, one flagged as the cover.**
+- **B. Separate "source scans" from "hero photo"** as distinct concepts.
+- **C. No images in v1.**
+
+**Decision: A.**
+
+**Why.** B is conceptually tidier and costs two upload flows, two pieces of UI,
+and a decision to make on every screen. A costs one table and one nullable
+foreign key, and it gets the important property for free: **the cookbook page
+you photographed stays attached to the recipe forever**, which is exactly what
+you want the first time an extraction turns out to have dropped a step. C is not
+available because the photo-extraction feature needs image storage anyway.
+
+**Four rules adopted with it.**
+
+1. **Multiple images per extraction.** A cookbook recipe is often a two-page
+   spread or continues overleaf. The API takes several images in one request, so
+   "add another photo" before extracting is nearly free.
+2. **Copy remote images to R2, never hotlink.** Link rot is real, and hotlinking
+   leaks your reading habits to the source site.
+3. **Rotate pixels on upload, then strip EXIF.** Claude ignores EXIF
+   orientation, so metadata-only rotation delivers a sideways page. See ADR-023.
+4. **Keep a full-size copy plus a display copy.** Storage is free at this volume,
+   and it means re-running extraction against a better model in a year does not
+   require re-photographing the book.
+
+---
+
+## ADR-010: Blocked sites get a paste path, not a scraper arms race
+
+**Question.** Four major recipe sites (Serious Eats, AllRecipes, Food Network,
+101 Cookbooks) returned 403 to a server-side fetch during research. What do we
+do about it?
+
+**Options.**
+
+- **A. One input accepting a URL or pasted text**, with a clear failure path to
+  the photo flow.
+- **B. Headless browser (Playwright) on Fly.**
+- **C. A paid scraping proxy.**
+- **D. Anthropic's server-side web fetch tool.**
+
+**Decision: A.**
+
+**Why.** This is Cloudflare working correctly, not a bug to fix, and it will get
+worse over time rather than better. B means hundreds of megabytes of RAM on a
+machine costing six dollars a month, and naive headless Chrome loses to modern
+bot detection anyway: an arms race maintained forever for four websites. C means
+a new vendor, a new key, and a monthly bill. D is worth a test during the build
+but Anthropic's fetcher is also a datacenter IP, so the same 403s are the likely
+outcome; it is not something to design around.
+
+A never fails. It covers blocked sites, paywalled sites you are logged into on
+your phone, recipes in emails, and recipes in text messages. Three taps
+(select all, copy, paste) beats a clever thing that works on 85% of sites and
+breaks silently on the rest.
+
+**Consequence adopted.** When a fetch is blocked, the app says so plainly:
+"This site blocks automated readers. Copy the recipe text and paste it instead."
+Not a generic error, and not a silent empty form.
+
+**Known iOS limitation, recorded so it is not re-attempted.** The Share Sheet
+cannot hand a URL to a web app. The Web Share Target API is Chrome and Android
+only. Copy and paste is the ceiling on iOS short of a native wrapper.
+
+---
+
+## ADR-011: Always call Claude, even when JSON-LD exists
+
+**Question.** Most recipe sites embed schema.org Recipe JSON-LD (9 of the 14
+reachable sites in a 19-site sample). Research recommended parsing it and
+skipping Claude to save money. Do we?
+
+**Options.**
+
+- **A. JSON-LD wins, skip Claude entirely** when it is present.
+- **B. Always call Claude, passing JSON-LD as authoritative input.**
+- **C. JSON-LD for literal fields, a second cheap Claude call for derived
+  fields.**
+
+**Decision: B.**
+
+**Why.** A does not actually work, and the reason is ADR-007. Effort, damage,
+cuisine, protein, section headings, and the unit conversion are **derived
+judgments that no web page embeds**. Under A you would still need a Claude call
+for all of them, so you would have saved nothing and acquired a second code
+path. C is two calls and two failure modes to save a few cents.
+
+Under B, JSON-LD becomes a **quality floor rather than a shortcut**: when
+present, the ingredient strings are exactly what the author wrote, so there is
+no transcription drift; when absent, Claude reads the stripped HTML. Same output
+shape either way.
+
+The saving A was chasing is a rounding error against a bill that is a few
+dollars a month, and one code path is worth more than that. It also means URL,
+paste, and photo all run the same prompt against different inputs: one prompt to
+tune instead of three.
+
+---
+
+## ADR-012: Portion variations are saved siblings, not a cache
+
+**Question.** How does the app handle cooking a recipe at a different number of
+portions?
+
+**Options.**
+
+- **A. Parse quantities and multiply.**
+- **B. Claude rewrites the recipe for the new yield, result persisted.**
+- **C. Scale ingredients only, leave the steps alone.**
+
+**Decision: B.**
+
+**Why.** A is the obvious answer and it is wrong, because **scaling a recipe is
+not multiplication**. Salt, chilli, and strong aromatics scale sublinearly.
+Leavening scales sublinearly upward. Tins and bake times change. A would produce
+something that looks scaled and cooks badly, and it would require the structured
+ingredients rejected in ADR-003. This is precisely the class of work that a
+hand-rolled app does badly and that an LLM does well, which is the premise of
+the whole project.
+
+C loses because step text carries quantities, tin sizes, and times. Scaling the
+ingredients while leaving "pour into a 20cm tin and bake 45 minutes" untouched
+produces a recipe that contradicts itself.
+
+**The correction that mattered.** The initial design treated scaled outputs as a
+*cache*, invalidated when the original changed. The owner corrected this: they
+are **variations**, and a variation can contain hand edits made at the stove. A
+cache can be thrown away; work done by a human cannot. This changed the data
+model.
+
+**Rules adopted.**
+
+- The original is immutable with respect to scaling, permanently labelled
+  "original".
+- Editing a variation affects **only** that variation, and marks it
+  `hand_edited`.
+- Range capped at 0.25x to 4x, beyond which the note leads with a warning.
+- The scaling note names what did not scale linearly. This is what makes the
+  output trustworthy rather than magic.
+- Scaling reasons in metric, because grams scale cleanly and cups do not, then
+  emits both unit systems (ADR-019).
+- Variations are deletable; the original is not.
+- Not savable as a separate recipe. It is a variation of one dish, and "save as
+  new recipe" would fill the list with duplicates of the same thing.
+
+**Staleness policy** (the one place the app can destroy work, so it was decided
+explicitly):
+
+- **Untouched variations regenerate lazily** on next open. Nothing is lost, the
+  cost is a fraction of a cent, and variations never reopened are never paid
+  for.
+- **Hand-edited variations are never touched automatically.** A banner offers
+  "Recalculate" (with a warning, and the old body goes to Trash) or "Keep mine".
+- Rejected: always asking, even for untouched variations (taps on decisions with
+  no wrong answer), and always recalculating everything immediately (will
+  eventually eat an edit made at the stove).
+- Only **substantive** edits mark variations stale: ingredients, steps, original
+  yield. Title, tags, notes, and images do not. Field-level, no semantic
+  diffing.
+
+**Interaction rule, specified by the owner.** Moving the stepper from 3 to 4 to 5
+to 6 must **never** trigger a calculation. Work begins only when an explicit
+"Calculate for 6" button is pressed. Existing variations are chips and switch
+instantly.
+
+---
+
+## ADR-013: Soft delete everywhere, no edit history
+
+**Question.** What is recoverable, and how?
+
+**Options.**
+
+- **A. One soft-delete mechanism** (`deleted_at`) covering recipes, variations,
+  and bodies replaced by recalculation, with a Trash screen.
+- **B. Full revision history** with a timeline and rollback.
+- **C. Hard delete, rely on Litestream for recovery.**
+
+**Decision: A.**
+
+**Why.** One column and one screen cover all three ways work can be lost: a
+mis-tapped recipe delete, a mis-tapped variation delete, and the ADR-012
+recalculation that replaces a hand-edited body.
+
+B is a revisions table, a diff view, and a "which version am I looking at"
+question on every screen, for a recipe edited twice a year. A museum.
+
+C confuses disaster recovery with undo. Recovering one recipe from a Litestream
+replica means restoring a database copy to a scratch machine and extracting a
+row. Nobody would ever do that; they would retype the recipe.
+
+**Accepted gap, stated plainly.** The review form protects extractions and Trash
+protects deletions, but **nothing catches a bad edit to an existing recipe**.
+Overwrite a method and save, and that text is gone. This is the price of not
+building B and it is recorded as a known risk.
+
+---
+
+## ADR-014: v1 scope boundary
+
+**Question.** What is out?
+
+**Decision.** Everything in SPEC section 1.2. Recorded here because "we will add
+it later" is where specs rot.
+
+Two that were nearly kept:
+
+- **Cook log** (three columns and a button, and "what did we eat last week" is a
+  question that gets asked). Cut because the value only arrives after months of
+  consistent tapping, which is a habit nobody has yet.
+- **Web push** when extraction finishes. Genuinely supported on iOS for
+  home-screen apps since 16.4, so not blocked, just not worth a notification
+  permission prompt for a twenty-second job you are already watching.
+
+One that moved **in** during the interview: **shopping lists** (ADR-015).
+
+---
+
+## ADR-015: Shopping lists build from variations, one active list
+
+**Question.** Added to scope by the owner: take one or more recipes with a
+portion count each, produce a shopping list.
+
+**Key design decision: build from variations, not from originals.** If a
+6-portion variation exists it is used, including any stove-side corrections; if
+it does not, it is generated first through the normal scale job and saved. This
+costs an extra call sometimes, and it guarantees the shopping list and the
+recipe you cook from can never disagree. The generated variation is kept, so the
+cost is not wasted.
+
+Then one merge pass does the annoying part: combining the same ingredient across
+recipes, reconciling compatible units, keeping incompatible ones as separate
+lines rather than inventing a conversion, and grouping by supermarket section.
+
+**Fork 1, pantry staples.**
+
+- **A. A separate "check you have" section**, collapsed at the bottom.
+- **B. Omit staples entirely.**
+- **C. A staples list maintained in settings.**
+
+**Decision: A.** A list with fourteen things you already own is a list you stop
+trusting, so they must leave the main list. But B fails the week you actually
+are out of olive oil, and C is a settings chore done once and never revisited.
+
+**Fork 2, lifecycle.**
+
+- **A. One active list**, replaced when you build a new one.
+- **B. Multiple named lists.**
+
+**Decision: A.** A second list is a v2 problem you will know you have.
+
+**Other rules.**
+
+- **Ticking is shared and persisted.** This is the one piece of state that must
+  sync, and it is the deliberate opposite of the cooking screen's ephemeral
+  strike-throughs (ADR-005): one person is in the shop, the other is at home
+  remembering the coriander.
+- Manual lines (bin bags, milk) are first-class and survive rebuilds.
+- Every line records which recipes it came from.
+- Changing the recipe set rebuilds the merge. Ticks survive on exact text match
+  and reset otherwise. **This is deliberately dumb**: fuzzy matching would
+  sometimes preserve a tick it should not, and a wrongly-ticked line in a shop
+  is worse than a wrongly-unticked one.
+
+---
+
+## ADR-016: Opus 5 at medium effort, with three spend guards
+
+**Question.** Which model, and what stops a runaway bill?
+
+**Options.**
+
+- **A. Sonnet 5 everywhere.** Research recommendation. About $0.60/month.
+- **B. Mixed tiers**, cheap model for merge and scale.
+- **C. Opus 5 for photos, Sonnet for the rest.**
+- **D. Opus 5 everywhere.**
+
+**Decision: D, `claude-opus-5` at effort `medium`.**
+
+**Why.** The owner's reasoning, and it is correct: *"I would rather spend more
+money than have to find a bunch of mistakes."* The marginal cost is roughly
+$3/month, and the thing being bought is not having to proofread extractions. At
+these absolute numbers, choosing a model on price is optimising the wrong
+variable. Research reached the same conclusion from the other direction: "the
+Anthropic bill is not a meaningful part of this budget, which means you should
+choose models for quality and latency, not price."
+
+B is ruled out by the owner's standing rule against Haiku, and would mean
+debugging quality differences across two models to save cents.
+
+**Cost.** Opus 5 is $5/MTok input and $25/MTok output against Sonnet's
+post-August $3/$15. Per call: photo extraction about $0.07, URL without JSON-LD
+about $0.09, scaling about $0.06, shopping merge about $0.05. At 30 recipes, 20
+scalings, and 8 lists a month, about $3.50. Total app cost moves from about
+$4.40 to about $10 per month.
+
+**Effort `medium`, set explicitly**, because the API default on this generation
+is `high`. Reasoning tokens bill as output, and Anthropic does not publish how
+many a given effort level emits, so the $3.50 estimate assumes roughly 1,000
+extra output tokens per call. This is the least certain number in the spec.
+
+**Three independent spend guards**, because each can fail alone:
+
+1. **50 jobs per day** (owner's number, halved from a suggested 100), enforced at
+   insert. Fifty jobs of the most expensive kind is about $4.50/day, so a stuck
+   loop unnoticed for a month costs roughly $135 rather than an unbounded
+   amount. High enough never to be hit while cooking, low enough that it cannot
+   become a four-figure surprise.
+2. **`maxRetries: 1`**, against the SDK default of 2. One transient failure
+   would otherwise silently bill three full extractions.
+3. **A spend limit in the Anthropic Console**, which does not depend on the
+   application code being correct.
+
+**Accepted consequences.** Opus is documented as "Moderate" latency against
+Sonnet's "Fast", so extractions run longer. The background job model (ADR-023)
+absorbs this entirely. Anthropic's fast mode is Opus-only but costs $10/$50 per
+MTok, which is not worth it for a job nobody is staring at.
+
+**Prompt caching and the Batch API are both off.** Caching needs a 512-token
+minimum prefix and has a five-minute TTL, so two people adding a recipe every few
+days would pay the 1.25x write premium every time and never read a warm cache.
+Batch trades latency for cost, and a human is waiting.
+
+---
+
+## ADR-017: Fly.io, one machine, region `iad`
+
+**Question.** Where does it run?
+
+**Options.** Fly.io (owner's default), Vercel, Render, Railway, a plain VM with
+Caddy.
+
+**Decision: Fly.io, one `shared-cpu-1x` machine with 1 GB in `iad`.**
+
+**Why.** Vercel is **disqualified outright**: a 4.5 MB request body cap, which
+cookbook photo uploads exceed. Render's free tier spins down after 15 minutes
+and takes "about one minute" to wake, which is unusable in front of "I want to
+look at a recipe right now"; paid Starter is roughly double Fly. Railway has no
+recurring free tier and documents 502s on wake. A plain VM is the only real
+alternative and it trades managed TLS, managed secrets, and one-command deploys
+for OS patching you own forever.
+
+`iad` (Ashburn) because both users are in Northern Virginia. With a single
+machine, region choice is the entire latency budget.
+
+**1 GB rather than 512 MB** because server-side image derivation with `sharp`
+wants headroom. The difference is about $2.60 a month.
+
+**`min_machines_running = 1`, scale-to-zero off.** Fly's docs say cold start is
+"well under a second", but that is still latency in front of the main use case,
+and a SQLite app with a mounted volume does not want to be stopped.
+
+**Exactly one machine.** Two machines sharing one volume is data corruption.
+
+---
+
+## ADR-018: A dedicated domain, not the business domain
+
+**Question.** Host it at `morphyconsulting.com/recipe-book`, on a subdomain of
+that, or somewhere new? The owner is a co-founder of that business.
+
+**Options.**
+
+- **A. A new dedicated domain.**
+- **B. `recipes.morphyconsulting.com`.**
+- **C. `morphyconsulting.com/recipe-book`.**
+
+**Decision: A.** The owner registered **`wecooked.kitchen`** at Cloudflare
+Registrar.
+
+**Why C is the worst option.** Three technical problems on top of the ownership
+one. Path-based hosting requires something in front of the business site to
+reverse-proxy `/recipe-book/*` to Fly, and most site hosts (Webflow, Squarespace,
+Framer, most CMSs) cannot do it. The PWA then needs a base path, and Add to Home
+Screen scopes the app to that path, so any stray link drops you into a normal
+browser tab. And `Path=/recipe-book` **is not a security boundary**: the recipe
+book would share an origin with the company marketing site, so any XSS there,
+including from a marketing tag added by someone else, reaches the app.
+
+**Why B loses despite being technically clean.** It is one CNAME and it has
+proper cookie isolation. The problem is ownership. It is the business's domain
+and the owner is a co-founder, not the sole owner. If the company is sold, wound
+down, rebranded, or simply left behind, the domain goes with it, and so does the
+recipe book's identity: both people re-adding the app, logging in again, every
+bookmark broken. It also puts a personal side project in a business's DNS.
+
+**On registrar choice.** Cloudflare Registrar sells at wholesale with no markup
+and no first-year-discount trick, so the `.kitchen` renewal is the real number
+permanently. This matters: the 2012-era gTLDs have no ICANN price cap (unlike
+`.com`), much smaller registration volumes to spread fixed costs across, and are
+deliberately priced as premium products. Elsewhere a `.kitchen` at $5 for year
+one can renew at $40 forever. Cloudflare also already hosts the R2 bucket, so
+domain, DNS, and photo storage are one account.
+
+**DNS configuration.** `A` and `AAAA` records to Fly with the **proxy off**
+(grey cloud). Orange-cloud proxying in front of Fly means two CDNs and
+Cloudflare's certificate handling fighting Fly's automatic issuance.
+
+---
+
+## ADR-019: Both unit systems stored, always
+
+**Question.** American recipes arrive in cups and sticks, European ones in grams.
+What does the book store?
+
+**Options.**
+
+- **A. Keep whatever the source used.** Zero work, zero conversion risk,
+  permanently mixed book.
+- **B. Normalise everything to metric on import.**
+- **C. Keep the source, convert on demand behind a toggle.**
+
+**Decision: the owner's variant of C.** Both systems are **stored on every
+recipe and every variation**, generated eagerly in the same Claude call as the
+extraction, with a toggle to switch and an "as written" marker on the source.
+
+**Why not A.** It was the initial recommendation and the owner overruled it
+correctly. Baking in cups is worse than baking in grams, and a *scaled* recipe in
+cups is worse again ("one and a third cups plus two tablespoons").
+
+**Why not B.** It silently rewrites the source data at import, and volume to
+weight depends entirely on the ingredient (a cup of flour and a cup of honey are
+nothing alike). A wrong conversion is a ruined cake, and the review form would be
+the only thing standing between the two.
+
+**Why eager rather than on demand.** Generating at extraction costs a few cents
+more and makes the toggle instant at the stove, which is the only place it
+matters. On-demand generation would put a spinner in front of a person mid-cook
+to save nothing worth having.
+
+**What converts.** Not just ingredient lines: step text carries quantities, and
+also **oven temperatures** (375°F to 190°C, rounded to real oven settings) and
+**pan sizes** (9 inch to 23 cm). Missing those makes the toggle a half-measure.
+Nothing else changes: the two bodies must read as the same recipe.
+
+**Scaling runs in metric internally** and emits both, so a 6-portion variation of
+an American recipe gives sensible grams *and* sensible cups.
+
+**Shopping lists show both on every line**, primary first per the toggle, because
+American packaging is in pounds and ounces whatever the recipe says.
+
+**The toggle is remembered per device**, so the two people can prefer different
+systems on their own phones without a shared setting to fight over.
+
+**The hand-edit problem, and the fork it created.** Editing one body makes its
+counterpart wrong.
+
+- **A. Regenerate the counterpart on save.** One cheap call per edit.
+- **B. Mark the counterpart stale** with a "not converted" note.
+
+**Decision: A.** B is free and it lets quietly inconsistent recipes into the
+book, which is the exact thing this feature exists to prevent. A costs about
+five cents per edit and buys an invariant ("both systems always agree") that
+nobody ever has to remember to check.
+
+---
+
+## ADR-020: Yield is a count plus a unit word
+
+**Question.** The scaling UI says "serves 6", but a lot of cooking does not work
+that way: 12 muffins, 24 cookies, 2 loaves, 1 litre of stock.
+
+**Decision.** Yield is a number plus a unit word, both filled by Claude from the
+vocabulary the source used. Scaling changes the count and never the unit word,
+so the control reads "Makes 12 muffins" with a stepper on the number and the
+chips read `12`, `24`, `36`. Default to `servings` when the source does not say.
+
+**Why.** "Serves 24 cookies" is nonsense, and the alternative (forcing everything
+into servings) would make the app read wrong for a whole category of what gets
+cooked. Nothing else in the system cares: shopping lists and search only touch
+ingredient lines.
+
+---
+
+## ADR-021: SQLite on a volume, with Litestream as a hard requirement
+
+**Question.** Where does the data live, and how is it not lost?
+
+**Options.**
+
+- **A. SQLite on a Fly volume, replicated with Litestream to R2.**
+- **B. Fly Managed Postgres.**
+- **C. Turso.**
+- **D. SQLite with LiteFS.**
+- **E. SQLite on a volume, trusting Fly's daily snapshots.**
+
+**Decision: A.**
+
+**Why.** B starts at $38/month, roughly four times the entire rest of the stack,
+to serve two people and a few hundred rows. Fly's self-hosted Postgres is
+documented as unmanaged with the words "we are not able to provide support or
+guidance". C is viable with a real free tier, but adds a vendor mid-rewrite:
+their own repository states "we have not yet reached 1.0" and their roadmap
+announces removal of features. A local SQLite file has no vendor and no roadmap
+risk.
+
+D is dead: no commits since April 2025, and Fly's own documentation says they
+cannot support it. Litestream, by the same author, is actively maintained.
+
+**Why E is not acceptable, and this is the important part.** Fly's own
+documentation states that a single volume can lose data and that daily snapshots
+"may not have your latest data". Research also could not confirm from any
+primary source whether snapshots are even stored off-host. That uncertainty is
+the strongest argument in the whole research document, and it is why **Litestream
+is mandatory rather than optional**: it makes the recovery point seconds rather
+than a day, and it makes the restore path independent of Fly entirely.
+
+**Consequence: the restore drill is a build step**, scheduled in phase 2, before
+there is anything worth losing. An untested backup is a belief, not a backup.
+
+---
+
+## ADR-022: Cloudflare R2 for photos
+
+**Options.** R2, Tigris (Fly's integrated partner), AWS S3, or the Fly volume
+itself.
+
+**Decision: R2.**
+
+**Why.** 10 GB free storage and free egress, so a few hundred resized photos are
+$0.00 and stay that way for years. Free egress also means serving images
+directly to the phones costs nothing and keeps image bytes off the Fly bandwidth
+bill. Tigris is a close and perfectly reasonable runner-up (5 GB free, bills onto
+the Fly invoice, also free egress) and R2 wins narrowly on free tier size, plus
+it is now the same account as the domain. S3 loses on egress charges ($0.09/GB).
+
+Storing photos on the Fly volume was rejected: it puts user data in the one place
+with a documented durability warning (ADR-021), and it makes the volume grow.
+
+---
+
+## ADR-023: Background jobs with client polling
+
+**Question.** Claude calls take seconds to tens of seconds. How does the client
+wait?
+
+**Options.**
+
+- **A. Blocking request, spinner on screen.**
+- **B. A job row in the database, polled by the client.**
+- **C. Stream the fields in as they generate**, so the form visibly fills.
+
+**Decision: B.**
+
+**Why.** A is simplest and fails on the actual device: twenty seconds is long
+enough that a person backgrounds the app or locks the phone, and **iOS kills
+in-flight fetches when they do**. B is barely more code (one table, one endpoint)
+and removes that entire class of bug. Submit, and the recipe appears in the list
+immediately as "extracting"; tap to watch or walk away; close the app and come
+back to it done.
+
+C is genuinely delightful and the most "the app is thinking" of the three, but
+partial JSON from a structured-output call is awkward to parse mid-stream, and it
+means a state machine for a twenty-second event. It can be layered on top of B
+later without touching the data model.
+
+**Three rules adopted with it.**
+
+1. **Poll at 1.5 s, back off after 30 s.** No websockets for two users.
+2. **Failures are visible, never silent.** A failed job stays in the list as
+   "extraction failed, tap to see why", and tapping opens the review form with
+   the source attached.
+3. **Retries capped at one**, against the SDK default of two, so a flaky call
+   cannot silently triple the bill (ADR-016).
+
+**Also adopted:** jobs left `running` at boot are marked failed with
+`interrupted`, so a deploy mid-extraction surfaces as something retryable rather
+than a row that hangs forever.
+
+---
+
+## Decisions deferred to prototypes
+
+The owner asked that UI decisions be settled with prototypes rather than prose.
+Four screens need one before phase 3 of the build:
+
+1. The review form (the single editor).
+2. The cooking screen, with the sticky ingredient block, the unit toggle, and
+   the yield chips and stepper.
+3. The browse list with search and tag chips.
+4. The shopping list, with sections, dual units, and the staples block.
+
+Constraint carried into all four: no meaning encoded in colour, and never in red
+versus green.
