@@ -1,7 +1,9 @@
 # We Cooked: Architecture Decision Records
 
 Every decision taken on 2026-07-27, with the options that were actually
-weighed and why the loser lost. Referenced from [SPEC.md](./SPEC.md) as
+weighed and why the loser lost. A second pass on 2026-07-29, before any code,
+resolved contradictions and gaps found in a pre-build review; those are
+ADR-024 to ADR-032, and the ADRs they amend carry a dated note. Referenced from [SPEC.md](./SPEC.md) as
 `ADR-nn`. Evidence for the technical claims is in
 [research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
 
@@ -460,6 +462,10 @@ to 6 must **never** trigger a calculation. Work begins only when an explicit
 "Calculate for 6" button is pressed. Existing variations are chips and switch
 instantly.
 
+**Amended 2026-07-29.** "Recalculate" replaces the whole variation rather than
+soft-deleting a body (ADR-025), and lazy regeneration of untouched variations
+is specified as stale-while-revalidate (ADR-029).
+
 ---
 
 ## ADR-013: Soft delete everywhere, no edit history
@@ -490,6 +496,10 @@ row. Nobody would ever do that; they would retype the recipe.
 protects deletions, but **nothing catches a bad edit to an existing recipe**.
 Overwrite a method and save, and that text is gone. This is the price of not
 building B and it is recorded as a known risk.
+
+**Amended 2026-07-29.** Trash holds recipes and variations only. Bodies are
+never soft-deleted individually; a recalculation trashes the whole variation
+(ADR-025), which makes "one soft-delete mechanism" literally true.
 
 ---
 
@@ -559,6 +569,9 @@ are out of olive oil, and C is a settings chore done once and never revisited.
   sometimes preserve a tick it should not, and a wrongly-ticked line in a shop
   is worse than a wrongly-unticked one.
 
+**Amended 2026-07-29.** The build runs as one job that generates missing
+variations inline before the merge call (ADR-027).
+
 ---
 
 ## ADR-016: Opus 5 at medium effort, with three spend guards
@@ -617,6 +630,10 @@ MTok, which is not worth it for a job nobody is staring at.
 minimum prefix and has a five-minute TTL, so two people adding a recipe every few
 days would pay the 1.25x write premium every time and never read a warm cache.
 Batch trades latency for cost, and a human is waiting.
+
+**Amended 2026-07-29.** The daily cap counts Claude calls rather than job
+inserts, because one shopping-list build job can make several calls
+(ADR-027). The number stays 50.
 
 ---
 
@@ -739,6 +756,10 @@ American packaging is in pounds and ounces whatever the recipe says.
 **The toggle is remembered per device**, so the two people can prefer different
 systems on their own phones without a shared setting to fight over.
 
+**Amended 2026-07-29.** `is_source` is redefined as "the body a human last
+authored", and reconvert failures surface as a banner on the derived body
+(ADR-028).
+
 **The hand-edit problem, and the fork it created.** Editing one body makes its
 counterpart wrong.
 
@@ -842,9 +863,13 @@ wait?
 **Why.** A is simplest and fails on the actual device: twenty seconds is long
 enough that a person backgrounds the app or locks the phone, and **iOS kills
 in-flight fetches when they do**. B is barely more code (one table, one endpoint)
-and removes that entire class of bug. Submit, and the recipe appears in the list
-immediately as "extracting"; tap to watch or walk away; close the app and come
-back to it done.
+and removes that entire class of bug. Submit, and the extraction appears in the
+list immediately as "extracting"; tap to watch or walk away; close the app and
+come back to it done.
+
+**Amended 2026-07-29.** "The extraction appears in the list", not "the
+recipe": no recipe row exists until a human saves the review form. The job
+row is the draft (ADR-024).
 
 C is genuinely delightful and the most "the app is thinking" of the three, but
 partial JSON from a structured-output call is awkward to parse mid-stream, and it
@@ -863,6 +888,251 @@ later without touching the data model.
 **Also adopted:** jobs left `running` at boot are marked failed with
 `interrupted`, so a deploy mid-extraction surfaces as something retryable rather
 than a row that hangs forever.
+
+---
+
+## ADR-024: The job row is the draft
+
+*2026-07-29, pre-build review.*
+
+**Question.** ADR-023 said a submitted extraction "appears in the list
+immediately", but the `recipe` table has required fields (title, effort,
+damage) that are unknown at submit time and no draft status. And
+`image.recipe_id` was `NOT NULL`, yet capture photos upload before any recipe
+exists. Where does an in-flight extraction live?
+
+**Options.**
+
+- **A. The job row is the draft.** No recipe row until Save.
+- **B. A stub recipe row at submit**, with a `status` column and placeholder
+  values.
+
+**Decision: A.**
+
+**Why.** B leaks draft semantics into every read path forever: every query
+grows a `status = 'live'` filter next to `deleted_at IS NULL`, and
+placeholder titles and tags are lies in the data. A keeps the invariant that
+a recipe row always means "a human confirmed this", which is Goal 1 verbatim.
+
+**Consequences.** `image.recipe_id` is nullable; pre-save uploads are
+referenced by id from the job's `input_json` and claimed on save. The browse
+list unions in queued, running, and failed capture jobs as cards read from
+the `job` table. The review form is seeded from `input_json` and
+`result_json`.
+
+---
+
+## ADR-025: Recalculate replaces the variation; Restore always wins
+
+*2026-07-29, pre-build review.*
+
+**Question.** ADR-012 promised that Recalculate soft-deletes the old
+hand-edited body into Trash, but `body` has no `deleted_at` and the
+`body_unique` index forbids two bodies of one unit system on a variation. The
+schema could not deliver the promise.
+
+**Options.**
+
+- **A. Add `deleted_at` to `body`** and make the unique index partial; Trash
+  grows a third row type.
+- **B. Recalculate soft-deletes the whole variation** and creates a fresh one
+  at the same yield.
+- **C. Drop the recoverability promise.**
+
+**Decision: B.**
+
+**Why.** Zero new columns, zero new Trash UI, and the thing you want back
+after a regretted recalculation is the whole variation as you knew it, not a
+disembodied body row needing a "restore into which variation?" answer. C is
+off-brand for an app whose design principle is that human work is never
+destroyed silently. Only non-original variations can be stale (staleness is
+measured against the original), so this path never touches `is_original`.
+
+**Restore rule.** Because every recalculation leaves a trashed variation
+colliding with its live replacement at the same yield, the collision is the
+common case. **Restore always wins**: the colliding live variation is
+soft-deleted into Trash and the restored one takes the slot. One rule,
+reversible in both directions, and "Restore" on a replaced variation means
+exactly "undo the recalculation" in one tap. The UI says what happened:
+"Restored your edited version; the recalculated one is in Trash."
+
+---
+
+## ADR-026: Photos are served with presigned R2 URLs
+
+*2026-07-29, pre-build review.*
+
+**Question.** The spec said images are "served directly from R2", but never
+how that squares with auth. The bucket holds photographed pages of
+copyrighted cookbooks and photos from inside the house.
+
+**Options.**
+
+- **A. Public bucket, unguessable ULID keys.** Zero code, but every URL is a
+  permanent unauthenticated public link, and it quietly publishes scanned
+  book pages to the open internet.
+- **B. Presigned GET URLs** (SigV4, 7-day expiry, signed at render time).
+- **C. Proxy image bytes through the app.** Cookie auth for free, but every
+  image byte lands back on the Fly machine and bandwidth bill.
+
+**Decision: B.**
+
+**Why.** The only option keeping both properties the spec committed to:
+direct-from-R2 delivery with free egress, and a private book. A few lines
+with the S3 client already needed for uploads.
+
+**Caching wrinkle.** A naively-signed URL changes on every render and
+defeats the browser cache. Round the signing timestamp to the day, so URLs
+are stable for 24 hours, which covers a cooking session.
+
+---
+
+## ADR-027: One build job; the quota counts Claude calls
+
+*2026-07-29, pre-build review.*
+
+**Question.** ADR-015 requires shopping builds to generate missing variations
+first, then merge. That is N `scale` calls followed by one `shopping_merge`
+call, and the job table has no dependency concept. Who sequences it?
+
+**Options.**
+
+- **A. Job dependencies** (`depends_on` column, runner-side ordering). Real
+  machinery for one use case.
+- **B. The client orchestrates.** Dies the moment the phone locks, the exact
+  failure mode ADR-023 exists to eliminate.
+- **C. One fat job.** The `shopping_merge` job generates missing variations
+  inline (each saved as a real variation), then merges.
+
+**Decision: C.**
+
+**Why.** The pipeline is inherently sequential-then-merge with no value in
+observing intermediate states. One job row, one thing to poll, survives a
+locked phone. A mid-build failure is benign: variations saved before the
+failure persist, so a retry only pays for what is left.
+
+**Quota consequence.** A C-style build is one job making N+1 Claude calls, so
+the daily cap counts **Claude calls, not job inserts**: incremented inside
+the API wrapper, checked before each call, env var renamed to
+`DAILY_CALL_CAP`. This keeps the 50 meaning what it says for every future
+compound job.
+
+---
+
+## ADR-028: `is_source` means "the body a human last authored"
+
+*2026-07-29, pre-build review.*
+
+**Question.** `is_source` meant "as the source recipe was written". Edit the
+metric body of a US-source recipe and reconvert regenerates the US body: the
+"as written" marker now points at machine-generated text, silently breaking
+the mitigation for known risk 5.
+
+**Options.**
+
+- **A. Flag immutable, marker stays.** The marker lies exactly when you need
+  it: debugging a suspect conversion mid-bake.
+- **B. Clear `is_source` on both when a reconvert overwrites the source
+  body.** Never lies, but tells you nothing.
+- **C. Redefine: `is_source` is the body a human last authored**; the flag
+  moves to whichever body was edited on save.
+
+**Decision: C.**
+
+**Why.** The marker's real job at the stove is "which of these did a human
+write, and which did a machine convert", and C answers that correctly
+forever. For a never-edited recipe it coincides exactly with the old meaning.
+The UI label stays "as written" rather than inventing a second term.
+
+**Reconvert failure handling, decided with it.** If the reconvert job for a
+variation is queued, running, or failed, the derived body shows a banner:
+"Not yet updated from your edit" or "Couldn't update, tap to retry". Detected
+from the job table, no new schema. Same stale-while-revalidate idiom as
+ADR-029, so the app has one pattern for "this text is being regenerated".
+Rejected: doing nothing (rare and silent is the worst combination in the one
+place the spec calls a ruined bake) and blocking the save (destroys
+save-returns-immediately and loses the edit if the phone locks).
+
+---
+
+## ADR-029: Stale untouched variations regenerate stale-while-revalidate
+
+*2026-07-29, pre-build review.*
+
+**Question.** ADR-012 said untouched stale variations "regenerate lazily on
+next open" and stopped. That is a 10 to 30 second Opus call, possibly
+failing, possibly capped, in front of someone who tapped a chip to cook.
+
+**Decision.** Open shows the old body immediately with a banner: "The
+original changed, updating this version…". The scale job runs behind it; on
+completion the body swaps in and the banner flips to "updated". On failure or
+a cap hit, the stale body stays fully usable and the banner reads "couldn't
+update, tap to retry". Cooking is never blocked by a spinner.
+
+**Why.** The old body is not garbage: it is a coherent recipe based on the
+previous original, strictly better than a spinner. The accepted wrinkle is
+the mid-read swap; the banner announces it, the delta derives from an edit
+the owner made themselves, and suppress-swap-if-scrolled cleverness is
+machinery a two-person app does not need. Rejected: blocking (spinner between
+a hungry person and a recipe) and prompting (converts ADR-012's explicit
+"no prompt" policy into a prompt).
+
+---
+
+## ADR-030: The original yield lives on the original variation only
+
+*2026-07-29, pre-build review.*
+
+**Question.** `recipe.yield_count` stored "the original yield" while the
+`is_original` variation also had a `yield_count`: two copies of one fact with
+no stated sync rule, and the staleness logic keys off exactly this value.
+
+**Decision.** Drop `recipe.yield_count`. The original yield is the original
+variation's `yield_count`, one source of truth. `yield_unit` stays on
+`recipe` because it is shared by all variations.
+
+**Why.** Deleting a column beats maintaining an invariant. No read path has
+the recipe row but not its variations; the browse list only shows title,
+cover, and two chips.
+
+---
+
+## ADR-031: Sessions slide
+
+*2026-07-29, pre-build review.*
+
+**Question.** "One year expiry" was ambiguous: fixed date, or sliding?
+
+**Decision.** Sliding. On any authenticated request whose cookie issued-at is
+older than 30 days, re-issue a fresh cookie in the response.
+
+**Why.** Three lines that delete the only recurring annoyance in the auth
+design (an annual re-login, probably mid-recipe with wet hands). A stolen
+cookie still cannot outlive `SESSION_SECRET` rotation, which remains the
+entire revocation story. The 30-day threshold just avoids setting a cookie on
+every response; anything from a day to a month is fine.
+
+---
+
+## ADR-032: Migrations are numbered SQL files plus `PRAGMA user_version`
+
+*2026-07-29, pre-build review.*
+
+**Question.** No migrations story existed, and ADR-007 already promises
+tag-vocabulary changes will need one, with live data on the volume.
+
+**Options.**
+
+- **A. Numbered `.sql` files** applied at boot by a ~15-line runner keyed on
+  `PRAGMA user_version`, each in its own transaction.
+- **B. A migration tool** (drizzle-kit, atlas, dbmate).
+
+**Decision: A.**
+
+**Why.** SQLite ships the version counter and a loop over sorted files is the
+whole tool; the migration files double as the readable history of the schema.
+Known caveat either way: SQLite has no `ALTER COLUMN`, so `CHECK` changes use
+the create-copy-rename dance. A heavier tool would not remove that.
 
 ---
 
