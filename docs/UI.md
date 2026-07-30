@@ -44,7 +44,10 @@ All four paths terminate in the review form (ADR-004).
 - Light and dark from day one, via `prefers-color-scheme`. Cooking at night is
   real, and retrofitting dark mode is misery.
 - One accent color, chosen visually in the first prototype (the cooking
-  screen) and reused everywhere after.
+  screen) and reused everywhere after. Chosen 2026-07-29: **saffron**,
+  `#b45309` in light mode, `#f59e0b` in dark mode (text on the fill: white in
+  light, `#2a1a00` in dark). Both pass contrast as button fills and sit on the
+  blue-yellow axis, so they stay vivid under red-green colorblindness.
 
 ## D5. Chips
 
