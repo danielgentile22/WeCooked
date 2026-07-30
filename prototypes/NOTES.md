@@ -37,7 +37,13 @@ Critique snapshot: `.impeccable/critique/2026-07-30T00-21-03Z__prototypes-shoppi
 build delay (no failure/retry state), manual lines always land in "other".
 No wake lock (needs the real PWA context).
 
-Verdict: _pending Daniel's look. Record here, then delete the prototype._
+Verdict (2026-07-29, Daniel): **approved as-is**, nothing worth changing.
+The post-polish design is the reference for the real Shopping route: spec
+section order with collapsed staples, dual-unit lines with semibold metric-or-
+imperial primary, per-line provenance in the meta line, whole-row tick targets
+that mutate in place, D6 build banner ("you can lock your phone"), rebuild
+banner naming reset ticks, and the confirmed two-step "Done shopping". Delete
+the prototype once the real route exists.
 
 ## review-form-prototype.html
 
