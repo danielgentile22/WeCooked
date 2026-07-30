@@ -16,3 +16,8 @@ data/
 
 # os
 .DS_Store
+
+# harness configs not shared via repo
+.cursor/
+.codex/
+.claude/settings.local.json

@@ -1,0 +1,94 @@
+# Product
+
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+
+web
+
+## Users
+
+Two people, Daniel and his wife, sharing one private recipe book. Primary
+situation: cooking in their kitchen from an iPhone propped up at arm's length,
+often with wet hands. Secondary situations: capturing a recipe from a web
+page, a cookbook photo, or pasted text; building a shopping list where one
+person is in the shop while the other is at home. Desktop is secondary but
+must work. No other audiences, ever, by design.
+
+## Product Purpose
+
+"We Cooked" (wecooked.kitchen) holds the recipes the household actually cooks
+with. Claude does at runtime what hand-rolled code does badly: extracting
+recipes from pages and photos, rescaling to different yields, converting
+between US and metric, and merging recipes into one shopping list. Success:
+every recipe is trustworthy at the stove, capture never dead-ends, and nobody
+recalculates portions or converts units by hand.
+
+## Positioning
+
+A two-person book where every recipe has been read and confirmed by a human
+once (all capture paths terminate in one review form), and where scaled
+versions are saved variations that can carry stove-side edits, never a
+throwaway cache. Not a social platform, not a clipper, not a meal planner.
+
+## Operating Context
+
+- Cooking screen is 95% of usage: propped phone, large type, wake lock,
+  glanceable, tap-to-strike lines (ephemeral, per device).
+- Shopping list ticks are shared and persisted between the two phones.
+- Recipes arrive via URL, pasted text, cookbook photos, or manual typing.
+- Added to the iPhone home screen as a PWA. Online only; no offline mode.
+
+## Capabilities and Constraints
+
+- Full spec in docs/SPEC.md; decision records in docs/DECISIONS.md; settled
+  UI decisions D1 to D16 in docs/UI.md. Those documents are the source of
+  truth and outrank any design suggestion.
+- Scale: two users, low hundreds of recipes. Nothing is justified by scale.
+- Stack: SvelteKit (Svelte 5), one Node process, SQLite, Fly.io, R2.
+- Every recipe body exists in both US and metric; toggle remembered per
+  device, default metric.
+- Yield is a count plus a unit word ("12 muffins"); variations are chips,
+  and changing the stepper never triggers work without an explicit button.
+- Tags come from a fixed closed vocabulary in five groups, including the
+  distinctive "damage" rating (tidy / messy / carnage).
+- Terminology: recipe, variation ("original" is permanent), body, capture,
+  build (shopping), Trash.
+
+## Brand Commitments
+
+- Name: "We Cooked". Domain wecooked.kitchen.
+- Look: clean and modern, not boring or old (owner's words). System font
+  stack, one accent color (chosen in the cooking-screen prototype), Lucide
+  icons only, light and dark from day one.
+- Voice: plain, concrete, calm. Error copy says what happened and what to do
+  next (see SPEC 6.4); never cutesy, never blamey.
+
+## Evidence on Hand
+
+- docs/SPEC.md, docs/DECISIONS.md (ADR-001 to ADR-032), docs/UI.md
+  (D1 to D16), docs/research/tech-stack.md.
+- prototypes/ contains work-in-progress HTML prototypes of the four core
+  screens. No logo or icon assets exist yet; the app icon is designed during
+  the cooking-screen prototype, not fabricated elsewhere.
+
+## Product Principles
+
+1. Trustworthy at the stove beats fast to save: a human confirms every
+   recipe once, and human edits are never silently destroyed.
+2. There is always a path that works: capture never dead-ends, failures are
+   visible and retryable, the paste path stays first-class.
+3. Nothing waits on a spinner in the kitchen: stale-while-revalidate,
+   background jobs, instant chips.
+4. One of everything: one editor, one list, one banner pattern, one chip
+   component.
+5. Two users, so no feature or complexity justified by scale.
+
+## Accessibility & Inclusion
+
+The owner is red-green colorblind. Meaning is never encoded in color alone,
+and never in red versus green: every status carries a word or an icon, every
+chip carries its word, selected states change shape or fill plus a checkmark.
+Large type on the cooking screen (19 to 20px) for arm's-length reading.
+Standard touch-target and contrast basics apply; no other formal standard is
+targeted.
