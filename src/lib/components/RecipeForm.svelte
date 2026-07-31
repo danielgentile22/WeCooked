@@ -28,7 +28,9 @@
 		editing = initial !== null,
 		// The counterpart body's regeneration state (ADR-028), edit page only.
 		reconvert = null as { status: 'pending' | 'failed' } | null,
-		onretry = undefined as (() => void) | undefined
+		onretry = undefined as (() => void) | undefined,
+		// Which variation the body edits land on (SPEC 7.5), edit page only.
+		variationId = null as string | null
 	} = $props();
 
 	// Effort and damage start unselected: they are required, scored choices
@@ -249,6 +251,7 @@
 		}}
 >
 	<input type="hidden" name="payload" value={payload()} />
+	{#if variationId}<input type="hidden" name="variation_id" value={variationId} />{/if}
 
 	<section>
 		<label class="fld" for="title">Title</label>
