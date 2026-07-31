@@ -103,12 +103,22 @@ describe('tick preservation on rebuild (SPEC 8.8 test 3)', () => {
 		expect(byText['600 g flour']).toBe(0);
 	});
 
-	it('resets when only the section moved, even with identical text', () => {
+	it('keeps a tick when only the section moved: identity is the text, not the shelf', () => {
 		const listId = getListId(db);
 		applyMerge(db, listId, [mergeItem({ section: 'other' })]);
 		db.prepare(`UPDATE shopping_list_item SET ticked = 1`).run();
 		const result = applyMerge(db, listId, [mergeItem({ section: 'produce' })]);
-		expect(result).toEqual({ kept: 0, reset: ['3 onions'] });
+		expect(result).toEqual({ kept: 1, reset: [] });
+	});
+
+	it('resets when either unit text changed', () => {
+		const listId = getListId(db);
+		applyMerge(db, listId, [mergeItem({ text_us: '1 lb 2 oz flour', text_metric: '500 g flour' })]);
+		db.prepare(`UPDATE shopping_list_item SET ticked = 1`).run();
+		const result = applyMerge(db, listId, [
+			mergeItem({ text_us: '1.1 lb flour', text_metric: '500 g flour' })
+		]);
+		expect(result).toEqual({ kept: 0, reset: ['500 g flour'] });
 	});
 
 	it('manual lines and their ticks survive a rebuild', () => {
@@ -170,9 +180,15 @@ describe('shoppingMerge job', () => {
 			.mockResolvedValueOnce(scaleResult())
 			.mockRejectedValueOnce(new Error('api down'));
 		await expect(shoppingMerge(buildJob(), db)).rejects.toThrow();
+		// Whichever recipe scaled first, its variation is saved and persists.
 		expect(
-			db.prepare(`SELECT 1 FROM variation WHERE recipe_id = ? AND yield_count = 6`).get(a)
-		).toBeTruthy();
+			db
+				.prepare(
+					`SELECT COUNT(*) AS n FROM variation
+					 WHERE recipe_id IN (?, ?) AND yield_count IN (6, 8) AND deleted_at IS NULL`
+				)
+				.get(a, b)
+		).toEqual({ n: 1 });
 
 		// Retry: only the remaining scale plus the merge are paid for.
 		vi.mocked(claudeCall)

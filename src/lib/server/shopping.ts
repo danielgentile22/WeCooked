@@ -146,12 +146,14 @@ export function retryBuild(db: Database, listId: string): { job_id: string } {
 
 /**
  * Rebuild tick preservation (SPEC 7.6): a tick survives only when a new
- * generated line matches an old one exactly, section and both texts. This is
- * deliberately dumb; fuzzy matching would sometimes keep a tick it should
- * not, which is worse in a shop than an extra unticked line.
+ * generated line matches an old one exactly, both texts. Section is NOT part
+ * of the identity: it is a per-call model judgement, and an identical line
+ * reshuffled produce-to-other must not lose its tick. This is deliberately
+ * dumb; fuzzy matching would sometimes keep a tick it should not, which is
+ * worse in a shop than an extra unticked line.
  */
-const tickKey = (i: { section: string; text_us: string; text_metric: string }) =>
-	`${i.section}|${i.text_us}|${i.text_metric}`;
+const tickKey = (i: { text_us: string; text_metric: string }) =>
+	`${i.text_us}|${i.text_metric}`;
 
 export type BuildResult = { kept: number; reset: string[] };
 
@@ -183,7 +185,7 @@ export function applyMerge(db: Database, listId: string, items: MergeItem[]): Bu
 		);
 		ordered.forEach((item, i) => {
 			const section = sectionOf(item);
-			const key = tickKey({ ...item, section });
+			const key = tickKey(item);
 			const ticked = oldTicked.has(key) ? 1 : 0;
 			if (ticked) {
 				kept++;
@@ -223,7 +225,8 @@ export const shoppingMerge: JobHandler = async (job, db) => {
 			`SELECT slr.recipe_id, slr.yield_count, r.title
 			 FROM shopping_list_recipe slr
 			 JOIN recipe r ON r.id = slr.recipe_id AND r.deleted_at IS NULL
-			 WHERE slr.list_id = ?`
+			 WHERE slr.list_id = ?
+			 ORDER BY slr.recipe_id`
 		)
 		.all(list_id) as { recipe_id: string; yield_count: number; title: string }[];
 	if (picks.length === 0) throw new JobError('api_error', 'No recipes picked for this list.');
@@ -291,18 +294,22 @@ export const shoppingMerge: JobHandler = async (job, db) => {
 export function addManual(db: Database, text: string): void {
 	const t = text.trim();
 	if (!t) throw new Error('Nothing to add.');
-	const listId = getListId(db);
-	const pos = (
-		db
-			.prepare(`SELECT COALESCE(MAX(position), -1) + 1 AS p FROM shopping_list_item WHERE list_id = ?`)
-			.get(listId) as { p: number }
-	).p;
-	db.prepare(
-		`INSERT INTO shopping_list_item (id, list_id, section, text_us, text_metric,
-		   from_recipes, is_manual, ticked, position)
-		 VALUES (?, ?, 'other', ?, ?, '[]', 1, 0, ?)`
-	).run(ulid(), listId, t, t, pos);
-	db.prepare('UPDATE shopping_list SET updated_at = ? WHERE id = ?').run(now(), listId);
+	db.transaction(() => {
+		const listId = getListId(db);
+		const pos = (
+			db
+				.prepare(
+					`SELECT COALESCE(MAX(position), -1) + 1 AS p FROM shopping_list_item WHERE list_id = ?`
+				)
+				.get(listId) as { p: number }
+		).p;
+		db.prepare(
+			`INSERT INTO shopping_list_item (id, list_id, section, text_us, text_metric,
+			   from_recipes, is_manual, ticked, position)
+			 VALUES (?, ?, 'other', ?, ?, '[]', 1, 0, ?)`
+		).run(ulid(), listId, t, t, pos);
+		db.prepare('UPDATE shopping_list SET updated_at = ? WHERE id = ?').run(now(), listId);
+	})();
 }
 
 /** A tick is shared, persisted, last write wins per item (ADR-033). */
