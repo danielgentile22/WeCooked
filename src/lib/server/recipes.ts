@@ -76,10 +76,10 @@ function setImages(db: Database, recipeId: string, input: RecipeInput, ts: strin
 		 WHERE id = ? AND deleted_at IS NULL AND (recipe_id IS NULL OR recipe_id = ?)`
 	);
 	for (const id of input.image_ids) claim.run(recipeId, id, recipeId);
-	const keep = input.image_ids.map(() => '?').join(',');
+	const keptPlaceholders = input.image_ids.map(() => '?').join(',');
 	db.prepare(
 		`UPDATE image SET deleted_at = ? WHERE recipe_id = ? AND deleted_at IS NULL
-		 ${keep ? `AND id NOT IN (${keep})` : ''}`
+		 ${keptPlaceholders ? `AND id NOT IN (${keptPlaceholders})` : ''}`
 	).run(ts, recipeId, ...input.image_ids);
 	const cover =
 		input.cover_image_id &&
