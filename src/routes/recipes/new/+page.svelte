@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>New recipe — We Cooked</title>
+	<title>New recipe · We Cooked</title>
 </svelte:head>
 
 <main>

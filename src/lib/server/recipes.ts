@@ -176,15 +176,18 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 			| undefined;
 		if (!cur) throw new Error('Recipe not found.');
 
-		const substantive =
-			cur.yield_count !== input.yield_count ||
+		const bodyEdited =
 			cur.ingredients_json !== JSON.stringify(input.ingredients) ||
 			cur.steps_json !== JSON.stringify(input.steps);
+		const substantive = bodyEdited || cur.yield_count !== input.yield_count;
 		const version = cur.content_version + (substantive ? 1 : 0);
 
+		// source_units / unit_system are NOT updated here: relabelling unchanged
+		// text would assert grams are ounces. Changing systems is the reconvert
+		// job's business (SPEC 7.2, build-order phase 7).
 		db.prepare(
 			`UPDATE recipe SET title = ?, source_text = ?, source_url = ?, yield_unit = ?,
-			   prep_minutes = ?, cook_minutes = ?, notes = ?, source_units = ?, cuisine = ?,
+			   prep_minutes = ?, cook_minutes = ?, notes = ?, cuisine = ?,
 			   protein = ?, effort = ?, damage = ?, content_version = ?, updated_at = ?
 			 WHERE id = ?`
 		).run(
@@ -195,7 +198,6 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 			input.prep_minutes,
 			input.cook_minutes,
 			input.notes,
-			input.source_units,
 			input.cuisine,
 			input.protein,
 			input.effort,
@@ -209,20 +211,15 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 			'INSERT INTO recipe_meal_type (recipe_id, meal_type) VALUES (?, ?)'
 		);
 		for (const m of input.meal_types) insertMeal.run(recipeId, m);
+		// Editing the body marks the variation hand_edited (SPEC 7.2).
 		db.prepare(
-			`UPDATE variation SET yield_count = ?, based_on_content_version = ?, updated_at = ?
+			`UPDATE variation SET yield_count = ?, based_on_content_version = ?,
+			   hand_edited = MAX(hand_edited, ?), updated_at = ?
 			 WHERE id = ?`
-		).run(input.yield_count, version, ts, cur.variation_id);
+		).run(input.yield_count, version, bodyEdited ? 1 : 0, ts, cur.variation_id);
 		db.prepare(
-			`UPDATE body SET unit_system = ?, ingredients_json = ?, steps_json = ?, updated_at = ?
-			 WHERE id = ?`
-		).run(
-			input.source_units,
-			JSON.stringify(input.ingredients),
-			JSON.stringify(input.steps),
-			ts,
-			cur.body_id
-		);
+			`UPDATE body SET ingredients_json = ?, steps_json = ?, updated_at = ? WHERE id = ?`
+		).run(JSON.stringify(input.ingredients), JSON.stringify(input.steps), ts, cur.body_id);
 		rebuildFts(db, recipeId);
 	})();
 }

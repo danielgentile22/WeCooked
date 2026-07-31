@@ -72,6 +72,7 @@
 		padding-bottom: env(safe-area-inset-bottom); /* SPEC 8.7 */
 	}
 	a {
+		position: relative;
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -86,6 +87,18 @@
 	}
 	a[aria-current='page'] {
 		color: var(--accent);
+	}
+	/* Shape, not color alone, marks the active tab (UI.md constraint) */
+	a[aria-current='page']::after {
+		content: '';
+		position: absolute;
+		top: -1px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 2.2rem;
+		height: 3px;
+		border-radius: 0 0 3px 3px;
+		background: currentColor;
 	}
 	a :global(svg) {
 		width: 1.5rem;

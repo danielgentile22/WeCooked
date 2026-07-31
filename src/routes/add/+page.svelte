@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Add — We Cooked</title>
+	<title>Add · We Cooked</title>
 </svelte:head>
 
 <main>
@@ -15,7 +15,7 @@
 	     Until then the manual path is the whole Add tab. -->
 	<section>
 		<a class="manual" href="/recipes/new"><Keyboard aria-hidden="true" /> Type it in myself</a>
-		<p class="hint">Paste a link, paste text, or snap a photo — coming in a later phase.</p>
+		<p class="hint">Paste a link, paste text, or snap a photo: coming in a later phase.</p>
 	</section>
 </main>
 
