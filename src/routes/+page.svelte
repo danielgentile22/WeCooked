@@ -191,7 +191,7 @@
 	main {
 		max-width: 44rem;
 		margin: 0 auto;
-		padding: 1rem 1rem 6rem;
+		padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom));
 	}
 	header h1 {
 		font-size: 1.4rem;

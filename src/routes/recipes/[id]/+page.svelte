@@ -119,6 +119,9 @@
 
 	// SPEC 7.4 / ADR-036 strikes: sessionStorage keyed by variation id, per
 	// device, never synced. Survives lock and tab-away, gone by tomorrow.
+	// Line identity is positional, unlike shopping ticks (text): text would
+	// drop every strike on a unit toggle, a real mid-cook action, while a
+	// mid-cook edit that reorders lines is not.
 	let strikes = $state<ReadonlySet<string>>(new Set());
 	$effect(() => {
 		let saved: string[] = [];

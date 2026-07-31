@@ -581,7 +581,7 @@
 
 <style>
 	form {
-		padding-bottom: 6rem; /* clear the tab bar */
+		padding-bottom: calc(6rem + env(safe-area-inset-bottom)); /* clear the tab bar */
 	}
 	section {
 		background: var(--card);
