@@ -20,9 +20,9 @@ export async function normalise(file: File): Promise<Blob> {
 export type FormImage = { id: string; url: string };
 
 /** Normalise then upload one photo; resolves to what the form strip needs. */
-export async function uploadPhoto(file: File): Promise<FormImage> {
+export async function uploadPhoto(file: File, role: 'photo' | 'capture' = 'photo'): Promise<FormImage> {
 	const blob = await normalise(file);
-	const res = await fetch('/api/images', { method: 'POST', body: blob });
+	const res = await fetch(`/api/images?role=${role}`, { method: 'POST', body: blob });
 	if (!res.ok) throw new Error('Upload failed.');
 	const { id, url } = await res.json();
 	return { id, url };
