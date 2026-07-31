@@ -106,7 +106,8 @@ One line plus one action each. Recipes: "Add your first recipe". Shopping:
 
 ## D14. Icons
 
-**Lucide**, via `lucide-svelte`. Clean modern stroke icons, MIT licensed,
+**Lucide**, via `@lucide/svelte` (the Svelte 5 package; formerly
+`lucide-svelte`). Clean modern stroke icons, MIT licensed,
 tree-shaken so only the icons actually used ship to the phone. The owner
 explicitly wants the app to look clean and modern, so this is a deliberate
 exception to the no-new-dependencies reflex. Use Lucide everywhere an icon
