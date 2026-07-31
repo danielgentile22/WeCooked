@@ -2,8 +2,8 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
 import { createRecipe } from '$lib/server/recipes';
-import { draftToInput, type RecipeDraft } from '$lib/extract';
-import type { JobRow } from '$lib/server/jobs';
+import { draftToInput, type CaptureInput, type RecipeDraft } from '$lib/extract';
+import { isCaptureKind, type JobRow } from '$lib/server/jobs';
 
 // The draft review page (SPEC 6.5): the job row is the draft. Done jobs seed
 // the form from result_json; failed jobs open it empty with the source text
@@ -11,14 +11,14 @@ import type { JobRow } from '$lib/server/jobs';
 
 function getCaptureJob(id: string): JobRow {
 	const job = db.prepare(`SELECT * FROM job WHERE id = ?`).get(id) as JobRow | undefined;
-	if (!job || !job.kind.startsWith('extract_')) error(404, 'No such draft.');
+	if (!job || !isCaptureKind(job.kind)) error(404, 'No such draft.');
 	return job;
 }
 
 export const load: PageServerLoad = ({ params }) => {
 	const job = getCaptureJob(params.id);
 	if (job.recipe_id) redirect(303, `/recipes/${job.recipe_id}`); // already saved
-	const input = JSON.parse(job.input_json) as { text?: string };
+	const input = JSON.parse(job.input_json) as CaptureInput;
 	const draft =
 		job.status === 'done' && job.result_json
 			? (JSON.parse(job.result_json) as RecipeDraft)
@@ -58,7 +58,7 @@ export const actions: Actions = {
 		const job = getCaptureJob(params.id);
 		if (job.status === 'queued' || job.status === 'running')
 			return fail(400, { error: 'Still extracting; wait for it to finish.' });
-		const imageIds = (JSON.parse(job.input_json) as { image_ids?: string[] }).image_ids ?? [];
+		const imageIds = (JSON.parse(job.input_json) as CaptureInput).image_ids ?? [];
 		db.transaction(() => {
 			const soft = db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`);
 			for (const id of imageIds) soft.run(new Date().toISOString(), id);
@@ -70,6 +70,7 @@ export const actions: Actions = {
 	// Retry re-queues a failed job; the runner picks it up (SPEC 6.4: a
 	// failure is never a dead end).
 	retry: async ({ params }) => {
+		getCaptureJob(params.id); // 404s non-capture jobs; only drafts retry here
 		db.prepare(
 			`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
 			   result_json = NULL, started_at = NULL, finished_at = NULL
