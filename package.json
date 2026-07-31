@@ -23,6 +23,7 @@
 		"vitest": "^4.1.10"
 	},
 	"dependencies": {
+		"@anthropic-ai/sdk": "^0.115.0",
 		"@lucide/svelte": "^1.28.0",
 		"@node-rs/argon2": "^2.0.2",
 		"@sveltejs/adapter-node": "^5.5.7",
