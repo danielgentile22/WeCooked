@@ -118,7 +118,7 @@
 	main {
 		max-width: 44rem;
 		margin: 0 auto;
-		padding: 1rem 0 6rem;
+		padding: 1rem 0 calc(6rem + env(safe-area-inset-bottom));
 	}
 	header {
 		padding: 0 1rem 0.25rem;
