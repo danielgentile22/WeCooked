@@ -249,6 +249,19 @@ describe('soft delete and trash (SPEC 7.7, ADR-025)', () => {
 		expect(listTrash(db).variations.map((v) => v.id)).toEqual([replacement]);
 	});
 
+	it('never displaces the original: restore fails cleanly instead (ADR-025)', () => {
+		const id = createRecipe(db, base()); // original at yield 4
+		const v = addVariation(id, 8);
+		deleteVariation(db, v);
+		updateRecipe(db, id, { ...base(), yield_count: 8 }); // original now holds yield 8
+		expect(() => restoreVariation(db, v)).toThrow(/original/);
+		const original = db
+			.prepare('SELECT deleted_at FROM variation WHERE recipe_id = ? AND is_original = 1')
+			.get(id) as { deleted_at: string | null };
+		expect(original.deleted_at).toBeNull();
+		expect(getRecipe(db, id)).not.toBeNull();
+	});
+
 	it('trash lists both groups with titles and dates, hides variations of deleted recipes', () => {
 		const id = createRecipe(db, base());
 		const v = addVariation(id, 8);
