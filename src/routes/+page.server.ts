@@ -27,9 +27,11 @@ function listDrafts(): DraftCard[] {
 		result_json: string | null;
 	}[];
 	return rows.map((j) => {
+		const input = JSON.parse(j.input_json) as CaptureInput;
 		const title =
 			(j.result_json && (JSON.parse(j.result_json) as { title?: string })?.title) ||
-			(JSON.parse(j.input_json) as CaptureInput).text?.trim().split('\n')[0]?.slice(0, 80) ||
+			input.text?.trim().split('\n')[0]?.slice(0, 80) ||
+			input.url ||
 			'Draft';
 		return {
 			id: j.id,
