@@ -5,6 +5,7 @@ primary_region = "iad"
 [env]
 DATABASE_PATH = "/data/wecooked.db"
 ORIGIN = "https://wecooked.kitchen"
+R2_ACCOUNT_ID = "42248297aa571d4214f2b7c9b1deef00"
 R2_BUCKET = "wecooked"
 
 [[mounts]]
