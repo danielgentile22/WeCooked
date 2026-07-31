@@ -124,7 +124,8 @@
 						{#if r.cover_url}
 							<img class="thumb" src={r.cover_url} alt="" loading="lazy" />
 						{:else}
-							<!-- D17: one identical neutral tile for every coverless recipe -->
+							<!-- D17: one identical neutral tile for every coverless recipe.
+						     Lucide's CookingPot stands in for the D16 glyph (D14: Lucide only). -->
 							<span class="thumb tile" aria-hidden="true"><CookingPot /></span>
 						{/if}
 						<span class="title">{r.title}</span>

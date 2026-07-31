@@ -23,15 +23,16 @@
 </svelte:head>
 
 <main>
-	{#if cover}
-		<img class="cover" src={cover.url} alt={r.title} width={cover.width} height={cover.height} />
-	{/if}
 	<header>
 		<h1>{r.title}</h1>
 		<p class="meta">
 			{r.yield_count}
 			{r.yield_unit}{#if times}&nbsp;· {times}{/if}
 		</p>
+		<!-- SPEC 7.4 order: title, cover image, source line -->
+		{#if cover}
+			<img class="cover" src={cover.url} alt={r.title} width={cover.width} height={cover.height} />
+		{/if}
 		{#if r.source_url}
 			<p class="source"><a href={r.source_url}>{r.source_text ?? r.source_url}</a></p>
 		{:else if r.source_text}
@@ -83,9 +84,7 @@
 			<h2>Photos</h2>
 			<div class="strip">
 				{#each r.images as img (img.id)}
-					<a href={img.full_url} target="_blank" rel="noreferrer">
-						<img src={img.url} alt="" loading="lazy" />
-					</a>
+					<img src={img.url} alt="" loading="lazy" />
 				{/each}
 			</div>
 		</section>
@@ -104,7 +103,7 @@
 		max-height: 40vh;
 		object-fit: cover;
 		border-radius: 1rem;
-		margin-bottom: 0.8rem;
+		margin: 0.6rem 0 0.2rem;
 	}
 	.strip {
 		display: flex;

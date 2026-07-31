@@ -13,14 +13,14 @@ export type R2Config = {
 	secretAccessKey: string;
 };
 
-// SPEC 9.3 names; the Litestream pair doubles as fallback since it is the
-// same bucket credentials in this deployment.
+// SPEC 9.3 names, no fallbacks: Litestream may reuse this pair, not the
+// other way round.
 const fromEnv = (): R2Config => {
 	const cfg = {
 		accountId: env.R2_ACCOUNT_ID ?? '',
 		bucket: env.R2_BUCKET ?? '',
-		accessKeyId: env.R2_ACCESS_KEY_ID ?? env.LITESTREAM_ACCESS_KEY_ID ?? '',
-		secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? env.LITESTREAM_SECRET_ACCESS_KEY ?? ''
+		accessKeyId: env.R2_ACCESS_KEY_ID ?? '',
+		secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? ''
 	};
 	if (Object.values(cfg).some((v) => !v)) throw new Error('R2 credentials are not configured.');
 	return cfg;

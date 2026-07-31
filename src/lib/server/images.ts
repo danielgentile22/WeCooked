@@ -4,11 +4,24 @@ import { ulid } from './ids';
 import { presignGet, putObject } from './r2';
 
 // SPEC 8.1 step 2: the client uploads a normalised 3000px JPEG; the server
-// stores it as-is (r2_key_full) and derives a 1200px display size.
+// stores it (r2_key_full) and derives a 1200px display size. The 2576px
+// derivative for Claude belongs to the extraction issue, not here.
 // SPEC 8.2: .rotate() honours EXIF orientation before resizing, so even an
 // upload that skipped client normalisation cannot come out sideways.
 
 export const DISPLAY_EDGE = 1200;
+
+/**
+ * ADR-009 rule 3: rotate pixels on upload, then strip EXIF. A client-canvas
+ * JPEG carries no EXIF and passes through untouched; anything else (an upload
+ * that skipped normalisation) is re-encoded, which bakes orientation into the
+ * pixels and drops the metadata, GPS included (ADR-026: private photos).
+ */
+export async function normaliseFull(file: Buffer): Promise<Buffer> {
+	const m = await sharp(file).metadata();
+	if (!m.exif && (m.orientation ?? 1) === 1) return file;
+	return sharp(file).rotate().jpeg({ quality: 90 }).toBuffer();
+}
 
 export function deriveDisplay(full: Buffer) {
 	return sharp(full)
@@ -31,8 +44,9 @@ export type UploadedImage = { id: string; url: string; width: number; height: nu
  * Store one photo: full + display to R2, row with recipe_id NULL until a save
  * claims it (ADR-024). Returns what the review form needs to show the thumb.
  */
-export async function saveImage(db: Database, file: Buffer): Promise<UploadedImage> {
+export async function saveImage(db: Database, upload: Buffer): Promise<UploadedImage> {
 	const id = ulid();
+	const file = await normaliseFull(upload);
 	const { width, height } = await orientedDims(file);
 	const display = await deriveDisplay(file);
 	const keyFull = `images/${id}/full.jpg`;

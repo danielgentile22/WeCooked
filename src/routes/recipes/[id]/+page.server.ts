@@ -13,7 +13,6 @@ export const load: PageServerLoad = async ({ params }) => {
 			images: recipe.images.map((i) => ({
 				id: i.id,
 				url: presignGet(i.r2_key_display),
-				full_url: presignGet(i.r2_key_full),
 				width: i.width,
 				height: i.height
 			}))

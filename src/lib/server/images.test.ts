@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { deriveDisplay, orientedDims, DISPLAY_EDGE } from './images';
+import { deriveDisplay, normaliseFull, orientedDims, DISPLAY_EDGE } from './images';
 
 // SPEC 8.2: the mandated EXIF trap test. Orientation 6 means "rotate 90° CW
 // to display": a 400x300 sensor image must come out of the pipeline 300x400.
@@ -19,6 +19,21 @@ describe('image pipeline (SPEC 8.1, 8.2)', () => {
 
 	it('reports stored dimensions as displayed, not as encoded', async () => {
 		expect(await orientedDims(await rotatedFixture())).toEqual({ width: 300, height: 400 });
+	});
+
+	it('stored full copy has pixels rotated and EXIF stripped (ADR-009 rule 3)', async () => {
+		const full = await normaliseFull(await rotatedFixture());
+		const m = await sharp(full).metadata();
+		expect([m.width, m.height]).toEqual([300, 400]);
+		expect(m.orientation ?? 1).toBe(1);
+		expect(m.exif).toBeUndefined();
+	});
+
+	it('passes an EXIF-free upload through untouched', async () => {
+		const clean = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#888' } })
+			.jpeg()
+			.toBuffer();
+		expect(await normaliseFull(clean)).toBe(clean);
 	});
 
 	it('caps the long edge at 1200 without enlarging small images', async () => {
