@@ -59,7 +59,9 @@
 		fetch(`/api/shopping-list/items/${item.id}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ ticked: item.ticked })
+			body: JSON.stringify({ ticked: item.ticked }),
+			// A hung POST must not stall the shared-tick poll for the session.
+			signal: AbortSignal.timeout(8000)
 		}).finally(() => ticksInFlight--);
 	}
 
@@ -82,25 +84,21 @@
 		};
 	});
 
-	// Rebuild banner (SPEC 7.6): shown once when a build is seen completing,
-	// naming any reset ticks. Transition-based so it also fires when the other
-	// phone rebuilt.
+	// Rebuild banner (SPEC 7.6): naming any reset ticks, shown once per device
+	// per build. sessionStorage marks the build seen, so the banner survives a
+	// remount (build finished while this tab was elsewhere) without
+	// resurrecting old history on every later visit.
 	let rebuildBanner = $state<string | null>(null);
-	let lastBuild = $state<string | null>(null);
 	$effect(() => {
 		const b = list.build;
-		const key = b ? `${b.job_id}:${b.status}` : null;
-		if (key === lastBuild) return;
-		const wasPending = lastBuild?.startsWith(b?.job_id ?? '') && lastBuild?.endsWith('pending');
-		lastBuild = key;
-		if (b?.status === 'done' && wasPending && b.result) {
-			mode = 'list';
-			const { kept, reset } = b.result;
-			rebuildBanner = reset.length
-				? `${kept} tick${kept === 1 ? '' : 's'} kept. ${reset.length} reset because the line changed: ${reset.join(', ')}.`
-				: null;
-		}
 		if (b?.status === 'pending') watchBuild(b.job_id);
+		if (b?.status !== 'done' || !b.result) return;
+		if (sessionStorage.getItem('shoppingBuildSeen') === b.job_id) return;
+		sessionStorage.setItem('shoppingBuildSeen', b.job_id);
+		const { kept, reset } = b.result;
+		rebuildBanner = reset.length
+			? `${kept} tick${kept === 1 ? '' : 's'} kept. ${reset.length} reset because the line changed: ${reset.join(', ')}.`
+			: null;
 	});
 
 	// SPEC 6.3 job polling for a fast flip; the 5 s poll is the backstop.
@@ -151,6 +149,14 @@
 	const staples = $derived(sectionItems('staples'));
 	const primary = (i: ShoppingItem) => (units === 'us' ? i.text_us : i.text_metric);
 	const alt = (i: ShoppingItem) => (units === 'us' ? i.text_metric : i.text_us);
+	// Dual units and provenance on every line, staples included (SPEC 7.6).
+	function meta(i: ShoppingItem): string {
+		if (i.is_manual) return 'added by hand';
+		const parts: string[] = [];
+		if (alt(i) !== primary(i)) parts.push(`about ${alt(i)}`);
+		if (i.from_titles.length) parts.push(i.from_titles.join(', '));
+		return parts.join(' · ');
+	}
 </script>
 
 <svelte:head>
@@ -268,12 +274,7 @@
 										/>
 										<span class="txt">
 											{primary(item)}
-											<span class="meta">
-												{#if item.is_manual}added by hand{:else}
-													{alt(item) !== primary(item) ? `about ${alt(item)} · ` : ''}{item.from_titles.join(
-														', '
-													)}{/if}
-											</span>
+											<span class="meta">{meta(item)}</span>
 										</span>
 									</label>
 								</li>
@@ -294,7 +295,7 @@
 									<input type="checkbox" checked={item.ticked} onchange={() => tick(item)} />
 									<span class="txt">
 										{primary(item)}
-										<span class="meta">from {item.from_titles.join(', ')}</span>
+										<span class="meta">{meta(item)}</span>
 									</span>
 								</label>
 							</li>
@@ -344,7 +345,7 @@
 								Cancel
 							</button>
 							<form method="POST" action="?/done" use:enhance>
-								<button class="btn primary danger">
+								<button class="btn primary">
 									<Trash2 aria-hidden="true" />Clear list
 								</button>
 							</form>
