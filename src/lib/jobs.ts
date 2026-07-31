@@ -30,6 +30,9 @@ export type JobPoll = {
 	result_ref: string | null;
 };
 
+// SPEC 6.3: the poll gives up at 5 minutes "with a timeout message".
+export const TIMEOUT_COPY = 'Still working after 5 minutes. Try again in a bit.';
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -45,7 +48,7 @@ export async function pollJob(id: string, fetchFn: typeof fetch = fetch): Promis
 		if (job.status === 'done' || job.status === 'failed') return job;
 		const elapsed = Date.now() - start;
 		if (elapsed >= 5 * 60_000)
-			return { status: 'timeout', error_code: null, error_text: null, result_ref: null };
+			return { status: 'timeout', error_code: null, error_text: TIMEOUT_COPY, result_ref: null };
 		await sleep(elapsed < 30_000 ? 1500 : 5000);
 	}
 }

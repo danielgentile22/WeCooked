@@ -31,6 +31,8 @@ export type JobRow = {
 export type JobHandler = (job: JobRow, db: Database) => Promise<unknown>;
 export type Handlers = Partial<Record<JobKind, JobHandler>>;
 
+const now = () => new Date().toISOString();
+
 /** Throw one of these from a handler to fail the job with a SPEC 6.4 code. */
 export class JobError extends Error {
 	constructor(
@@ -58,7 +60,7 @@ export function createJob(
 		refs.variation_id ?? null,
 		refs.list_id ?? null,
 		JSON.stringify(input),
-		new Date().toISOString()
+		now()
 	);
 	return id;
 }
@@ -70,7 +72,7 @@ export function recoverInterrupted(db: Database): number {
 			`UPDATE job SET status = 'failed', error_code = 'interrupted', error_text = ?, finished_at = ?
 			 WHERE status = 'running'`
 		)
-		.run(ERROR_COPY.interrupted, new Date().toISOString()).changes;
+		.run(ERROR_COPY.interrupted, now()).changes;
 }
 
 // Single-statement claim: atomic, so a future second process cannot
@@ -83,7 +85,7 @@ function claimNext(db: Database): JobRow | undefined {
 			   AND status = 'queued'
 			 RETURNING *`
 		)
-		.get(new Date().toISOString()) as JobRow | undefined;
+		.get(now()) as JobRow | undefined;
 }
 
 async function run(db: Database, handlers: Handlers, job: JobRow): Promise<void> {
@@ -93,14 +95,17 @@ async function run(db: Database, handlers: Handlers, job: JobRow): Promise<void>
 		const result = await handler(job, db);
 		db.prepare(`UPDATE job SET status = 'done', result_json = ?, finished_at = ? WHERE id = ?`).run(
 			JSON.stringify(result ?? null),
-			new Date().toISOString(),
+			now(),
 			job.id
 		);
 	} catch (e) {
 		const code: ErrorCode = e instanceof JobError ? e.code : 'api_error';
+		// The UI always gets the fixed SPEC 6.4 copy; the real cause goes to the
+		// server log, or a failure would be unobservable.
+		console.error(`job ${job.id} (${job.kind}) failed:`, e);
 		db.prepare(
 			`UPDATE job SET status = 'failed', error_code = ?, error_text = ?, finished_at = ? WHERE id = ?`
-		).run(code, ERROR_COPY[code], new Date().toISOString(), job.id);
+		).run(code, ERROR_COPY[code], now(), job.id);
 	}
 }
 
