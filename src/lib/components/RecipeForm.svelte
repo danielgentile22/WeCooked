@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star } from '@lucide/svelte';
+	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star, LoaderCircle } from '@lucide/svelte';
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
@@ -10,7 +10,11 @@
 		PROTEINS,
 		EFFORTS,
 		DAMAGES,
-		type RecipeInput
+		cleanBody,
+		otherUnits,
+		type BodyText,
+		type RecipeInput,
+		type UnitSystem
 	} from '$lib/tags';
 
 	let {
@@ -21,16 +25,21 @@
 		// True when the body's unit system is already fixed (saved recipe, done
 		// extraction). A failed URL draft seeds initial = { source_url } and must
 		// NOT count: the user is about to type the body and picks the system.
-		editing = initial !== null
+		editing = initial !== null,
+		// The counterpart body's regeneration state (ADR-028), edit page only.
+		reconvert = null as { status: 'pending' | 'failed' } | null,
+		onretry = undefined as (() => void) | undefined
 	} = $props();
 
 	// Effort and damage start unselected: they are required, scored choices
 	// (SPEC 3.4), and a pre-picked default would ship wrong without the
 	// required-ness ever surfacing. The server rejects a null.
-	type FormState = Omit<RecipeInput, 'effort' | 'damage' | 'image_ids'> & {
+	type FormState = Omit<RecipeInput, 'effort' | 'damage' | 'image_ids' | 'counterpart'> & {
 		effort: RecipeInput['effort'] | null;
 		damage: RecipeInput['damage'] | null;
 		images: FormImage[]; // ids + presigned display URLs; ids go in the payload
+		shown_units: 'us' | 'metric'; // which body ingredients/steps display
+		other: BodyText | null; // the body not being shown (SPEC 7.2 field 6)
 	};
 
 	const empty = (): FormState => ({
@@ -51,8 +60,47 @@
 		ingredients: [{ heading: null, items: [''] }],
 		steps: [''],
 		images: [],
-		cover_image_id: null
+		cover_image_id: null,
+		shown_units: 'metric',
+		other: null
 	});
+
+	const UNIT_OPTIONS = ['metric', 'us'] as const;
+
+	function fromInitial(): FormState {
+		const { counterpart, ...rest } = initial ?? {};
+		const seeded = { ...empty(), ...rest };
+		return { ...seeded, shown_units: seeded.source_units, other: counterpart ?? null };
+	}
+
+	const swapBodies = (s: FormState, u: UnitSystem): void => {
+		const current = { ingredients: s.ingredients, steps: s.steps };
+		s.ingredients = s.other!.ingredients;
+		s.steps = s.other!.steps;
+		s.other = current;
+		s.shown_units = u;
+	};
+
+	// D15: the form opens in the device's preferred system too, when that body
+	// exists. Applied to the draft only, never to the `loaded` snapshot the
+	// edited-body diff runs against.
+	function withDevicePref(s: FormState): FormState {
+		const pref: UnitSystem =
+			typeof localStorage !== 'undefined' && localStorage.getItem('units') === 'us'
+				? 'us'
+				: 'metric';
+		if (editing && s.other && pref !== s.shown_units) swapBodies(s, pref);
+		return s;
+	}
+
+	// What the server holds right now, for edited-body detection at submit:
+	// whichever body diverges from this is the one the human authored.
+	// svelte-ignore state_referenced_locally
+	const loaded = fromInitial();
+	const loadedSource = JSON.stringify(
+		cleanBody({ ingredients: loaded.ingredients, steps: loaded.steps })
+	);
+	const loadedOther = loaded.other ? JSON.stringify(cleanBody(loaded.other)) : null;
 
 	// Restore a draft silently if one exists, else seed from the recipe being
 	// edited (ADR-038). Deliberately reads props once, before first render; the
@@ -60,7 +108,9 @@
 	// svelte-ignore state_referenced_locally
 	const stored = typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem(draftKey);
 	// svelte-ignore state_referenced_locally
-	let draft = $state<FormState>(stored ? JSON.parse(stored) : { ...empty(), ...initial });
+	let draft = $state<FormState>(
+		stored ? { ...fromInitial(), ...JSON.parse(stored) } : withDevicePref(fromInitial())
+	);
 
 	// Written on every change, cleared on Save (ADR-038).
 	$effect(() => {
@@ -76,8 +126,65 @@
 			return;
 		}
 		sessionStorage.removeItem(draftKey);
-		draft = { ...empty(), ...initial };
+		draft = withDevicePref(fromInitial());
 		confirmReset = false;
+	}
+
+	// SPEC 7.2 field 6: when editing, the toggle swaps which body is in the
+	// inputs; typed work in the hidden body is kept. For a new recipe it just
+	// names the system the body is being typed in.
+	function showUnits(u: UnitSystem) {
+		if (u === draft.shown_units) return;
+		if (!editing) {
+			draft.source_units = u;
+			draft.shown_units = u;
+			return;
+		}
+		if (!draft.other) return; // counterpart not generated yet
+		swapBodies(draft, u);
+	}
+
+	/**
+	 * The save payload (SPEC 7.2, ADR-028). The submitted body is the one the
+	 * human edited, and source_units names it; the counterpart rides along only
+	 * while it is known-good (nothing changed), else it is null and the server
+	 * queues a reconvert. If both bodies were edited, the visible one wins as
+	 * "last authored". The server re-diffs, so a false positive here cannot
+	 * move is_source.
+	 */
+	function payload(): string {
+		const { other, shown_units, images, ...rest } = draft;
+		const shown: BodyText = { ingredients: draft.ingredients, steps: draft.steps };
+		let source_units = draft.source_units;
+		let body = shown;
+		let counterpart: BodyText | null = null;
+		if (editing) {
+			const bodyFor = (u: UnitSystem) => (u === draft.shown_units ? shown : draft.other);
+			const src = bodyFor(loaded.source_units)!;
+			const oth = bodyFor(otherUnits(loaded.source_units));
+			const srcChanged = JSON.stringify(cleanBody(src)) !== loadedSource;
+			const othChanged =
+				oth !== null && loadedOther !== null && JSON.stringify(cleanBody(oth)) !== loadedOther;
+			if (srcChanged && othChanged) {
+				source_units = draft.shown_units;
+				body = shown;
+			} else if (othChanged) {
+				source_units = otherUnits(loaded.source_units);
+				body = oth!;
+			} else {
+				source_units = loaded.source_units;
+				body = src;
+				if (!srcChanged) counterpart = oth;
+			}
+		}
+		return JSON.stringify({
+			...rest,
+			source_units,
+			ingredients: body.ingredients,
+			steps: body.steps,
+			counterpart,
+			image_ids: images.map((i) => i.id)
+		});
 	}
 
 	function move<T>(arr: T[], i: number, delta: number) {
@@ -141,11 +248,7 @@
 			await update();
 		}}
 >
-	<input
-		type="hidden"
-		name="payload"
-		value={JSON.stringify({ ...draft, image_ids: draft.images.map((i) => i.id) })}
-	/>
+	<input type="hidden" name="payload" value={payload()} />
 
 	<section>
 		<label class="fld" for="title">Title</label>
@@ -247,21 +350,34 @@
 	<!-- Section ids are the extraction-warning jump-link targets. -->
 	<section id="ingredients">
 		<h2 class="sec">Ingredients</h2>
-		<p class="fld">Written in</p>
-		<!-- Editing an existing recipe cannot relabel the body's unit system;
-		     converting between systems is the reconvert job (phase 7). -->
-		<div class="seg" role="group" aria-label="Unit system the recipe is written in">
-			{#each ['metric', 'us'] as u (u)}
+		<p class="fld">{editing ? 'Units' : 'Written in'}</p>
+		<!-- New recipe: names the system being typed. Editing: view or edit the
+		     other body (SPEC 7.2); "as written" marks the human-authored one. -->
+		<div class="seg" role="group" aria-label="Unit system">
+			{#each UNIT_OPTIONS as u (u)}
 				<button
 					type="button"
-					disabled={editing}
-					aria-pressed={draft.source_units === u}
-					onclick={() => (draft.source_units = u as 'us' | 'metric')}
+					disabled={editing && !draft.other && u !== draft.shown_units}
+					aria-pressed={draft.shown_units === u}
+					onclick={() => showUnits(u)}
 				>
 					{u === 'us' ? 'US' : 'Metric'}
+					{#if editing && loaded.source_units === u}<span class="aswritten">as written</span>{/if}
 				</button>
 			{/each}
 		</div>
+		{#if editing && reconvert && draft.shown_units !== loaded.source_units}
+			<!-- D6: the counterpart is being regenerated from the last edit. -->
+			{#if reconvert.status === 'pending'}
+				<Banner role="status" icon={LoaderCircle} text="Not yet updated from your edit. Updating…" />
+			{:else}
+				<Banner
+					text="Couldn't update from your edit."
+					action={onretry ? 'Tap to retry' : null}
+					onaction={onretry}
+				/>
+			{/if}
+		{/if}
 		{#each draft.ingredients as group, gi (group)}
 			<div class="grouphead">
 				<input
@@ -574,6 +690,12 @@
 		background: var(--accent);
 		color: var(--on-accent);
 		font-weight: 600;
+	}
+	.aswritten {
+		font-size: 0.7rem;
+		font-style: italic;
+		opacity: 0.85;
+		margin-left: 0.3rem;
 	}
 
 	.grouphead {

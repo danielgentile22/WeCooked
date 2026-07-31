@@ -1,26 +1,22 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
+import { createJob } from './jobs';
 import {
 	MEAL_TYPES,
 	CUISINES,
 	PROTEINS,
 	EFFORTS,
 	DAMAGES,
+	cleanIngredients,
+	cleanBody,
+	otherUnits,
 	type RecipeInput,
-	type IngredientGroup
+	type BodyText,
+	type IngredientGroup,
+	type UnitSystem
 } from '$lib/tags';
 
 const now = () => new Date().toISOString();
-
-/** Drop empty lines and empty groups; a heading of '' becomes null. */
-export function cleanIngredients(groups: IngredientGroup[]): IngredientGroup[] {
-	return groups
-		.map((g) => ({
-			heading: g.heading?.trim() || null,
-			items: g.items.map((i) => i.trim()).filter(Boolean)
-		}))
-		.filter((g) => g.items.length > 0);
-}
 
 /**
  * SPEC 7.2 save rules. Returns the normalised input or throws with a message
@@ -43,6 +39,8 @@ export function validateInput(raw: RecipeInput): RecipeInput {
 	const image_ids = [...new Set((raw.image_ids ?? []).filter((i) => typeof i === 'string'))];
 	if (raw.source_units !== 'us' && raw.source_units !== 'metric')
 		throw new Error('Unknown unit system.');
+	// A counterpart with no ingredient lines is no counterpart at all.
+	const counterpart = raw.counterpart ? cleanBody(raw.counterpart) : null;
 	return {
 		title,
 		yield_count,
@@ -60,6 +58,7 @@ export function validateInput(raw: RecipeInput): RecipeInput {
 		damage: raw.damage,
 		ingredients,
 		steps: (raw.steps ?? []).map((s) => s.trim()).filter(Boolean), // steps may be empty
+		counterpart: counterpart?.ingredients.length ? counterpart : null,
 		image_ids,
 		cover_image_id: image_ids.includes(raw.cover_image_id!) ? raw.cover_image_id : null
 	};
@@ -119,6 +118,55 @@ export function rebuildFts(db: Database, recipeId: string): void {
 	).run(recipeId, r.title, ingredients, tags);
 }
 
+/**
+ * Queue a reconvert of the variation's non-source body (ADR-019). At most one
+ * queued job per variation: the handler reads the source body at run time, so
+ * a second row would only bill the same conversion twice. An already-queued
+ * job is retargeted instead, because an edit to the *other* body since it was
+ * queued means the counterpart that needs regenerating has switched sides —
+ * left alone, the stale job would convert the source into itself.
+ */
+export function enqueueReconvert(db: Database, variationId: string, target: UnitSystem) {
+	const input = JSON.stringify({ variation_id: variationId, target_units: target });
+	const retargeted = db
+		.prepare(
+			`UPDATE job SET input_json = ?
+			 WHERE variation_id = ? AND kind = 'reconvert' AND status = 'queued'`
+		)
+		.run(input, variationId).changes;
+	if (!retargeted)
+		createJob(
+			db,
+			'reconvert',
+			{ variation_id: variationId, target_units: target },
+			{ variation_id: variationId }
+		);
+}
+
+function insertBody(
+	db: Database,
+	variationId: string,
+	units: 'us' | 'metric',
+	isSource: 0 | 1,
+	body: BodyText,
+	ts: string
+): void {
+	db.prepare(
+		`INSERT INTO body (id, variation_id, unit_system, is_source, ingredients_json,
+		   steps_json, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(
+		ulid(),
+		variationId,
+		units,
+		isSource,
+		JSON.stringify(body.ingredients),
+		JSON.stringify(body.steps),
+		ts,
+		ts
+	);
+}
+
 /** Create recipe + original variation + source body, rebuild FTS. Returns the recipe id. */
 export function createRecipe(db: Database, raw: RecipeInput): string {
 	const input = validateInput(raw);
@@ -157,19 +205,11 @@ export function createRecipe(db: Database, raw: RecipeInput): string {
 			   based_on_content_version, created_at, updated_at)
 			 VALUES (?, ?, ?, 1, 0, 1, ?, ?)`
 		).run(variationId, id, input.yield_count, ts, ts);
-		db.prepare(
-			`INSERT INTO body (id, variation_id, unit_system, is_source, ingredients_json,
-			   steps_json, created_at, updated_at)
-			 VALUES (?, ?, ?, 1, ?, ?, ?, ?)`
-		).run(
-			ulid(),
-			variationId,
-			input.source_units,
-			JSON.stringify(input.ingredients),
-			JSON.stringify(input.steps),
-			ts,
-			ts
-		);
+		insertBody(db, variationId, input.source_units, 1, input, ts);
+		// Both unit systems always exist (ADR-019): store the known-good
+		// counterpart, or queue a reconvert to generate it.
+		if (input.counterpart) insertBody(db, variationId, otherUnits(input.source_units), 0, input.counterpart, ts);
+		else enqueueReconvert(db, variationId, otherUnits(input.source_units));
 		setImages(db, id, input, ts);
 		rebuildFts(db, id);
 	})();
@@ -187,34 +227,36 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 	db.transaction(() => {
 		const cur = db
 			.prepare(
-				`SELECT r.content_version, v.id AS variation_id, v.yield_count,
-				        b.id AS body_id, b.ingredients_json, b.steps_json
+				`SELECT r.content_version, v.id AS variation_id, v.yield_count
 				 FROM recipe r
 				 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
-				 JOIN body b ON b.variation_id = v.id AND b.is_source = 1
 				 WHERE r.id = ? AND r.deleted_at IS NULL`
 			)
 			.get(recipeId) as
-			| {
-					content_version: number;
-					variation_id: string;
-					yield_count: number;
-					body_id: string;
-					ingredients_json: string;
-					steps_json: string;
-			  }
+			| { content_version: number; variation_id: string; yield_count: number }
 			| undefined;
 		if (!cur) throw new Error('Recipe not found.');
 
+		// The submitted body belongs to input.source_units, which is whichever
+		// body the form detected an edit in; unedited forms echo the stored
+		// source. The server diff is authoritative (a client false positive must
+		// not move is_source or spend a reconvert call).
+		const target = db
+			.prepare(
+				`SELECT id, is_source, ingredients_json, steps_json FROM body
+				 WHERE variation_id = ? AND unit_system = ?`
+			)
+			.get(cur.variation_id, input.source_units) as
+			| { id: string; is_source: number; ingredients_json: string; steps_json: string }
+			| undefined;
+		if (!target) throw new Error('That unit system has not been generated yet.');
+
 		const bodyEdited =
-			cur.ingredients_json !== JSON.stringify(input.ingredients) ||
-			cur.steps_json !== JSON.stringify(input.steps);
+			target.ingredients_json !== JSON.stringify(input.ingredients) ||
+			target.steps_json !== JSON.stringify(input.steps);
 		const substantive = bodyEdited || cur.yield_count !== input.yield_count;
 		const version = cur.content_version + (substantive ? 1 : 0);
 
-		// source_units / unit_system are NOT updated here: relabelling unchanged
-		// text would assert grams are ounces. Changing systems is the reconvert
-		// job's business (SPEC 7.2, build-order phase 7).
 		db.prepare(
 			`UPDATE recipe SET title = ?, source_text = ?, source_url = ?, yield_unit = ?,
 			   prep_minutes = ?, cook_minutes = ?, notes = ?, cuisine = ?,
@@ -247,9 +289,19 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 			   hand_edited = MAX(hand_edited, ?), updated_at = ?
 			 WHERE id = ?`
 		).run(input.yield_count, version, bodyEdited ? 1 : 0, ts, cur.variation_id);
-		db.prepare(
-			`UPDATE body SET ingredients_json = ?, steps_json = ?, updated_at = ? WHERE id = ?`
-		).run(JSON.stringify(input.ingredients), JSON.stringify(input.steps), ts, cur.body_id);
+		if (bodyEdited) {
+			db.prepare(
+				`UPDATE body SET ingredients_json = ?, steps_json = ?, updated_at = ? WHERE id = ?`
+			).run(JSON.stringify(input.ingredients), JSON.stringify(input.steps), ts, target.id);
+			// is_source moves to the edited body (ADR-028) and the counterpart is
+			// regenerated so the two systems agree again (ADR-019). The stale
+			// counterpart text stays visible behind the D6 banner until then.
+			db.prepare(`UPDATE body SET is_source = (unit_system = ?) WHERE variation_id = ?`).run(
+				input.source_units,
+				cur.variation_id
+			);
+			enqueueReconvert(db, cur.variation_id, otherUnits(input.source_units));
+		}
 		setImages(db, recipeId, input, ts);
 		rebuildFts(db, recipeId);
 	})();
@@ -275,6 +327,13 @@ export type RecipeDetail = {
 	steps: string[];
 	cover_image_id: string | null;
 	images: RecipeImage[];
+	variation_id: string;
+	hand_edited: boolean;
+	/** Both unit systems (ADR-019). Null: not generated yet (reconvert pending or failed). */
+	bodies: { us: BodyText | null; metric: BodyText | null };
+	/** The counterpart body's regeneration state, detected from the job table
+	 *  (ADR-028). Null means the counterpart is current. */
+	reconvert: { job_id: string | null; status: 'pending' | 'failed' } | null;
 };
 
 export type RecipeImage = {
@@ -285,23 +344,66 @@ export type RecipeImage = {
 	height: number;
 };
 
-/** The original variation's source body plus recipe metadata, for view and edit. */
+/** The original variation's bodies plus recipe metadata, for view and edit. */
 export function getRecipe(db: Database, id: string): RecipeDetail | null {
 	const r = db
 		.prepare(
 			`SELECT r.id, r.title, r.source_text, r.source_url, r.yield_unit, r.prep_minutes,
-			        r.cook_minutes, r.notes, r.source_units, r.cuisine, r.protein, r.effort,
-			        r.damage, r.cover_image_id, v.yield_count, b.ingredients_json, b.steps_json
+			        r.cook_minutes, r.notes, r.cuisine, r.protein, r.effort,
+			        r.damage, r.cover_image_id, v.yield_count,
+			        v.id AS variation_id, v.hand_edited
 			 FROM recipe r
 			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
-			 JOIN body b ON b.variation_id = v.id AND b.is_source = 1
 			 WHERE r.id = ? AND r.deleted_at IS NULL`
 		)
-		.get(id) as (Omit<RecipeDetail, 'meal_types' | 'ingredients' | 'steps' | 'images'> & {
+		.get(id) as
+		| (Omit<
+				RecipeDetail,
+				'meal_types' | 'ingredients' | 'steps' | 'images' | 'source_units' | 'bodies' | 'reconvert' | 'hand_edited'
+		  > & { hand_edited: number })
+		| undefined;
+	if (!r) return null;
+
+	const bodyRows = db
+		.prepare(
+			`SELECT unit_system, is_source, ingredients_json, steps_json FROM body WHERE variation_id = ?`
+		)
+		.all(r.variation_id) as {
+		unit_system: 'us' | 'metric';
+		is_source: number;
 		ingredients_json: string;
 		steps_json: string;
-	}) | undefined;
-	if (!r) return null;
+	}[];
+	const bodies: RecipeDetail['bodies'] = { us: null, metric: null };
+	for (const b of bodyRows)
+		bodies[b.unit_system] = {
+			ingredients: JSON.parse(b.ingredients_json),
+			steps: JSON.parse(b.steps_json)
+		};
+	const sourceRow = bodyRows.find((b) => b.is_source);
+	if (!sourceRow) throw new Error(`Recipe ${id} has no source body.`);
+	// source_units means "the body a human last authored" (ADR-028): derived
+	// from the is_source flag, not from how the recipe was first imported.
+	const source_units = sourceRow.unit_system;
+	const source = bodies[source_units]!;
+
+	// ADR-028: counterpart state comes from the latest reconvert job. A missing
+	// counterpart with no live job (legacy row, hard-deleted job) reads as
+	// failed, so the UI can offer the same tap-to-retry.
+	const job = db
+		.prepare(
+			`SELECT id, status FROM job WHERE variation_id = ? AND kind = 'reconvert'
+			 ORDER BY created_at DESC, id DESC LIMIT 1`
+		)
+		.get(r.variation_id) as { id: string; status: string } | undefined;
+	const reconvert: RecipeDetail['reconvert'] =
+		job && (job.status === 'queued' || job.status === 'running')
+			? { job_id: job.id, status: 'pending' }
+			: job?.status === 'failed'
+				? { job_id: job.id, status: 'failed' }
+				: bodies[otherUnits(source_units)]
+					? null
+					: { job_id: null, status: 'failed' };
 	const meal_types = (
 		db.prepare('SELECT meal_type FROM recipe_meal_type WHERE recipe_id = ?').all(id) as {
 			meal_type: RecipeInput['meal_types'][number];
@@ -313,14 +415,50 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 			 WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY created_at`
 		)
 		.all(id) as RecipeImage[];
-	const { ingredients_json, steps_json, ...rest } = r;
 	return {
-		...rest,
+		...r,
+		hand_edited: !!r.hand_edited,
+		source_units,
 		meal_types,
-		ingredients: JSON.parse(ingredients_json),
-		steps: JSON.parse(steps_json),
+		ingredients: source.ingredients,
+		steps: source.steps,
+		bodies,
+		reconvert,
 		images
 	};
+}
+
+/**
+ * SPEC 7.2 / D6 "tap to retry": requeue the failed reconvert for the recipe's
+ * original variation, or start one if the counterpart never got a job.
+ */
+export function retryReconvert(db: Database, recipeId: string): void {
+	db.transaction(() => {
+		const v = db
+			.prepare(
+				`SELECT v.id, b.unit_system FROM variation v
+				 JOIN body b ON b.variation_id = v.id AND b.is_source = 1
+				 WHERE v.recipe_id = ? AND v.is_original = 1 AND v.deleted_at IS NULL`
+			)
+			.get(recipeId) as { id: string; unit_system: 'us' | 'metric' } | undefined;
+		if (!v) throw new Error('Recipe not found.');
+		// Requeue only the latest failed job (older failures are history, and
+		// requeuing them all would bill one tap several times), and rewrite its
+		// target: is_source may have moved since the job was created.
+		const requeued = db
+			.prepare(
+				`UPDATE job SET status = 'queued', input_json = ?, error_code = NULL,
+				   error_text = NULL, result_json = NULL, started_at = NULL, finished_at = NULL
+				 WHERE id = (SELECT id FROM job
+				             WHERE variation_id = ? AND kind = 'reconvert' AND status = 'failed'
+				             ORDER BY created_at DESC, id DESC LIMIT 1)`
+			)
+			.run(
+				JSON.stringify({ variation_id: v.id, target_units: otherUnits(v.unit_system) }),
+				v.id
+			).changes;
+		if (!requeued) enqueueReconvert(db, v.id, otherUnits(v.unit_system));
+	})();
 }
 
 export type BrowseFilters = {

@@ -2,7 +2,9 @@
 // mapping that seeds the review form from it. Shared so the drafts page
 // (client) never has to import server code for types.
 
+import { otherUnits } from '$lib/tags';
 import type {
+	BodyText,
 	IngredientGroup,
 	MealType,
 	Cuisine,
@@ -25,8 +27,6 @@ export function asUrl(text: string): string | null {
 	if (/^www\.\S+$/.test(text)) return `https://${text}`;
 	return null;
 }
-
-export type BodyText = { ingredients: IngredientGroup[]; steps: string[] };
 
 export type BodyPair = {
 	source_units: 'us' | 'metric';
@@ -62,12 +62,15 @@ export function hasRecipe(d: RecipeDraft): boolean {
 
 /**
  * Seed the review form from a done extraction: the body matching
- * source_units becomes the editable body. The counterpart body stays in the
- * job's result_json; dual-body storage arrives in phase 7.
+ * source_units becomes the editable body, the other one rides along as the
+ * known-good counterpart (ADR-019). If the user edits before saving, the form
+ * drops the counterpart and the server reconverts instead.
  */
 export function draftToInput(d: RecipeDraft): Partial<RecipeInput> {
 	const body = d.body[d.body.source_units];
+	const counterpart = d.body[otherUnits(d.body.source_units)];
 	return {
+		counterpart,
 		title: d.title,
 		yield_count: d.yield_count,
 		yield_unit: d.yield_unit,

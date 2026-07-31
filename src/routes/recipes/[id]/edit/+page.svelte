@@ -1,7 +1,17 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
+	import { otherUnits } from '$lib/tags';
 
 	let { data, form } = $props();
+
+	// The counterpart body seeds the form's toggle; while a reconvert is
+	// pending or failed it may be stale, which the banner explains.
+	const counterpart = $derived(data.recipe.bodies[otherUnits(data.recipe.source_units)]);
+
+	// D6 tap-to-retry through the hidden form + use:enhance (repo convention),
+	// so a fail(400) lands in `form` instead of vanishing into a fetch.
+	let retryForm: HTMLFormElement | undefined = $state();
 </script>
 
 <svelte:head>
@@ -14,11 +24,15 @@
 	</header>
 	{#key data.recipe.id}
 		<RecipeForm
-			initial={data.recipe}
+			initial={{ ...data.recipe, counterpart }}
 			draftKey="wc-draft:recipe:{data.recipe.id}"
+			action="?/save"
 			error={form?.error ?? null}
+			reconvert={data.recipe.reconvert}
+			onretry={() => retryForm?.requestSubmit()}
 		/>
 	{/key}
+	<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
 
 	<!-- D10: destructive zone at the bottom. confirm() is the native-style sheet. -->
 	<form
