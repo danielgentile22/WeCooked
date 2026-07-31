@@ -1,0 +1,10 @@
+node_modules
+build
+.svelte-kit
+.git
+.env*
+*.db
+*.db-*
+docs
+prototypes
+*.md
