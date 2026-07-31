@@ -3,7 +3,9 @@
 Every decision taken on 2026-07-27, with the options that were actually
 weighed and why the loser lost. A second pass on 2026-07-29, before any code,
 resolved contradictions and gaps found in a pre-build review; those are
-ADR-024 to ADR-032, and the ADRs they amend carry a dated note. Referenced from [SPEC.md](./SPEC.md) as
+ADR-024 to ADR-032, and the ADRs they amend carry a dated note. A third pass
+on 2026-07-30, after the four prototypes were settled, closed the questions
+the prototypes and the first review left open; those are ADR-033 to ADR-040. Referenced from [SPEC.md](./SPEC.md) as
 `ADR-nn`. Evidence for the technical claims is in
 [research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
 
@@ -170,6 +172,10 @@ two people in different places.
 
 **Explicitly cut.** Timers parsed from step text, voice control, "hey what's
 next".
+
+**Amended 2026-07-30.** Strikes are per session rather than cleared on
+leaving the recipe: `sessionStorage` keyed by variation id, so a locked phone
+mid-cook does not lose them (ADR-036). Still per device, still never synced.
 
 ---
 
@@ -466,6 +472,10 @@ instantly.
 soft-deleting a body (ADR-025), and lazy regeneration of untouched variations
 is specified as stale-while-revalidate (ADR-029).
 
+**Amended 2026-07-30.** The stepper's number is also a tappable numeric input
+accepting one decimal place, so fractional yields are reachable (ADR-037).
+The never-trigger-work rule is unchanged.
+
 ---
 
 ## ADR-013: Soft delete everywhere, no edit history
@@ -571,6 +581,10 @@ are out of olive oil, and C is a settings chore done once and never revisited.
 
 **Amended 2026-07-29.** The build runs as one job that generates missing
 variations inline before the merge call (ADR-027).
+
+**Amended 2026-07-30.** Ticks sync by polling (ADR-033), and "Done shopping"
+hard-deletes the list contents, manual lines included; the single list row is
+permanent and `is_active` is dropped from the schema (ADR-034).
 
 ---
 
@@ -920,6 +934,10 @@ list unions in queued, running, and failed capture jobs as cards read from
 the `job` table. The review form is seeded from `input_json` and
 `result_json`.
 
+**Amended 2026-07-30.** Done-but-unsaved jobs are cards too ("ready to
+review"), the card condition is `recipe_id IS NULL`, and drafts gain a
+Discard action (ADR-035).
+
 ---
 
 ## ADR-025: Recalculate replaces the variation; Restore always wins
@@ -1133,6 +1151,210 @@ tag-vocabulary changes will need one, with live data on the volume.
 whole tool; the migration files double as the readable history of the schema.
 Known caveat either way: SQLite has no `ALTER COLUMN`, so `CHECK` changes use
 the create-copy-rename dance. A heavier tool would not remove that.
+
+---
+
+## ADR-033: Shopping ticks sync by polling
+
+*2026-07-30, second grilling round.*
+
+**Question.** "Ticking is shared and persisted" was the one piece of state
+that must sync, and the spec never said how the other phone learns about a
+tick.
+
+**Options.**
+
+- **A. Poll the list while the Shopping tab is visible.**
+- **B. Websockets or SSE.**
+
+**Decision: A.** Poll `GET /api/shopping-list` every 5 s while visible, pause
+on hidden, refetch immediately on `visibilitychange` back to visible. Ticks
+are per-item POSTs, applied optimistically on the ticking phone. Conflicts
+are last write wins per item; a double tick is idempotent.
+
+**Why.** The app already has exactly one sync idiom, polling (ADR-023), and
+"no websockets for two users" was already decided there. 5 s rather than the
+job system's 1.5 s because a shopping list is walked around a shop, not
+stared at: the at-home tick arrives before the shopper reaches the next
+aisle, at a third of the chatter.
+
+---
+
+## ADR-034: One shopping list row forever; Done shopping hard-deletes
+
+*2026-07-30, second grilling round.*
+
+**Question.** `shopping_list.is_active` implied archived lists, but nothing
+in v1 reads an archived list, `shopping_list_item` has no `deleted_at`, and
+the spec never said what "Done shopping" clears.
+
+**Options.**
+
+- **A. One permanent list row; Done shopping hard-deletes items and the
+  recipe set. Drop `is_active`.**
+- **B. Archive on done (`is_active = 0`), new row per build.**
+
+**Decision: A.** Manual lines are cleared too: done means you bought the bin
+bags. The two-step confirmation settled in the shopping prototype is the
+mistap guard.
+
+**Why.** B creates rows nothing reads; list history is the cook log by
+another name, and that was cut (ADR-014). Hard delete is safe because merged
+items and ticks are transient machine state, and a manual line is seconds to
+retype, not stove-side work. Deleting a column beats maintaining a vestige.
+
+---
+
+## ADR-035: Unsaved captures are cards with a Discard action
+
+*2026-07-30, second grilling round.*
+
+**Question.** SPEC 6.5 listed browse cards for queued, running, and failed
+capture jobs. A done job whose draft was never saved matched none of those
+and silently vanished from every screen. And there was no way to get rid of a
+capture you regret, or its orphaned `recipe_id = NULL` images.
+
+**Options.**
+
+- **A. Card condition is "capture kind and `recipe_id IS NULL`"**; Save
+  writes the recipe id onto the job row; failed and ready-to-review cards get
+  a Discard action that hard-deletes the job and soft-deletes its images.
+- **B. Age out unsaved jobs after N days.**
+- **C. Discard routes through Trash.**
+
+**Decision: A.**
+
+**Why.** The condition needs zero new schema and makes done-but-unsaved show
+as "ready to review", which is the correct reading of "the job row is the
+draft" (ADR-024). B hides work silently, which violates "failures are
+visible". C is off target: Trash protects human work, and a job row is
+machine output; the no-silent-destruction principle does not apply to it.
+Images are soft-deleted anyway because they cost nothing to keep and photos
+are the one part a human produced. No cancel for running jobs: they finish in
+seconds, then you discard.
+
+---
+
+## ADR-036: Strikes are per session, in sessionStorage
+
+*2026-07-30, second grilling round.*
+
+**Question.** SPEC said strikes are "cleared on leaving the recipe"; the
+cooking prototype notes said "production: sessionStorage per recipe". These
+conflict.
+
+**Decision.** `sessionStorage`, keyed by variation id. Survives a locked
+phone and an accidental tab-away mid-cook; evaporates by the next day. Still
+per device, never synced, no DB writes.
+
+**Why.** Locking the phone is constant while cooking, and iOS can kill the
+page on lock. Memory-only strikes would be lost at exactly the wet-hands
+moment the screen exists for. What "ephemeral" was actually protecting is
+that next week's cook starts clean, and session scope preserves that.
+
+---
+
+## ADR-037: Fractional yields via a numeric input on the stepper
+
+*2026-07-30, second grilling round.*
+
+**Question.** `yield_count` is `REAL` and "1 litre" is a legal yield, but a
+whole-step stepper can never halve a 1-litre stock or a 2-loaf bake, and
+halving is the most common scale operation after doubling.
+
+**Options.**
+
+- **A. Stepper stays whole-step; the number is a tappable numeric input**
+  accepting any positive value with up to one decimal place.
+- **B. Integer-only, live without halving.**
+
+**Decision: A.** Input rounds to one decimal; zero and negatives rejected;
+chips display the decimal as typed. The 0.25x to 4x soft cap (SPEC 5.5)
+applies unchanged.
+
+**Why.** B bakes a real limitation into exactly the yield-unit recipes
+ADR-020 exists to support. Everything downstream already copes: the column is
+`REAL` and the unique-yield index does not care.
+
+---
+
+## ADR-038: The review form keeps a sessionStorage draft
+
+*2026-07-30, second grilling round.*
+
+**Question.** iOS evicts a backgrounded PWA freely. Ten minutes of typed
+corrections in the review form are human work, and the spec was silent on
+losing them. The prototype added a sessionStorage draft during its design
+pass without a decision ratifying it.
+
+**Options.**
+
+- **A. sessionStorage draft**, keyed by job id (recipe id when editing, a
+  fixed key for manual entry), written on every change, restored silently,
+  cleared on Save or Discard.
+- **B. Server-side draft persistence.**
+- **C. A beforeunload confirmation prompt.**
+
+**Decision: A.**
+
+**Why.** Principle 1 says human edits are never silently destroyed, and typed
+corrections qualify. B is real machinery (an endpoint, a merge story) for a
+one-device activity: you type on the phone you are holding. C nags, and iOS
+PWAs do not fire it reliably; the silent restore is what makes navigating
+away safe. Accepted cost: a draft started on the phone cannot be continued on
+the laptop.
+
+---
+
+## ADR-039: Concurrent edits are last write wins
+
+*2026-07-30, second grilling round.*
+
+**Question.** Both phones open the review form for the same recipe and both
+save. Nothing in the spec addressed it.
+
+**Options.**
+
+- **A. Accept last write wins**, record it as a known risk.
+- **B. Stale-write rejection: save carries `updated_at`, server refuses if it
+  moved.**
+- **C. Optimistic locking with a conflict or merge UI.**
+
+**Decision: A.** Recorded as known risk 7.
+
+**Why.** Two people who share a kitchen editing the same recipe
+simultaneously without knowing is a coincidence measured in years, and the
+damage when it fires is already accepted as known risk 1: a bad edit is
+unrecoverable, edit history was cut (ADR-013). This is the same gap, not a
+new one. B is barely gentler than the overwrite (a rejection that forces a
+reload also eats the edit), and C is absurd at this scale.
+
+---
+
+## ADR-040: Unit tests only, over the five load-bearing pieces of logic
+
+*2026-07-30, second grilling round.*
+
+**Question.** The spec mandated exactly one test (the EXIF fixture, SPEC 8.2)
+and said nothing else about testing.
+
+**Options.**
+
+- **A. Vitest unit tests over the pure logic where a silent bug costs real
+  work**: the EXIF fixture, `content_version` bump rules, tick preservation
+  on rebuild, the migration runner, the daily-cap check.
+- **B. Add a browser or E2E suite.**
+- **C. Only the mandated EXIF test.**
+
+**Decision: A.** Vitest because it is already in the SvelteKit template. No
+component tests, no coverage targets.
+
+**Why.** Each of the five is a branch of logic whose silent failure destroys
+work or money: a wrong staleness rule eats a variation, a wrong tick rule
+mis-ticks in a shop, a broken migration corrupts the live file, a broken cap
+unbounds the bill. B is machinery serving two users who will notice a broken
+button in hours; the review form is the integration test. C leaves the
+listed four failure modes silent.
 
 ---
 
