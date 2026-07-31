@@ -649,15 +649,18 @@
 		padding: 0.9rem;
 		margin-top: 0.8rem;
 	}
-	/* Sticky collapsible ingredients (SPEC 7.4, prototype option C) */
+	/* Collapsible ingredients (SPEC 7.4): scrolls away when open,
+	   sticks only when collapsed so it stays reachable mid-steps. */
 	.ing {
-		position: sticky;
-		top: calc(env(safe-area-inset-top) + 0.4rem);
-		z-index: 5;
 		background: var(--card);
 		border: 1px solid var(--line);
 		border-radius: 1rem;
 		margin-top: 0.8rem;
+	}
+	.ing:not([open]) {
+		position: sticky;
+		top: calc(env(safe-area-inset-top) + 0.4rem);
+		z-index: 5;
 		box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
 	}
 	.ing summary {
