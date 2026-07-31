@@ -101,7 +101,14 @@ export function rebuildFts(db: Database, recipeId: string): void {
 			 WHERE r.id = ? AND r.deleted_at IS NULL`
 		)
 		.get(recipeId) as
-		| { title: string; cuisine: string | null; protein: string | null; effort: string; damage: string; ingredients_json: string }
+		| {
+				title: string;
+				cuisine: string | null;
+				protein: string | null;
+				effort: string;
+				damage: string;
+				ingredients_json: string;
+		  }
 		| undefined;
 	db.prepare('DELETE FROM recipe_fts WHERE recipe_id = ?').run(recipeId);
 	if (!r) return;
@@ -127,7 +134,10 @@ export function rebuildFts(db: Database, recipeId: string): void {
  * left alone, the stale job would convert the source into itself.
  */
 export function enqueueReconvert(db: Database, variationId: string, target: UnitSystem) {
-	const input = JSON.stringify({ variation_id: variationId, target_units: target });
+	const input = JSON.stringify({
+		variation_id: variationId,
+		target_units: target
+	});
 	const retargeted = db
 		.prepare(
 			`UPDATE job SET input_json = ?
@@ -208,7 +218,8 @@ export function createRecipe(db: Database, raw: RecipeInput): string {
 		insertBody(db, variationId, input.source_units, 1, input, ts);
 		// Both unit systems always exist (ADR-019): store the known-good
 		// counterpart, or queue a reconvert to generate it.
-		if (input.counterpart) insertBody(db, variationId, otherUnits(input.source_units), 0, input.counterpart, ts);
+		if (input.counterpart)
+			insertBody(db, variationId, otherUnits(input.source_units), 0, input.counterpart, ts);
 		else enqueueReconvert(db, variationId, otherUnits(input.source_units));
 		setImages(db, id, input, ts);
 		rebuildFts(db, id);
@@ -233,8 +244,7 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 				 WHERE r.id = ? AND r.deleted_at IS NULL`
 			)
 			.get(recipeId) as
-			| { content_version: number; variation_id: string; yield_count: number }
-			| undefined;
+			{ content_version: number; variation_id: string; yield_count: number } | undefined;
 		if (!cur) throw new Error('Recipe not found.');
 
 		// The submitted body belongs to input.source_units, which is whichever
@@ -247,7 +257,12 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 				 WHERE variation_id = ? AND unit_system = ?`
 			)
 			.get(cur.variation_id, input.source_units) as
-			| { id: string; is_source: number; ingredients_json: string; steps_json: string }
+			| {
+					id: string;
+					is_source: number;
+					ingredients_json: string;
+					steps_json: string;
+			  }
 			| undefined;
 		if (!target) throw new Error('That unit system has not been generated yet.');
 
@@ -329,11 +344,25 @@ export type RecipeDetail = {
 	images: RecipeImage[];
 	variation_id: string;
 	hand_edited: boolean;
+	is_original: boolean;
+	/** SPEC 7.5: the selected variation's based_on_content_version is behind. */
+	stale: boolean;
+	scaling_note: string | null;
+	/** Every live variation, for the yield chips, ascending yield. */
+	variations: VariationChip[];
 	/** Both unit systems (ADR-019). Null: not generated yet (reconvert pending or failed). */
 	bodies: { us: BodyText | null; metric: BodyText | null };
 	/** The counterpart body's regeneration state, detected from the job table
 	 *  (ADR-028). Null means the counterpart is current. */
 	reconvert: { job_id: string | null; status: 'pending' | 'failed' } | null;
+};
+
+export type VariationChip = {
+	id: string;
+	yield_count: number;
+	is_original: boolean;
+	hand_edited: boolean;
+	stale: boolean;
 };
 
 export type RecipeImage = {
@@ -344,24 +373,47 @@ export type RecipeImage = {
 	height: number;
 };
 
-/** The original variation's bodies plus recipe metadata, for view and edit. */
-export function getRecipe(db: Database, id: string): RecipeDetail | null {
-	const r = db
-		.prepare(
-			`SELECT r.id, r.title, r.source_text, r.source_url, r.yield_unit, r.prep_minutes,
+/**
+ * One variation's bodies plus recipe metadata, for view and edit. Defaults to
+ * the original; an unknown or trashed variationId falls back to it (a chip
+ * that was just deleted on the other phone must not 404 this one).
+ */
+export function getRecipe(db: Database, id: string, variationId?: string): RecipeDetail | null {
+	const select = `SELECT r.id, r.title, r.source_text, r.source_url, r.yield_unit, r.prep_minutes,
 			        r.cook_minutes, r.notes, r.cuisine, r.protein, r.effort,
-			        r.damage, r.cover_image_id, v.yield_count,
-			        v.id AS variation_id, v.hand_edited
+			        r.damage, r.cover_image_id, r.content_version, v.yield_count,
+			        v.id AS variation_id, v.hand_edited, v.is_original, v.scaling_note,
+			        v.based_on_content_version
 			 FROM recipe r
-			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
-			 WHERE r.id = ? AND r.deleted_at IS NULL`
-		)
-		.get(id) as
-		| (Omit<
-				RecipeDetail,
-				'meal_types' | 'ingredients' | 'steps' | 'images' | 'source_units' | 'bodies' | 'reconvert' | 'hand_edited'
-		  > & { hand_edited: number })
-		| undefined;
+			 JOIN variation v ON v.recipe_id = r.id AND v.deleted_at IS NULL`;
+	type Row = Omit<
+		RecipeDetail,
+		| 'meal_types'
+		| 'ingredients'
+		| 'steps'
+		| 'images'
+		| 'source_units'
+		| 'bodies'
+		| 'reconvert'
+		| 'hand_edited'
+		| 'is_original'
+		| 'stale'
+		| 'variations'
+	> & {
+		hand_edited: number;
+		is_original: number;
+		content_version: number;
+		based_on_content_version: number;
+	};
+	let r: Row | undefined;
+	if (variationId)
+		r = db
+			.prepare(`${select} AND v.id = ? WHERE r.id = ? AND r.deleted_at IS NULL`)
+			.get(variationId, id) as Row | undefined;
+	if (!r)
+		r = db
+			.prepare(`${select} AND v.is_original = 1 WHERE r.id = ? AND r.deleted_at IS NULL`)
+			.get(id) as Row | undefined;
 	if (!r) return null;
 
 	const bodyRows = db
@@ -415,9 +467,32 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 			 WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY created_at`
 		)
 		.all(id) as RecipeImage[];
+	const variations: VariationChip[] = (
+		db
+			.prepare(
+				`SELECT id, yield_count, is_original, hand_edited, based_on_content_version
+				 FROM variation WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY yield_count`
+			)
+			.all(id) as {
+			id: string;
+			yield_count: number;
+			is_original: number;
+			hand_edited: number;
+			based_on_content_version: number;
+		}[]
+	).map((v) => ({
+		id: v.id,
+		yield_count: v.yield_count,
+		is_original: !!v.is_original,
+		hand_edited: !!v.hand_edited,
+		stale: v.based_on_content_version < r.content_version
+	}));
 	return {
 		...r,
 		hand_edited: !!r.hand_edited,
+		is_original: !!r.is_original,
+		stale: r.based_on_content_version < r.content_version,
+		variations,
 		source_units,
 		meal_types,
 		ingredients: source.ingredients,
@@ -454,7 +529,10 @@ export function retryReconvert(db: Database, recipeId: string): void {
 				             ORDER BY created_at DESC, id DESC LIMIT 1)`
 			)
 			.run(
-				JSON.stringify({ variation_id: v.id, target_units: otherUnits(v.unit_system) }),
+				JSON.stringify({
+					variation_id: v.id,
+					target_units: otherUnits(v.unit_system)
+				}),
 				v.id
 			).changes;
 		if (!requeued) enqueueReconvert(db, v.id, otherUnits(v.unit_system));

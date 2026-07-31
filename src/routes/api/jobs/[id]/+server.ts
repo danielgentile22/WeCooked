@@ -21,7 +21,9 @@ export const GET: RequestHandler = ({ params }) => {
 		status: row.status,
 		error_code: row.error_code,
 		error_text: row.error_text,
-		result_ref: row.recipe_id ?? row.variation_id ?? row.list_id ?? null
+		// variation first: a done scale job's ref is the variation it produced
+		// (its recipe_id is set from creation, so recipe-first would mask it).
+		result_ref: row.variation_id ?? row.recipe_id ?? row.list_id ?? null
 	};
 	return json(body);
 };
