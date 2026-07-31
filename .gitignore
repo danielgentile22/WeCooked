@@ -1,23 +1,27 @@
-# secrets
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
 .env
 .env.*
 !.env.example
+!.env.test
 
-# node
-node_modules/
-.svelte-kit/
-build/
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
 
-# local data
+# SQLite
 *.db
-*.db-wal
-*.db-shm
-data/
-
-# os
-.DS_Store
-
-# harness configs not shared via repo
-.cursor/
-.codex/
-.claude/settings.local.json
+*.db-*

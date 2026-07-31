@@ -1,0 +1,29 @@
+# SPEC 9.1: one machine, iad, 1 GB, volume at /data, never scaled to zero.
+app = "wecooked"
+primary_region = "iad"
+
+[env]
+DATABASE_PATH = "/data/wecooked.db"
+ORIGIN = "https://wecooked.kitchen"
+
+[[mounts]]
+source = "data"
+destination = "/data"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
+[[http_service.checks]]
+interval = "15s"
+timeout = "5s"
+grace_period = "10s"
+method = "GET"
+path = "/healthz"
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "1gb"
