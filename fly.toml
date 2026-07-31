@@ -4,6 +4,9 @@ primary_region = "iad"
 
 [env]
 DATABASE_PATH = "/data/wecooked.db"
+# adapter-node defaults to 512K, which rejects normalised photo uploads;
+# match the 8 MB cap in /api/images.
+BODY_SIZE_LIMIT = "8M"
 ORIGIN = "https://wecooked.kitchen"
 R2_ACCOUNT_ID = "42248297aa571d4214f2b7c9b1deef00"
 R2_BUCKET = "wecooked"
