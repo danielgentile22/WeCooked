@@ -47,6 +47,11 @@ describe('save rules (SPEC 7.2)', () => {
 		).toThrow(/ingredient/);
 	});
 
+	it('requires effort and damage (no defaults)', () => {
+		expect(() => createRecipe(db, { ...base(), effort: null as never })).toThrow(/Effort/);
+		expect(() => createRecipe(db, { ...base(), damage: null as never })).toThrow(/Damage/);
+	});
+
 	it('saves a steps-free recipe (a spice mix is a legal recipe)', () => {
 		const id = createRecipe(db, { ...base(), steps: [] });
 		expect(getRecipe(db, id)?.steps).toEqual([]);
@@ -114,6 +119,31 @@ describe('content_version bump rules (ADR-012, ADR-030)', () => {
 		const id = createRecipe(db, base());
 		updateRecipe(db, id, base());
 		expect(version(id)).toBe(1);
+	});
+
+	it('marks the variation hand_edited on body edits, not on yield or metadata edits', () => {
+		const id = createRecipe(db, base());
+		const handEdited = () =>
+			(db.prepare('SELECT hand_edited FROM variation WHERE recipe_id = ?').get(id) as {
+				hand_edited: number;
+			}).hand_edited;
+		updateRecipe(db, id, { ...base(), title: 'Renamed', yield_count: 6 });
+		expect(handEdited()).toBe(0);
+		updateRecipe(db, id, { ...base(), yield_count: 6, steps: ['New step.'] });
+		expect(handEdited()).toBe(1);
+	});
+
+	it('never relabels the body unit system on edit', () => {
+		const id = createRecipe(db, base());
+		updateRecipe(db, id, { ...base(), source_units: 'us' });
+		const b = db
+			.prepare(
+				`SELECT b.unit_system FROM body b
+				 JOIN variation v ON v.id = b.variation_id WHERE v.recipe_id = ?`
+			)
+			.get(id) as { unit_system: string };
+		expect(b.unit_system).toBe('metric');
+		expect(getRecipe(db, id)?.source_units).toBe('metric');
 	});
 });
 

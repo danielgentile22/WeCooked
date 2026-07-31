@@ -18,7 +18,7 @@
 </script>
 
 <svelte:head>
-	<title>{r.title} — We Cooked</title>
+	<title>{r.title} · We Cooked</title>
 </svelte:head>
 
 <main>
@@ -49,7 +49,7 @@
 				<h3>{group.heading}</h3>
 			{/if}
 			<ul>
-				{#each group.items as item (item)}
+				{#each group.items as item, i (i)}
 					<li>{item}</li>
 				{/each}
 			</ul>

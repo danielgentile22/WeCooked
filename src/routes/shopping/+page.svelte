@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Shopping — We Cooked</title>
+	<title>Shopping · We Cooked</title>
 </svelte:head>
 
 <main>
