@@ -28,7 +28,13 @@ export const load: PageServerLoad = ({ params }) => {
 		status: job.status,
 		error_text: job.error_text,
 		source_text: input.text ?? null,
-		initial: draft ? draftToInput(draft) : null,
+		// The URL rides input_json, not the extraction, so it seeds the form
+		// here: on failure too, so a fetch_blocked draft still carries its link.
+		initial: draft
+			? { ...draftToInput(draft), source_url: input.url ?? null }
+			: input.url
+				? { source_url: input.url }
+				: null,
 		warnings: draft?.extraction_warnings ?? [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
