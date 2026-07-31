@@ -1,9 +1,47 @@
 <script lang="ts">
-	import { Pencil } from '@lucide/svelte';
+	import { Pencil, LoaderCircle } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import Chip from '$lib/components/Chip.svelte';
+	import Banner from '$lib/components/Banner.svelte';
+	import { pollJob } from '$lib/jobs';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const r = $derived(data.recipe);
+
+	// D15: US/metric per device, metric default. Read after mount so SSR and
+	// hydration agree, then flip if this device prefers US.
+	let units = $state<'us' | 'metric'>('metric');
+	onMount(() => {
+		if (localStorage.getItem('units') === 'us') units = 'us';
+	});
+	function setUnits(u: 'us' | 'metric') {
+		units = u;
+		localStorage.setItem('units', u);
+	}
+
+	// The chosen body; while it is missing (reconvert pending or failed) the
+	// source body stays readable behind the banner, stale-while-revalidate.
+	const body = $derived(r.bodies[units] ?? r.bodies[r.source_units]!);
+	// The banner belongs to the derived body only (ADR-028).
+	const showReconvert = $derived(r.reconvert !== null && units !== r.source_units);
+
+	// While a reconvert is pending, wait on the job and reload once, so "the US
+	// body updates within seconds" without the user doing anything.
+	let polling: string | null = null;
+	$effect(() => {
+		const job = r.reconvert;
+		if (job?.status !== 'pending' || !job.job_id || polling === job.job_id) return;
+		polling = job.job_id;
+		pollJob(job.job_id).then(() => invalidateAll());
+	});
+
+	// D6 tap-to-retry goes through the hidden form + use:enhance, same as the
+	// drafts page, so a fail(400) surfaces instead of vanishing into a fetch.
+	let retryForm: HTMLFormElement | undefined = $state();
+
+	const UNIT_OPTIONS = ['metric', 'us'] as const;
 	const cover = $derived(r.images.find((i) => i.id === r.cover_image_id) ?? null);
 	const tags = $derived(
 		[...r.meal_types, r.cuisine, r.protein, r.effort, r.damage].filter((t) => t !== null)
@@ -47,9 +85,40 @@
 		{/each}
 	</div>
 
+	<!-- SPEC 7.4 unit toggle: per device, "as written" marks the human-authored
+	     body (ADR-028). Marker is a word, never color alone. -->
+	<div class="seg" role="group" aria-label="Unit system">
+		{#each UNIT_OPTIONS as u (u)}
+			<button type="button" aria-pressed={units === u} onclick={() => setUnits(u)}>
+				{u === 'us' ? 'US' : 'Metric'}
+				{#if r.source_units === u}<span class="aswritten">as written</span>{/if}
+			</button>
+		{/each}
+	</div>
+
+	{#if showReconvert}
+		{#if r.reconvert?.status === 'pending'}
+			<Banner
+				role="status"
+				icon={LoaderCircle}
+				text="Not yet updated from your edit. Updating…"
+			/>
+		{:else}
+			<Banner
+				text="Couldn't update from your edit."
+				action="Tap to retry"
+				onaction={() => retryForm?.requestSubmit()}
+			/>
+			<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
+		{/if}
+		{#if form?.error}
+			<Banner text={form.error} />
+		{/if}
+	{/if}
+
 	<section aria-label="Ingredients">
 		<h2>Ingredients</h2>
-		{#each r.ingredients as group (group)}
+		{#each body.ingredients as group (group)}
 			{#if group.heading}
 				<h3>{group.heading}</h3>
 			{/if}
@@ -61,11 +130,11 @@
 		{/each}
 	</section>
 
-	{#if r.steps.length > 0}
+	{#if body.steps.length > 0}
 		<section aria-label="Steps">
 			<h2>Steps</h2>
 			<ol>
-				{#each r.steps as step, i (i)}
+				{#each body.steps as step, i (i)}
 					<li>{step}</li>
 				{/each}
 			</ol>
@@ -159,6 +228,36 @@
 		flex-wrap: wrap;
 		gap: 0.4rem;
 		margin: 0.8rem 0 0;
+	}
+	.seg {
+		display: inline-flex;
+		border: 1.5px solid var(--line);
+		border-radius: 0.7rem;
+		overflow: hidden;
+		margin: 0.8rem 0 0.6rem;
+	}
+	.seg button {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.45rem 1.1rem;
+		min-height: 2.75rem;
+		font: inherit;
+		font-size: 0.95rem;
+		border: 0;
+		background: none;
+		color: inherit;
+		cursor: pointer;
+	}
+	.seg button[aria-pressed='true'] {
+		background: var(--accent);
+		color: var(--on-accent);
+		font-weight: 600;
+	}
+	.aswritten {
+		font-size: 0.7rem;
+		font-style: italic;
+		opacity: 0.85;
 	}
 	section {
 		background: var(--card);
