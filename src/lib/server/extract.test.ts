@@ -250,7 +250,7 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 		await expect(extractPhotos(jobRow(['ghost']), photoDb([]))).rejects.toMatchObject({
 			code: 'api_error'
 		});
-		expect(extractPhotos(jobRow([]), photoDb([]))).rejects.toBeInstanceOf(JobError);
+		await expect(extractPhotos(jobRow([]), photoDb([]))).rejects.toBeInstanceOf(JobError);
 	});
 
 	it('photoBlocks base64-encodes each page', async () => {

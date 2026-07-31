@@ -86,8 +86,8 @@
 				{/each}
 			</div>
 		{/if}
-		{#if uploadError}
-			<Banner text={uploadError} />
+		{#if uploadError || form?.photoError}
+			<Banner text={uploadError ?? form?.photoError ?? ''} />
 		{/if}
 		<input
 			bind:this={fileInput}
