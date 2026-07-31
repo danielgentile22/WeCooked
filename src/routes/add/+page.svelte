@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { Keyboard } from '@lucide/svelte';
+	import { enhance } from '$app/forms';
+	import { Keyboard, Sparkles } from '@lucide/svelte';
+	import Banner from '$lib/components/Banner.svelte';
+
+	let { form } = $props();
+	let submitting = $state(false);
 </script>
 
 <svelte:head>
@@ -11,11 +16,37 @@
 		<h1>Add a recipe</h1>
 	</header>
 
-	<!-- D3: the paste box and photo path arrive with extraction (phases 5-6).
-	     Until then the manual path is the whole Add tab. -->
+	<!-- D3: paste box first. Photo path arrives with the photos issue. -->
+	<section>
+		<form
+			method="POST"
+			use:enhance={() => {
+				submitting = true;
+				return async ({ update }) => {
+					submitting = false;
+					await update();
+				};
+			}}
+		>
+			<textarea
+				name="text"
+				rows="7"
+				placeholder="Paste recipe text here"
+				aria-label="Recipe text"
+			></textarea>
+			{#if form?.error}
+				<Banner text={form.error} />
+			{/if}
+			<button type="submit" class="extract" disabled={submitting}>
+				<Sparkles aria-hidden="true" />
+				{submitting ? 'Starting…' : 'Extract'}
+			</button>
+		</form>
+	</section>
+
 	<section>
 		<a class="manual" href="/recipes/new"><Keyboard aria-hidden="true" /> Type it in myself</a>
-		<p class="hint">Paste a link, paste text, or snap a photo: coming in a later phase.</p>
+		<p class="hint">Paste a link or snap a photo: coming in a later phase.</p>
 	</section>
 </main>
 
@@ -35,19 +66,41 @@
 		border: 1px solid var(--line);
 		border-radius: 1rem;
 		padding: 0.9rem;
+		margin-bottom: 0.75rem;
 	}
+	textarea {
+		width: 100%;
+		box-sizing: border-box;
+		font: inherit;
+		padding: 0.55rem 0.6rem;
+		border: 1px solid var(--line);
+		border-radius: 0.5rem;
+		background: var(--card);
+		color: var(--ink);
+		resize: vertical;
+		margin-bottom: 0.6rem;
+	}
+	.extract,
 	.manual {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
+		width: 100%;
 		min-height: 3rem;
+		border: 0;
 		border-radius: 0.7rem;
 		background: var(--accent);
 		color: var(--on-accent);
+		font: inherit;
 		font-weight: 700;
 		text-decoration: none;
+		cursor: pointer;
 	}
+	.extract:disabled {
+		opacity: 0.6;
+	}
+	.extract :global(svg),
 	.manual :global(svg) {
 		width: 1.2em;
 		height: 1.2em;

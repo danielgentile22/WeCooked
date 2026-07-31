@@ -16,7 +16,8 @@
 	let {
 		initial = null as Partial<RecipeInput> | null,
 		draftKey, // ADR-038: sessionStorage key; recipe id when editing, fixed for manual
-		error = null as string | null
+		error = null as string | null,
+		action = '' // form action; the drafts page posts to a named action
 	} = $props();
 
 	// Effort and damage start unselected: they are required, scored choices
@@ -132,6 +133,7 @@
 
 <form
 	method="POST"
+	{action}
 	use:enhance={() =>
 		async ({ result, update }) => {
 			if (result.type === 'redirect') sessionStorage.removeItem(draftKey);
@@ -241,7 +243,8 @@
 		</div>
 	</section>
 
-	<section>
+	<!-- Section ids are the extraction-warning jump-link targets. -->
+	<section id="ingredients">
 		<h2 class="sec">Ingredients</h2>
 		<p class="fld">Written in</p>
 		<!-- Editing an existing recipe cannot relabel the body's unit system;
@@ -326,7 +329,7 @@
 		</div>
 	</section>
 
-	<section>
+	<section id="steps">
 		<h2 class="sec">Steps</h2>
 		<p class="hint">Steps may be empty; a spice mix is a legal recipe.</p>
 		{#each draft.steps as _, i (i)}
