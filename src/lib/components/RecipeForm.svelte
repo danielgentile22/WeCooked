@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Plus, X, ArrowUp, ArrowDown, Minus } from '@lucide/svelte';
+	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star } from '@lucide/svelte';
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
+	import { uploadPhoto, type FormImage } from '$lib/images';
 	import {
 		MEAL_TYPES,
 		CUISINES,
@@ -21,9 +22,10 @@
 	// Effort and damage start unselected: they are required, scored choices
 	// (SPEC 3.4), and a pre-picked default would ship wrong without the
 	// required-ness ever surfacing. The server rejects a null.
-	type FormState = Omit<RecipeInput, 'effort' | 'damage'> & {
+	type FormState = Omit<RecipeInput, 'effort' | 'damage' | 'image_ids'> & {
 		effort: RecipeInput['effort'] | null;
 		damage: RecipeInput['damage'] | null;
+		images: FormImage[]; // ids + presigned display URLs; ids go in the payload
 	};
 
 	// svelte-ignore state_referenced_locally -- initial never changes; the edit page re-keys
@@ -45,7 +47,9 @@
 		effort: null,
 		damage: null,
 		ingredients: [{ heading: null, items: [''] }],
-		steps: ['']
+		steps: [''],
+		images: [],
+		cover_image_id: null
 	});
 
 	// Restore a draft silently if one exists, else seed from the recipe being
@@ -91,6 +95,32 @@
 		if (next > 0) draft.yield_count = next;
 	}
 
+	// Photos upload immediately on pick (ADR-024: rows are claimed on Save), so
+	// a draft only ever references ids that already exist server-side.
+	let fileInput: HTMLInputElement | undefined = $state();
+	let uploading = $state(0);
+	let uploadError = $state<string | null>(null);
+	async function onPickFiles() {
+		const files = [...(fileInput?.files ?? [])];
+		if (fileInput) fileInput.value = '';
+		uploadError = null;
+		uploading += files.length;
+		for (const file of files) {
+			try {
+				const img = await uploadPhoto(file);
+				draft.images.push(img);
+				draft.cover_image_id ??= img.id; // first photo becomes the cover
+			} catch {
+				uploadError = 'Could not upload a photo. Check the connection and try again.';
+			}
+			uploading -= 1;
+		}
+	}
+	function removeImage(id: string) {
+		draft.images = draft.images.filter((i) => i.id !== id);
+		if (draft.cover_image_id === id) draft.cover_image_id = draft.images[0]?.id ?? null;
+	}
+
 	// Show-all collapse for long tag groups (prototype verdict A note).
 	const CUTOFF = 8;
 	let expanded = $state<Record<string, boolean>>({});
@@ -108,11 +138,64 @@
 			await update();
 		}}
 >
-	<input type="hidden" name="payload" value={JSON.stringify(draft)} />
+	<input
+		type="hidden"
+		name="payload"
+		value={JSON.stringify({ ...draft, image_ids: draft.images.map((i) => i.id) })}
+	/>
 
 	<section>
 		<label class="fld" for="title">Title</label>
 		<input id="title" type="text" bind:value={draft.title} required />
+	</section>
+
+	<section>
+		<h2 class="sec">Photos</h2>
+		{#if draft.images.length > 0}
+			<div class="strip" role="group" aria-label="Photos; tap one to make it the cover">
+				{#each draft.images as img (img.id)}
+					<div class="thumbwrap">
+						<button
+							type="button"
+							class="thumb"
+							aria-pressed={draft.cover_image_id === img.id}
+							aria-label="Make cover photo"
+							onclick={() => (draft.cover_image_id = img.id)}
+						>
+							<img src={img.url} alt="" />
+							{#if draft.cover_image_id === img.id}
+								<span class="coverbadge"><Star aria-hidden="true" /> Cover</span>
+							{/if}
+						</button>
+						<button
+							type="button"
+							class="ctlbtn"
+							aria-label="Remove photo"
+							onclick={() => removeImage(img.id)}
+						>
+							<X aria-hidden="true" />
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+		<input
+			type="file"
+			accept="image/*"
+			multiple
+			hidden
+			bind:this={fileInput}
+			onchange={onPickFiles}
+		/>
+		<button type="button" class="addbtn" onclick={() => fileInput?.click()}>
+			<Camera aria-hidden="true" /> Add photos
+		</button>
+		{#if uploading > 0}
+			<p class="hint" role="status">Uploading {uploading} photo{uploading > 1 ? 's' : ''}…</p>
+		{/if}
+		{#if uploadError}
+			<Banner text={uploadError} />
+		{/if}
 	</section>
 
 	<section>
@@ -553,6 +636,59 @@
 		background: var(--card);
 		color: inherit;
 		cursor: pointer;
+	}
+	.strip {
+		display: flex;
+		gap: 0.6rem;
+		overflow-x: auto;
+		padding-bottom: 0.4rem;
+		margin-bottom: 0.4rem;
+	}
+	.thumbwrap {
+		flex: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.thumb {
+		position: relative;
+		width: 7rem;
+		height: 7rem;
+		padding: 0;
+		border: 2px solid var(--line);
+		border-radius: 0.7rem;
+		overflow: hidden;
+		background: none;
+		cursor: pointer;
+	}
+	.thumb[aria-pressed='true'] {
+		border-color: var(--accent);
+	}
+	.thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	/* Cover is marked by badge + border, never color alone. */
+	.coverbadge {
+		position: absolute;
+		left: 0.3rem;
+		bottom: 0.3rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 999px;
+		background: var(--accent);
+		color: var(--on-accent);
+		font-size: 0.7rem;
+		font-weight: 700;
+	}
+	.coverbadge :global(svg) {
+		width: 0.85em;
+		height: 0.85em;
 	}
 	.chips {
 		display: flex;
