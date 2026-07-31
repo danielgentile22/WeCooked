@@ -13,6 +13,10 @@ export type JobKind =
 	| 'reconvert'
 	| 'shopping_merge';
 
+/** The three kinds whose job row is a draft (SPEC 6.5). */
+export const CAPTURE_KINDS = ['extract_url', 'extract_paste', 'extract_photos'] as const;
+export const isCaptureKind = (k: string) => (CAPTURE_KINDS as readonly string[]).includes(k);
+
 export type JobRow = {
 	id: string;
 	kind: JobKind;

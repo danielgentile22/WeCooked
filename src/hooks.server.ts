@@ -8,9 +8,10 @@ import {
 import { dev } from '$app/environment';
 import db from '$lib/server/db'; // opens the database and runs migrations at boot
 import { recoverInterrupted, startRunner, JobError, type Handlers } from '$lib/server/jobs';
+import { extractPaste } from '$lib/server/extract';
 
-// Job handlers land here as their features are built (extract in #13, etc.).
-const handlers: Handlers = {};
+// Job handlers land here as their features are built.
+const handlers: Handlers = { extract_paste: extractPaste };
 if (dev) {
 	// Stub for exercising the runner via POST /api/dev/jobs before real
 	// handlers exist (issue #12). Rides the 'reconvert' kind because the
