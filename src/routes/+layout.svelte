@@ -53,6 +53,9 @@
 	}
 	:global(body) {
 		margin: 0;
+		/* SPEC 8.7: standalone + black-translucent lets content run under the
+		   status bar; pad it back out (scrolls away, sticky elements re-inset). */
+		padding-top: env(safe-area-inset-top);
 		background: var(--bg);
 		color: var(--ink);
 		-webkit-text-size-adjust: 100%;
