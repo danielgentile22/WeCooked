@@ -48,6 +48,7 @@
 		--line: light-dark(#e7e5e4, #3a3532);
 		--accent: light-dark(#b45309, #f59e0b); /* D4 saffron */
 		--on-accent: light-dark(#fff, #2a1a00);
+		--danger: light-dark(#b91c1c, #f87171);
 		--surface: var(--card);
 	}
 	:global(body) {
