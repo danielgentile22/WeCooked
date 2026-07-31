@@ -9,14 +9,14 @@ import {
 	DAMAGES,
 	cleanIngredients,
 	cleanBody,
+	otherUnits,
 	type RecipeInput,
 	type BodyText,
-	type IngredientGroup
+	type IngredientGroup,
+	type UnitSystem
 } from '$lib/tags';
 
 const now = () => new Date().toISOString();
-
-const other = (u: 'us' | 'metric') => (u === 'us' ? 'metric' : 'us');
 
 /**
  * SPEC 7.2 save rules. Returns the normalised input or throws with a message
@@ -119,16 +119,28 @@ export function rebuildFts(db: Database, recipeId: string): void {
 }
 
 /**
- * Queue a reconvert of the variation's non-source body (ADR-019). The handler
- * reads the source body at run time, so an already-queued job will produce the
- * right output for any later edit too; a second queued row would only bill the
- * same conversion twice.
+ * Queue a reconvert of the variation's non-source body (ADR-019). At most one
+ * queued job per variation: the handler reads the source body at run time, so
+ * a second row would only bill the same conversion twice. An already-queued
+ * job is retargeted instead, because an edit to the *other* body since it was
+ * queued means the counterpart that needs regenerating has switched sides —
+ * left alone, the stale job would convert the source into itself.
  */
-export function enqueueReconvert(db: Database, variationId: string, target: 'us' | 'metric') {
-	const queued = db
-		.prepare(`SELECT 1 FROM job WHERE variation_id = ? AND kind = 'reconvert' AND status = 'queued'`)
-		.get(variationId);
-	if (!queued) createJob(db, 'reconvert', { variation_id: variationId, target_units: target }, { variation_id: variationId });
+export function enqueueReconvert(db: Database, variationId: string, target: UnitSystem) {
+	const input = JSON.stringify({ variation_id: variationId, target_units: target });
+	const retargeted = db
+		.prepare(
+			`UPDATE job SET input_json = ?
+			 WHERE variation_id = ? AND kind = 'reconvert' AND status = 'queued'`
+		)
+		.run(input, variationId).changes;
+	if (!retargeted)
+		createJob(
+			db,
+			'reconvert',
+			{ variation_id: variationId, target_units: target },
+			{ variation_id: variationId }
+		);
 }
 
 function insertBody(
@@ -196,8 +208,8 @@ export function createRecipe(db: Database, raw: RecipeInput): string {
 		insertBody(db, variationId, input.source_units, 1, input, ts);
 		// Both unit systems always exist (ADR-019): store the known-good
 		// counterpart, or queue a reconvert to generate it.
-		if (input.counterpart) insertBody(db, variationId, other(input.source_units), 0, input.counterpart, ts);
-		else enqueueReconvert(db, variationId, other(input.source_units));
+		if (input.counterpart) insertBody(db, variationId, otherUnits(input.source_units), 0, input.counterpart, ts);
+		else enqueueReconvert(db, variationId, otherUnits(input.source_units));
 		setImages(db, id, input, ts);
 		rebuildFts(db, id);
 	})();
@@ -288,7 +300,7 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 				input.source_units,
 				cur.variation_id
 			);
-			enqueueReconvert(db, cur.variation_id, other(input.source_units));
+			enqueueReconvert(db, cur.variation_id, otherUnits(input.source_units));
 		}
 		setImages(db, recipeId, input, ts);
 		rebuildFts(db, recipeId);
@@ -368,7 +380,8 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 			ingredients: JSON.parse(b.ingredients_json),
 			steps: JSON.parse(b.steps_json)
 		};
-	const sourceRow = bodyRows.find((b) => b.is_source)!;
+	const sourceRow = bodyRows.find((b) => b.is_source);
+	if (!sourceRow) throw new Error(`Recipe ${id} has no source body.`);
 	// source_units means "the body a human last authored" (ADR-028): derived
 	// from the is_source flag, not from how the recipe was first imported.
 	const source_units = sourceRow.unit_system;
@@ -388,7 +401,7 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 			? { job_id: job.id, status: 'pending' }
 			: job?.status === 'failed'
 				? { job_id: job.id, status: 'failed' }
-				: bodies[other(source_units)]
+				: bodies[otherUnits(source_units)]
 					? null
 					: { job_id: null, status: 'failed' };
 	const meal_types = (
@@ -429,14 +442,22 @@ export function retryReconvert(db: Database, recipeId: string): void {
 			)
 			.get(recipeId) as { id: string; unit_system: 'us' | 'metric' } | undefined;
 		if (!v) throw new Error('Recipe not found.');
+		// Requeue only the latest failed job (older failures are history, and
+		// requeuing them all would bill one tap several times), and rewrite its
+		// target: is_source may have moved since the job was created.
 		const requeued = db
 			.prepare(
-				`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
-				   result_json = NULL, started_at = NULL, finished_at = NULL
-				 WHERE variation_id = ? AND kind = 'reconvert' AND status = 'failed'`
+				`UPDATE job SET status = 'queued', input_json = ?, error_code = NULL,
+				   error_text = NULL, result_json = NULL, started_at = NULL, finished_at = NULL
+				 WHERE id = (SELECT id FROM job
+				             WHERE variation_id = ? AND kind = 'reconvert' AND status = 'failed'
+				             ORDER BY created_at DESC, id DESC LIMIT 1)`
 			)
-			.run(v.id).changes;
-		if (!requeued) enqueueReconvert(db, v.id, other(v.unit_system));
+			.run(
+				JSON.stringify({ variation_id: v.id, target_units: otherUnits(v.unit_system) }),
+				v.id
+			).changes;
+		if (!requeued) enqueueReconvert(db, v.id, otherUnits(v.unit_system));
 	})();
 }
 

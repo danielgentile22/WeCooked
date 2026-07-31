@@ -2,6 +2,7 @@
 // mapping that seeds the review form from it. Shared so the drafts page
 // (client) never has to import server code for types.
 
+import { otherUnits } from '$lib/tags';
 import type {
 	BodyText,
 	IngredientGroup,
@@ -67,7 +68,7 @@ export function hasRecipe(d: RecipeDraft): boolean {
  */
 export function draftToInput(d: RecipeDraft): Partial<RecipeInput> {
 	const body = d.body[d.body.source_units];
-	const counterpart = d.body[d.body.source_units === 'us' ? 'metric' : 'us'];
+	const counterpart = d.body[otherUnits(d.body.source_units)];
 	return {
 		counterpart,
 		title: d.title,

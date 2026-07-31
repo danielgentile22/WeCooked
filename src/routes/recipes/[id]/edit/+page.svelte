@@ -1,19 +1,17 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
+	import { otherUnits } from '$lib/tags';
 
 	let { data, form } = $props();
 
 	// The counterpart body seeds the form's toggle; while a reconvert is
 	// pending or failed it may be stale, which the banner explains.
-	const counterpart = $derived(
-		data.recipe.bodies[data.recipe.source_units === 'us' ? 'metric' : 'us']
-	);
+	const counterpart = $derived(data.recipe.bodies[otherUnits(data.recipe.source_units)]);
 
-	async function retry() {
-		await fetch('?/retry', { method: 'POST', body: new FormData() });
-		await invalidateAll();
-	}
+	// D6 tap-to-retry through the hidden form + use:enhance (repo convention),
+	// so a fail(400) lands in `form` instead of vanishing into a fetch.
+	let retryForm: HTMLFormElement | undefined = $state();
 </script>
 
 <svelte:head>
@@ -31,9 +29,10 @@
 			action="?/save"
 			error={form?.error ?? null}
 			reconvert={data.recipe.reconvert}
-			onretry={retry}
+			onretry={() => retryForm?.requestSubmit()}
 		/>
 	{/key}
+	<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
 
 	<!-- D10: destructive zone at the bottom. confirm() is the native-style sheet. -->
 	<form

@@ -264,6 +264,37 @@ describe('dual bodies and reconvert (ADR-019, ADR-028)', () => {
 		expect(jobs()).toHaveLength(1);
 	});
 
+	it('editing the other body retargets a queued job instead of leaving it stale', () => {
+		// Edit metric (queues target us), then edit US before the runner fires:
+		// the queued job must now target metric, or it would convert the new
+		// source into itself and overwrite the human-authored US body.
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		updateRecipe(db, id, { ...base(), steps: ['Metric edit.'] });
+		const edited = usBody();
+		edited.steps[0] = 'US edit.';
+		updateRecipe(db, id, { ...base(), source_units: 'us', ...edited });
+		const j = jobs();
+		expect(j).toHaveLength(1);
+		expect(JSON.parse(j[0].input_json).target_units).toBe('metric');
+	});
+
+	it('retry requeues only the latest failed job, with the target corrected', () => {
+		const id = createRecipe(db, base());
+		const r = getRecipe(db, id)!;
+		db.prepare(`UPDATE job SET status = 'failed'`).run();
+		db.prepare(
+			`INSERT INTO job (id, kind, status, variation_id, input_json, created_at)
+			 VALUES ('j-old', 'reconvert', 'failed', ?, '{"variation_id":"x","target_units":"metric"}',
+			         '2020-01-01T00:00:00Z')`
+		).run(r.variation_id);
+		retryReconvert(db, id);
+		const j = jobs(r.variation_id);
+		expect(j.filter((x) => x.status === 'queued')).toHaveLength(1);
+		const requeued = j.find((x) => x.status === 'queued')!;
+		expect(requeued.id).not.toBe('j-old'); // latest failed, not the 2020 one
+		expect(JSON.parse(requeued.input_json).target_units).toBe('us');
+	});
+
 	it('search follows is_source: the edited body is what FTS indexes', () => {
 		const id = createRecipe(db, { ...base(), counterpart: usBody() });
 		const edited = usBody();

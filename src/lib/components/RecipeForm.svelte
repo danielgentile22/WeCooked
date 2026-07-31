@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star } from '@lucide/svelte';
+	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star, LoaderCircle } from '@lucide/svelte';
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
@@ -11,8 +11,10 @@
 		EFFORTS,
 		DAMAGES,
 		cleanBody,
+		otherUnits,
 		type BodyText,
-		type RecipeInput
+		type RecipeInput,
+		type UnitSystem
 	} from '$lib/tags';
 
 	let {
@@ -63,13 +65,32 @@
 		other: null
 	});
 
-	const otherUnits = (u: 'us' | 'metric') => (u === 'us' ? 'metric' : 'us');
 	const UNIT_OPTIONS = ['metric', 'us'] as const;
 
 	function fromInitial(): FormState {
 		const { counterpart, ...rest } = initial ?? {};
 		const seeded = { ...empty(), ...rest };
 		return { ...seeded, shown_units: seeded.source_units, other: counterpart ?? null };
+	}
+
+	const swapBodies = (s: FormState, u: UnitSystem): void => {
+		const current = { ingredients: s.ingredients, steps: s.steps };
+		s.ingredients = s.other!.ingredients;
+		s.steps = s.other!.steps;
+		s.other = current;
+		s.shown_units = u;
+	};
+
+	// D15: the form opens in the device's preferred system too, when that body
+	// exists. Applied to the draft only, never to the `loaded` snapshot the
+	// edited-body diff runs against.
+	function withDevicePref(s: FormState): FormState {
+		const pref: UnitSystem =
+			typeof localStorage !== 'undefined' && localStorage.getItem('units') === 'us'
+				? 'us'
+				: 'metric';
+		if (editing && s.other && pref !== s.shown_units) swapBodies(s, pref);
+		return s;
 	}
 
 	// What the server holds right now, for edited-body detection at submit:
@@ -87,7 +108,9 @@
 	// svelte-ignore state_referenced_locally
 	const stored = typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem(draftKey);
 	// svelte-ignore state_referenced_locally
-	let draft = $state<FormState>(stored ? { ...fromInitial(), ...JSON.parse(stored) } : fromInitial());
+	let draft = $state<FormState>(
+		stored ? { ...fromInitial(), ...JSON.parse(stored) } : withDevicePref(fromInitial())
+	);
 
 	// Written on every change, cleared on Save (ADR-038).
 	$effect(() => {
@@ -103,14 +126,14 @@
 			return;
 		}
 		sessionStorage.removeItem(draftKey);
-		draft = fromInitial();
+		draft = withDevicePref(fromInitial());
 		confirmReset = false;
 	}
 
 	// SPEC 7.2 field 6: when editing, the toggle swaps which body is in the
 	// inputs; typed work in the hidden body is kept. For a new recipe it just
 	// names the system the body is being typed in.
-	function showUnits(u: 'us' | 'metric') {
+	function showUnits(u: UnitSystem) {
 		if (u === draft.shown_units) return;
 		if (!editing) {
 			draft.source_units = u;
@@ -118,11 +141,7 @@
 			return;
 		}
 		if (!draft.other) return; // counterpart not generated yet
-		const current = { ingredients: draft.ingredients, steps: draft.steps };
-		draft.ingredients = draft.other.ingredients;
-		draft.steps = draft.other.steps;
-		draft.other = current;
-		draft.shown_units = u;
+		swapBodies(draft, u);
 	}
 
 	/**
@@ -140,7 +159,7 @@
 		let body = shown;
 		let counterpart: BodyText | null = null;
 		if (editing) {
-			const bodyFor = (u: 'us' | 'metric') => (u === draft.shown_units ? shown : draft.other);
+			const bodyFor = (u: UnitSystem) => (u === draft.shown_units ? shown : draft.other);
 			const src = bodyFor(loaded.source_units)!;
 			const oth = bodyFor(otherUnits(loaded.source_units));
 			const srcChanged = JSON.stringify(cleanBody(src)) !== loadedSource;
@@ -350,7 +369,7 @@
 		{#if editing && reconvert && draft.shown_units !== loaded.source_units}
 			<!-- D6: the counterpart is being regenerated from the last edit. -->
 			{#if reconvert.status === 'pending'}
-				<Banner role="status" text="Not yet updated from your edit. Updating…" />
+				<Banner role="status" icon={LoaderCircle} text="Not yet updated from your edit. Updating…" />
 			{:else}
 				<Banner
 					text="Couldn't update from your edit."

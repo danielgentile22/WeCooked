@@ -35,6 +35,11 @@ export const reconvert: JobHandler = async (job, db) => {
 		| { unit_system: 'us' | 'metric'; ingredients_json: string; steps_json: string }
 		| undefined;
 	if (!src) throw new JobError('api_error', `No source body for variation ${variation_id}.`);
+	// Superseded job: is_source moved onto the target after this was queued
+	// (enqueueReconvert retargets queued jobs, but not one already running).
+	// Converting the source into itself would overwrite the human-authored
+	// body with machine output — the exact failure ADR-028 exists to prevent.
+	if (src.unit_system === target_units) return null;
 
 	const body = await claudeCall<BodyText>(db, {
 		system: RECONVERT_SYSTEM,
