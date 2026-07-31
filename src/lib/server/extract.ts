@@ -1,12 +1,15 @@
 import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 import { hasRecipe, type RecipeDraft } from '$lib/extract';
 import type { Database } from 'better-sqlite3';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
+import type { ErrorCode } from '$lib/jobs';
 import { claudeCall } from './claude';
+import { deriveClaude } from './images';
+import { getObject } from './r2';
 import { JobError, type JobHandler } from './jobs';
 
-// The extract call (SPEC 5.4): one prompt for all three capture paths. This
-// file ships the paste and URL paths; photos reuse EXTRACT_SYSTEM and the
-// schema with different user content.
+// The extract call (SPEC 5.4): one prompt for all three capture paths, with
+// per-path user content.
 
 const BODY_SCHEMA = {
 	type: 'object',
@@ -135,14 +138,20 @@ Conversion rules:
 6. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups"
    and "500 g" over "497 g".`;
 
-/** Shared tail of every extract handler: one Claude call, then the gate. */
-async function extract(db: Database, content: string): Promise<RecipeDraft> {
+/** Shared tail of every extract handler: one Claude call, then the gate.
+ *  An empty extraction from photos means the page could not be read
+ *  (SPEC 6.4: image_unreadable), not that no recipe exists. */
+async function extract(
+	db: Database,
+	content: string | ContentBlockParam[],
+	emptyCode: ErrorCode = 'no_recipe_found'
+): Promise<RecipeDraft> {
 	const draft = await claudeCall<RecipeDraft>(db, {
 		system: EXTRACT_SYSTEM,
 		messages: [{ role: 'user', content }],
 		schema: RECIPE_DRAFT_SCHEMA
 	});
-	if (!hasRecipe(draft)) throw new JobError('no_recipe_found');
+	if (!hasRecipe(draft)) throw new JobError(emptyCode);
 	return draft;
 }
 
@@ -240,4 +249,41 @@ export const extractUrl: JobHandler = async (job, db) => {
 	let content = stripHtml(html).slice(0, 100_000);
 	if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
 	return extract(db, content);
+};
+
+// SPEC 5.4 user content, photo path: image blocks in page order, then this
+// instruction, verbatim.
+export const PHOTOS_INSTRUCTION =
+	'These images are pages of a printed cookbook, in order. They may be a two-page spread or a recipe continued on a later page. Treat them as one recipe.';
+
+/** SPEC 5.8: base64 image blocks for Claude, one per capture, in input order. */
+export function photoBlocks(claudeCopies: Buffer[]): ContentBlockParam[] {
+	return [
+		...claudeCopies.map(
+			(buf): ContentBlockParam => ({
+				type: 'image',
+				source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') }
+			})
+		),
+		{ type: 'text', text: PHOTOS_INSTRUCTION }
+	];
+}
+
+/** Handler for the extract_photos job kind: input_json is { image_ids }. */
+export const extractPhotos: JobHandler = async (job, db) => {
+	const { image_ids } = JSON.parse(job.input_json) as { image_ids: string[] };
+	const rows = db
+		.prepare(
+			`SELECT id, r2_key_full FROM image
+			 WHERE id IN (${image_ids.map(() => '?').join(',')}) AND deleted_at IS NULL`
+		)
+		.all(...image_ids) as { id: string; r2_key_full: string }[];
+	const byId = new Map(rows.map((r) => [r.id, r.r2_key_full]));
+	const keys = image_ids.map((id) => byId.get(id));
+	if (image_ids.length === 0 || keys.some((k) => !k))
+		throw new JobError('api_error', 'Capture images are missing.');
+	const copies = await Promise.all(
+		keys.map(async (key) => deriveClaude(await getObject(key!)))
+	);
+	return extract(db, photoBlocks(copies), 'image_unreadable');
 };
