@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
+import { asUrl, draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
 import { fetchPage, findRecipeJsonLd, stripHtml } from './extract';
 import { JobError } from './jobs';
 import { validateInput } from './recipes';
@@ -103,6 +103,16 @@ describe('fetchPage (SPEC 7.1 URL path)', () => {
 		expect(n).toBe(6); // initial + 5 follows
 	});
 
+	it('uses one deadline for the whole fetch, not one per redirect hop', async () => {
+		const signals: (AbortSignal | null | undefined)[] = [];
+		await fetchPage('https://x.com/a', async (url, init) => {
+			signals.push(init?.signal);
+			return signals.length === 1 ? resp(302, '', { location: '/b' }) : resp(200, 'ok');
+		});
+		expect(signals[0]).toBeInstanceOf(AbortSignal);
+		expect(signals[1]).toBe(signals[0]);
+	});
+
 	it('maps 5xx and network errors to fetch_failed', async () => {
 		expect(await code(fetchPage('https://x.com', async () => resp(500)))).toBe('fetch_failed');
 		expect(
@@ -110,6 +120,18 @@ describe('fetchPage (SPEC 7.1 URL path)', () => {
 				fetchPage('https://x.com', () => Promise.reject(new TypeError('getaddrinfo ENOTFOUND')))
 			)
 		).toBe('fetch_failed');
+	});
+});
+
+describe('asUrl (SPEC 7.1 text-or-URL detection)', () => {
+	it('passes through http(s) links and upgrades bare www hosts', () => {
+		expect(asUrl('https://smittenkitchen.com/soup')).toBe('https://smittenkitchen.com/soup');
+		expect(asUrl('www.seriouseats.com/soup')).toBe('https://www.seriouseats.com/soup');
+	});
+
+	it('treats prose as text, even prose containing a link', () => {
+		expect(asUrl('2 cups flour\n1 egg')).toBeNull();
+		expect(asUrl('from https://x.com, the best soup')).toBeNull();
 	});
 });
 

@@ -157,6 +157,8 @@ const DESKTOP_UA =
 	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 export async function fetchPage(url: string, fetchFn: typeof fetch = fetch): Promise<string> {
+	// One 10 s deadline for the whole fetch, redirects included, not per hop.
+	const signal = AbortSignal.timeout(10_000);
 	let current = url;
 	for (let hop = 0; hop <= 5; hop++) {
 		let res: Response;
@@ -164,7 +166,7 @@ export async function fetchPage(url: string, fetchFn: typeof fetch = fetch): Pro
 			res = await fetchFn(current, {
 				headers: { 'user-agent': DESKTOP_UA },
 				redirect: 'manual',
-				signal: AbortSignal.timeout(10_000)
+				signal
 			});
 		} catch (e) {
 			throw new JobError('fetch_failed', e instanceof Error ? e.message : String(e));
@@ -188,7 +190,7 @@ const isRecipeType = (d: unknown): boolean => {
 };
 
 /** SPEC 7.1 step 3: first schema.org Recipe object, including inside @graph. */
-export function findRecipeJsonLd(html: string): unknown {
+export function findRecipeJsonLd(html: string): object | null {
 	const re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 	for (const [, block] of html.matchAll(re)) {
 		let data: unknown;
@@ -200,7 +202,7 @@ export function findRecipeJsonLd(html: string): unknown {
 		const nodes = [data].flat();
 		const graphs = nodes.flatMap((d) => [(d as { '@graph'?: unknown })?.['@graph'] ?? []].flat());
 		const recipe = [...nodes, ...graphs].find(isRecipeType);
-		if (recipe) return recipe;
+		if (recipe) return recipe as object;
 	}
 	return null;
 }
@@ -225,6 +227,10 @@ export function stripHtml(html: string): string {
 		.trim();
 }
 
+// SPEC 5.4 user content, URL path: the JSON-LD preamble, verbatim.
+const JSONLD_PREAMBLE =
+	'Authoritative structured data from the page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim: ';
+
 /** Handler for the extract_url job kind: input_json is { url }. */
 export const extractUrl: JobHandler = async (job, db) => {
 	const { url } = JSON.parse(job.input_json) as { url: string };
@@ -232,7 +238,6 @@ export const extractUrl: JobHandler = async (job, db) => {
 	const jsonLd = findRecipeJsonLd(html);
 	// ponytail: 100k-char cap so a pathological page cannot blow the context.
 	let content = stripHtml(html).slice(0, 100_000);
-	if (jsonLd)
-		content += `\n\nAuthoritative structured data from the page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim: ${JSON.stringify(jsonLd)}`;
+	if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
 	return extract(db, content);
 };

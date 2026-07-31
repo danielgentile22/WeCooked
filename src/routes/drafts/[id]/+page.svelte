@@ -80,7 +80,15 @@
 			</details>
 		{/if}
 
-		<RecipeForm initial={data.initial} {draftKey} action="?/save" error={form?.error ?? null} />
+		<!-- editing only when an extraction fixed source_units; a failed draft's
+		     initial is just the carried source_url and the user picks the system. -->
+		<RecipeForm
+			initial={data.initial}
+			editing={data.status === 'done'}
+			{draftKey}
+			action="?/save"
+			error={form?.error ?? null}
+		/>
 
 		<div class="pad">
 			<form
