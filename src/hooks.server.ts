@@ -10,6 +10,7 @@ import { recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs
 import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
 import { reconvert } from '$lib/server/reconvert';
 import { scale } from '$lib/server/scale';
+import { shoppingMerge } from '$lib/server/shopping';
 
 // Job handlers land here as their features are built.
 const handlers: Handlers = {
@@ -17,7 +18,8 @@ const handlers: Handlers = {
 	extract_url: extractUrl,
 	extract_photos: extractPhotos,
 	reconvert,
-	scale
+	scale,
+	shopping_merge: shoppingMerge
 };
 
 // Guard against double-starting the runner across dev HMR reloads.
