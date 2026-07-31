@@ -12,6 +12,9 @@ import type {
 	RecipeInput
 } from '$lib/tags';
 
+/** A capture job's input_json: pasted text now; url and image ids later. */
+export type CaptureInput = { text?: string; image_ids?: string[] };
+
 export type BodyText = { ingredients: IngredientGroup[]; steps: string[] };
 
 export type BodyPair = {

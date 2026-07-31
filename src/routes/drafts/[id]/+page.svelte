@@ -11,9 +11,20 @@
 	const extracting = $derived(data.status === 'queued' || data.status === 'running');
 	const draftKey = $derived(`wc-draft:job:${data.id}`);
 
-	// A warning like "step 4 was cut off" links to the section it talks about.
+	// A warning like "step 4 was cut off" jumps to the section it talks about
+	// (issue #13: warnings banner with jump-links).
 	const jumpTarget = (w: string) =>
 		/step/i.test(w) ? '#steps' : /ingredient/i.test(w) ? '#ingredients' : null;
+	const jump = (w: string) =>
+		document.querySelector(jumpTarget(w)!)?.scrollIntoView({ behavior: 'smooth' });
+
+	// Retry must drop the sessionStorage draft: the failed view already stored
+	// an empty form state, which would otherwise shadow the fresh extraction.
+	let retryForm: HTMLFormElement | undefined = $state();
+	function retry() {
+		sessionStorage.removeItem(draftKey);
+		retryForm?.requestSubmit();
+	}
 
 	$effect(() => {
 		if (extracting) pollJob(data.id).then(() => invalidateAll());
@@ -40,29 +51,21 @@
 	{:else}
 		{#if data.status === 'failed' && data.error_text}
 			<div class="pad">
-				<Banner text={data.error_text} />
-				<form method="POST" action="?/retry" use:enhance>
-					<button type="submit" class="retry">Try again</button>
-				</form>
+				<Banner text={data.error_text} action="Try again" onaction={retry} />
+				<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
 			</div>
 		{/if}
 
 		{#if data.warnings.length > 0}
+			<!-- D6: extraction warnings go through the one Banner component. -->
 			<div class="pad">
-				<div class="warnings" role="alert">
-					<p class="whead">The extraction flagged:</p>
-					<ul>
-						{#each data.warnings as w (w)}
-							<li>
-								{#if jumpTarget(w)}
-									<a href={jumpTarget(w)}>{w}</a>
-								{:else}
-									{w}
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				</div>
+				{#each data.warnings as w (w)}
+					<Banner
+						text={w}
+						action={jumpTarget(w) ? `Jump to ${jumpTarget(w) === '#steps' ? 'steps' : 'ingredients'}` : null}
+						onaction={jumpTarget(w) ? () => jump(w) : undefined}
+					/>
+				{/each}
 			</div>
 		{/if}
 
@@ -137,36 +140,6 @@
 		to {
 			transform: rotate(360deg);
 		}
-	}
-	.retry {
-		width: 100%;
-		min-height: 3rem;
-		border: 0;
-		border-radius: 0.7rem;
-		background: var(--accent);
-		color: var(--on-accent);
-		font: inherit;
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.warnings {
-		border: 1px solid var(--line);
-		border-left: 4px solid var(--accent);
-		border-radius: 0.6rem;
-		background: var(--card);
-		padding: 0.7rem 0.9rem;
-		font-size: 0.95rem;
-	}
-	.whead {
-		font-weight: 600;
-		margin: 0 0 0.3rem;
-	}
-	.warnings ul {
-		margin: 0;
-		padding-left: 1.2rem;
-	}
-	.warnings a {
-		color: var(--accent);
 	}
 	.reasoning {
 		display: flex;

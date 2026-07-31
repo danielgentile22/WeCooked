@@ -154,14 +154,12 @@
 	{/if}
 
 	{#if data.recipes.length === 0}
-		{#if data.drafts.length === 0}
-			<p class="empty">
-				{#if q || groups.some((g) => selected[g.key].length)}
-					No recipes match.
-				{:else}
-					<a href="/recipes/new">Add your first recipe</a>
-				{/if}
-			</p>
+		<!-- Draft cards are unfiltered (SPEC 6.5), so a search miss still says so;
+		     only the first-recipe prompt is redundant while a draft sits above. -->
+		{#if q || groups.some((g) => selected[g.key].length)}
+			<p class="empty">No recipes match.</p>
+		{:else if data.drafts.length === 0}
+			<p class="empty"><a href="/recipes/new">Add your first recipe</a></p>
 		{/if}
 	{:else}
 		<ul class="list">
