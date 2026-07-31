@@ -379,10 +379,20 @@ export function restoreVariation(db: Database, id: string): { displaced: boolean
 			)
 			.get(id) as { recipe_id: string; yield_count: number } | undefined;
 		if (!v) throw new Error('Variation not found in Trash.');
+		// ADR-025: this path never touches is_original. Reachable when the recipe
+		// yield was edited onto this variation's yield after it was trashed.
+		const live = db
+			.prepare(
+				`SELECT is_original FROM variation
+				 WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL`
+			)
+			.get(v.recipe_id, v.yield_count) as { is_original: number } | undefined;
+		if (live?.is_original)
+			throw new Error('The original now uses this yield and cannot be displaced.');
 		const displaced = db
 			.prepare(
 				`UPDATE variation SET deleted_at = ?
-				 WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL`
+				 WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL AND is_original = 0`
 			)
 			.run(now(), v.recipe_id, v.yield_count).changes;
 		db.prepare('UPDATE variation SET deleted_at = NULL WHERE id = ?').run(id);
