@@ -1,11 +1,25 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Search, CookingPot } from '@lucide/svelte';
+	import { Search, CookingPot, LoaderCircle, TriangleAlert, ClipboardCheck } from '@lucide/svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import { pollJob } from '$lib/jobs';
 	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 
 	let { data } = $props();
+
+	// Watch running extractions so their cards flip without a manual refresh
+	// (SPEC 6.3 polling; survives a locked phone because the job does).
+	const watched = new Set<string>();
+	$effect(() => {
+		for (const d of data.drafts) {
+			if (d.status !== 'extracting' || watched.has(d.id)) continue;
+			watched.add(d.id);
+			pollJob(d.id)
+				.then(() => invalidateAll())
+				.catch(() => watched.delete(d.id));
+		}
+	});
 
 	const groups = [
 		{ key: 'meal', label: 'Meal', values: MEAL_TYPES },
@@ -108,14 +122,47 @@
 		{/each}
 	</div>
 
+	{#if data.drafts.length > 0}
+		<!-- D7: drafts are ordinary rows with a status line instead of tag chips. -->
+		<ul class="list">
+			{#each data.drafts as d (d.id)}
+				<li>
+					{#if d.status === 'extracting'}
+						<span class="draftrow">
+							<span class="thumb tile" aria-hidden="true"><LoaderCircle class="spin" /></span>
+							<span class="drafttext">
+								<span class="title">{d.title}</span>
+								<span class="status">Extracting…</span>
+							</span>
+						</span>
+					{:else}
+						<a href="/drafts/{d.id}">
+							<span class="thumb tile" aria-hidden="true">
+								{#if d.status === 'failed'}<TriangleAlert />{:else}<ClipboardCheck />{/if}
+							</span>
+							<span class="drafttext">
+								<span class="title">{d.title}</span>
+								<span class="status">
+									{d.status === 'failed' ? 'Failed: tap to fix' : 'Ready to review'}
+								</span>
+							</span>
+						</a>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+
 	{#if data.recipes.length === 0}
-		<p class="empty">
-			{#if q || groups.some((g) => selected[g.key].length)}
-				No recipes match.
-			{:else}
-				<a href="/recipes/new">Add your first recipe</a>
-			{/if}
-		</p>
+		{#if data.drafts.length === 0}
+			<p class="empty">
+				{#if q || groups.some((g) => selected[g.key].length)}
+					No recipes match.
+				{:else}
+					<a href="/recipes/new">Add your first recipe</a>
+				{/if}
+			</p>
+		{/if}
 	{:else}
 		<ul class="list">
 			{#each data.recipes as r (r.id)}
@@ -261,6 +308,32 @@
 		display: flex;
 		gap: 0.3rem;
 		flex: none;
+	}
+	.draftrow {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		min-height: 3.4rem;
+		padding: 0.5rem 0.2rem;
+		border-bottom: 1px solid var(--line);
+	}
+	.drafttext {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	.status {
+		color: var(--muted);
+		font-size: 0.85rem;
+	}
+	.tile :global(.spin) {
+		animation: spin 1.2s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	.trashlink {
 		text-align: center;
