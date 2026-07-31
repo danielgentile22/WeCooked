@@ -131,6 +131,8 @@
 			{/each}
 		</ul>
 	{/if}
+
+	<p class="trashlink"><a href="/trash">Trash</a></p>
 </main>
 
 <style>
@@ -234,5 +236,16 @@
 		display: flex;
 		gap: 0.3rem;
 		flex: none;
+	}
+	.trashlink {
+		text-align: center;
+		margin-top: 2rem;
+	}
+	.trashlink a {
+		display: inline-block;
+		padding: 0.6rem 1rem;
+		color: var(--muted);
+		font-size: 0.9rem;
+		font-weight: 600;
 	}
 </style>
