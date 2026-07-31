@@ -70,7 +70,7 @@ export function rebuildFts(db: Database, recipeId: string): void {
 			 FROM recipe r
 			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
 			 JOIN body b ON b.variation_id = v.id AND b.is_source = 1
-			 WHERE r.id = ?`
+			 WHERE r.id = ? AND r.deleted_at IS NULL`
 		)
 		.get(recipeId) as
 		| { title: string; cuisine: string | null; protein: string | null; effort: string; damage: string; ingredients_json: string }
@@ -337,4 +337,95 @@ export function listRecipes(db: Database, f: BrowseFilters = {}): BrowseRow[] {
 			 WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC`
 		)
 		.all(...params) as BrowseRow[];
+}
+
+// --- Soft delete and Trash (SPEC 7.7, ADR-025). No hard delete anywhere. ---
+
+export function deleteRecipe(db: Database, id: string): void {
+	db.transaction(() => {
+		db.prepare('UPDATE recipe SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(
+			now(),
+			id
+		);
+		rebuildFts(db, id);
+	})();
+}
+
+export function restoreRecipe(db: Database, id: string): void {
+	db.transaction(() => {
+		db.prepare('UPDATE recipe SET deleted_at = NULL WHERE id = ?').run(id);
+		rebuildFts(db, id);
+	})();
+}
+
+export function deleteVariation(db: Database, id: string): void {
+	const v = db
+		.prepare('SELECT is_original FROM variation WHERE id = ? AND deleted_at IS NULL')
+		.get(id) as { is_original: number } | undefined;
+	if (!v) throw new Error('Variation not found.');
+	if (v.is_original) throw new Error('The original variation cannot be deleted.');
+	db.prepare('UPDATE variation SET deleted_at = ? WHERE id = ?').run(now(), id);
+}
+
+/**
+ * Restore always wins (ADR-025): a live variation at the same yield is
+ * displaced into Trash and the restored one takes the slot.
+ */
+export function restoreVariation(db: Database, id: string): { displaced: boolean } {
+	return db.transaction(() => {
+		const v = db
+			.prepare(
+				'SELECT recipe_id, yield_count FROM variation WHERE id = ? AND deleted_at IS NOT NULL'
+			)
+			.get(id) as { recipe_id: string; yield_count: number } | undefined;
+		if (!v) throw new Error('Variation not found in Trash.');
+		// ADR-025: this path never touches is_original. Reachable when the recipe
+		// yield was edited onto this variation's yield after it was trashed.
+		const live = db
+			.prepare(
+				`SELECT is_original FROM variation
+				 WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL`
+			)
+			.get(v.recipe_id, v.yield_count) as { is_original: number } | undefined;
+		if (live?.is_original)
+			throw new Error('The original now uses this yield and cannot be displaced.');
+		const displaced = db
+			.prepare(
+				`UPDATE variation SET deleted_at = ?
+				 WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL AND is_original = 0`
+			)
+			.run(now(), v.recipe_id, v.yield_count).changes;
+		db.prepare('UPDATE variation SET deleted_at = NULL WHERE id = ?').run(id);
+		return { displaced: displaced > 0 };
+	})();
+}
+
+export type Trash = {
+	recipes: { id: string; title: string; deleted_at: string }[];
+	variations: {
+		id: string;
+		title: string;
+		yield_count: number;
+		yield_unit: string;
+		deleted_at: string;
+	}[];
+};
+
+/** D8: two groups. Variations of a deleted recipe travel with the recipe. */
+export function listTrash(db: Database): Trash {
+	return {
+		recipes: db
+			.prepare(
+				'SELECT id, title, deleted_at FROM recipe WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
+			)
+			.all() as Trash['recipes'],
+		variations: db
+			.prepare(
+				`SELECT v.id, r.title, v.yield_count, r.yield_unit, v.deleted_at
+				 FROM variation v JOIN recipe r ON r.id = v.recipe_id
+				 WHERE v.deleted_at IS NOT NULL AND r.deleted_at IS NULL
+				 ORDER BY v.deleted_at DESC`
+			)
+			.all() as Trash['variations']
+	};
 }
