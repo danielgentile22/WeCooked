@@ -5,11 +5,14 @@ primary_region = "iad"
 [env]
 DATABASE_PATH = "/data/wecooked.db"
 ORIGIN = "https://wecooked.kitchen"
+R2_BUCKET = "wecooked"
 
 [[mounts]]
 source = "data"
 destination = "/data"
 initial_size = "3gb"
+# SPEC 8.3: above the 5-day default
+snapshot_retention = 30
 
 [http_service]
 internal_port = 3000
