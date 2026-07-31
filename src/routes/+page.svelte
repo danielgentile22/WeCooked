@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Search } from '@lucide/svelte';
+	import { Search, CookingPot } from '@lucide/svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 
@@ -121,6 +121,13 @@
 			{#each data.recipes as r (r.id)}
 				<li>
 					<a href="/recipes/{r.id}">
+						{#if r.cover_url}
+							<img class="thumb" src={r.cover_url} alt="" loading="lazy" />
+						{:else}
+							<!-- D17: one identical neutral tile for every coverless recipe.
+						     Lucide's CookingPot stands in for the D16 glyph (D14: Lucide only). -->
+							<span class="thumb tile" aria-hidden="true"><CookingPot /></span>
+						{/if}
 						<span class="title">{r.title}</span>
 						<span class="rowchips">
 							<Chip label={r.effort} quiet />
@@ -227,6 +234,24 @@
 		border-bottom: 1px solid var(--line);
 		color: inherit;
 		text-decoration: none;
+	}
+	.thumb {
+		flex: none;
+		width: 3rem;
+		height: 3rem;
+		border-radius: 0.6rem;
+		object-fit: cover;
+	}
+	.tile {
+		display: grid;
+		place-items: center;
+		background: var(--card);
+		border: 1px solid var(--line);
+		color: var(--muted);
+	}
+	.tile :global(svg) {
+		width: 1.4rem;
+		height: 1.4rem;
 	}
 	.title {
 		flex: 1;

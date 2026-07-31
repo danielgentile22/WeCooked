@@ -81,4 +81,6 @@ export type RecipeInput = {
 	damage: Damage;
 	ingredients: IngredientGroup[];
 	steps: string[];
+	image_ids: string[];
+	cover_image_id: string | null;
 };
