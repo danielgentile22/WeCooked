@@ -65,6 +65,13 @@ export function presignGet(key: string, cfg?: R2Config): string {
 	return presign('GET', key, day, cfg);
 }
 
+/** Server-side download: presign a GET and fetch it. */
+export async function getObject(key: string, cfg?: R2Config): Promise<Buffer> {
+	const res = await fetch(presign('GET', key, new Date(), cfg));
+	if (!res.ok) throw new Error(`R2 GET ${key} failed: ${res.status} ${await res.text()}`);
+	return Buffer.from(await res.arrayBuffer());
+}
+
 /** Server-side upload: presign a PUT and fetch it. */
 export async function putObject(key: string, body: Uint8Array, cfg?: R2Config): Promise<void> {
 	const res = await fetch(presign('PUT', key, new Date(), cfg), {

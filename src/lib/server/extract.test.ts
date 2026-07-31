@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import sharp from 'sharp';
+import Database from 'better-sqlite3';
 import { asUrl, draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
-import { fetchPage, findRecipeJsonLd, stripHtml } from './extract';
-import { JobError } from './jobs';
+import { extractPhotos, fetchPage, findRecipeJsonLd, photoBlocks, stripHtml, PHOTOS_INSTRUCTION } from './extract';
+import { migrate } from './migrate';
+import { JobError, type JobRow } from './jobs';
+import { claudeCall } from './claude';
+import { getObject } from './r2';
+
+vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
+vi.mock('./r2', () => ({ getObject: vi.fn(), presignGet: vi.fn(), putObject: vi.fn() }));
 import { validateInput } from './recipes';
 import type { RecipeInput } from '$lib/tags';
 
@@ -186,5 +194,71 @@ describe('hasRecipe (no_recipe_found detection)', () => {
 
 	it('accepts a normal draft', () => {
 		expect(hasRecipe(draft())).toBe(true);
+	});
+});
+
+describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
+	const tinyJpeg = () =>
+		sharp({ create: { width: 40, height: 30, channels: 3, background: '#888' } })
+			.jpeg()
+			.toBuffer();
+
+	function photoDb(ids: string[]) {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		const ins = db.prepare(
+			`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+			 VALUES (?, NULL, ?, ?, 40, 30, 'capture', ?)`
+		);
+		for (const id of ids) ins.run(id, `images/${id}/full.jpg`, `images/${id}/display.jpg`, '2026');
+		return db;
+	}
+
+	const jobRow = (image_ids: string[]) =>
+		({ kind: 'extract_photos', input_json: JSON.stringify({ image_ids }) }) as JobRow;
+
+	it('sends image blocks in input order, then the spread instruction', async () => {
+		const db = photoDb(['b', 'a']);
+		vi.mocked(getObject).mockImplementation(async (key) =>
+			Buffer.concat([await tinyJpeg(), Buffer.from(key)])
+		);
+		vi.mocked(claudeCall).mockResolvedValue(draft());
+		await extractPhotos(jobRow(['b', 'a']), db);
+		const { messages } = vi.mocked(claudeCall).mock.calls.at(-1)![1];
+		const blocks = messages[0].content as { type: string; source?: { data: string } }[];
+		expect(blocks.map((b) => b.type)).toEqual(['image', 'image', 'text']);
+		// getObject was asked for the full keys in the order the ids were captured
+		expect(vi.mocked(getObject).mock.calls.map((c) => c[0])).toEqual([
+			'images/b/full.jpg',
+			'images/a/full.jpg'
+		]);
+		expect(blocks[2]).toEqual({ type: 'text', text: PHOTOS_INSTRUCTION });
+	});
+
+	it('maps an empty extraction to image_unreadable, not no_recipe_found', async () => {
+		const db = photoDb(['a']);
+		vi.mocked(getObject).mockResolvedValue(await tinyJpeg());
+		const empty = draft();
+		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		vi.mocked(claudeCall).mockResolvedValue(empty);
+		await expect(extractPhotos(jobRow(['a']), db)).rejects.toMatchObject({
+			code: 'image_unreadable'
+		});
+	});
+
+	it('fails with api_error when a referenced image row is missing', async () => {
+		await expect(extractPhotos(jobRow(['ghost']), photoDb([]))).rejects.toMatchObject({
+			code: 'api_error'
+		});
+		expect(extractPhotos(jobRow([]), photoDb([]))).rejects.toBeInstanceOf(JobError);
+	});
+
+	it('photoBlocks base64-encodes each page', async () => {
+		const buf = await tinyJpeg();
+		const blocks = photoBlocks([buf]);
+		expect(blocks[0]).toMatchObject({
+			type: 'image',
+			source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') }
+		});
 	});
 });

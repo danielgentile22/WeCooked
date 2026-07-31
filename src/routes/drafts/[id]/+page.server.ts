@@ -4,6 +4,7 @@ import db from '$lib/server/db';
 import { createRecipe } from '$lib/server/recipes';
 import { draftToInput, type CaptureInput, type RecipeDraft } from '$lib/extract';
 import { isCaptureKind, type JobRow } from '$lib/server/jobs';
+import { presignGet } from '$lib/server/r2';
 
 // The draft review page (SPEC 6.5): the job row is the draft. Done jobs seed
 // the form from result_json; failed jobs open it empty with the source text
@@ -23,6 +24,21 @@ export const load: PageServerLoad = ({ params }) => {
 		job.status === 'done' && job.result_json
 			? (JSON.parse(job.result_json) as RecipeDraft)
 			: null;
+	// Capture photos ride input_json too (ADR-024): the strip shows them on
+	// success and on failure alike, and Save claims them onto the recipe.
+	const imageIds = input.image_ids ?? [];
+	const rows = imageIds.length
+		? (db
+				.prepare(
+					`SELECT id, r2_key_display FROM image
+					 WHERE id IN (${imageIds.map(() => '?').join(',')}) AND deleted_at IS NULL`
+				)
+				.all(...imageIds) as { id: string; r2_key_display: string }[])
+		: [];
+	const byId = new Map(rows.map((r) => [r.id, r.r2_key_display]));
+	const images = imageIds
+		.filter((id) => byId.has(id))
+		.map((id) => ({ id, url: presignGet(byId.get(id)!) }));
 	return {
 		id: job.id,
 		status: job.status,
@@ -31,9 +47,9 @@ export const load: PageServerLoad = ({ params }) => {
 		// The URL rides input_json, not the extraction, so it seeds the form
 		// here: on failure too, so a fetch_blocked draft still carries its link.
 		initial: draft
-			? { ...draftToInput(draft), source_url: input.url ?? null }
-			: input.url
-				? { source_url: input.url }
+			? { ...draftToInput(draft), source_url: input.url ?? null, images }
+			: input.url || images.length
+				? { source_url: input.url ?? null, images }
 				: null,
 		warnings: draft?.extraction_warnings ?? [],
 		damage_reasoning: draft?.damage_reasoning ?? null
