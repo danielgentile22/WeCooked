@@ -4,6 +4,7 @@
 
 	let { data } = $props();
 	const r = $derived(data.recipe);
+	const cover = $derived(r.images.find((i) => i.id === r.cover_image_id) ?? null);
 	const tags = $derived(
 		[...r.meal_types, r.cuisine, r.protein, r.effort, r.damage].filter((t) => t !== null)
 	);
@@ -28,6 +29,10 @@
 			{r.yield_count}
 			{r.yield_unit}{#if times}&nbsp;· {times}{/if}
 		</p>
+		<!-- SPEC 7.4 order: title, cover image, source line -->
+		{#if cover}
+			<img class="cover" src={cover.url} alt={r.title} width={cover.width} height={cover.height} />
+		{/if}
 		{#if r.source_url}
 			<p class="source"><a href={r.source_url}>{r.source_text ?? r.source_url}</a></p>
 		{:else if r.source_text}
@@ -73,6 +78,17 @@
 			<p class="notes">{r.notes}</p>
 		</section>
 	{/if}
+
+	{#if r.images.length > 0}
+		<section aria-label="Photos">
+			<h2>Photos</h2>
+			<div class="strip">
+				{#each r.images as img (img.id)}
+					<img src={img.url} alt="" loading="lazy" />
+				{/each}
+			</div>
+		</section>
+	{/if}
 </main>
 
 <style>
@@ -80,6 +96,24 @@
 		max-width: 44rem;
 		margin: 0 auto;
 		padding: 1rem 1rem 6rem;
+	}
+	.cover {
+		width: 100%;
+		height: auto;
+		max-height: 40vh;
+		object-fit: cover;
+		border-radius: 1rem;
+		margin: 0.6rem 0 0.2rem;
+	}
+	.strip {
+		display: flex;
+		gap: 0.6rem;
+		overflow-x: auto;
+	}
+	.strip img {
+		height: 7rem;
+		border-radius: 0.6rem;
+		display: block;
 	}
 	header {
 		position: relative;

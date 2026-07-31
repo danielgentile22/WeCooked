@@ -41,8 +41,24 @@ const base = (): RecipeInput => ({
 		{ heading: null, items: ['1 onion, finely diced', '400 g tinned chickpeas'] },
 		{ heading: 'For the sauce', items: ['400 g tinned tomatoes'] }
 	],
-	steps: ['Fry the onion.', 'Add everything else and simmer.']
+	steps: ['Fry the onion.', 'Add everything else and simmer.'],
+	image_ids: [],
+	cover_image_id: null
 });
+
+/** An uploaded-but-unclaimed image row (ADR-024), as /api/images creates it. */
+function insertImage(id: string, recipeId: string | null = null) {
+	db.prepare(
+		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+		 VALUES (?, ?, ?, ?, 3000, 2000, 'photo', '2026-07-30T00:00:00Z')`
+	).run(id, recipeId, `images/${id}/full.jpg`, `images/${id}/display.jpg`);
+}
+
+const imageRow = (id: string) =>
+	db.prepare('SELECT recipe_id, deleted_at FROM image WHERE id = ?').get(id) as {
+		recipe_id: string | null;
+		deleted_at: string | null;
+	};
 
 const version = (id: string) =>
 	(db.prepare('SELECT content_version FROM recipe WHERE id = ?').get(id) as {
@@ -274,5 +290,60 @@ describe('soft delete and trash (SPEC 7.7, ADR-025)', () => {
 		expect(t.variations[0].deleted_at).toBeTruthy();
 		deleteRecipe(db, id);
 		expect(listTrash(db).variations).toHaveLength(0);
+	});
+});
+
+describe('images and cover (issue #11, ADR-024, D17)', () => {
+	it('claims uploaded images and sets the cover on create', () => {
+		insertImage('img1');
+		insertImage('img2');
+		const id = createRecipe(db, { ...base(), image_ids: ['img1', 'img2'], cover_image_id: 'img2' });
+		expect(imageRow('img1').recipe_id).toBe(id);
+		expect(imageRow('img2').recipe_id).toBe(id);
+		const r = getRecipe(db, id)!;
+		expect(r.cover_image_id).toBe('img2');
+		expect(r.images.map((i) => i.id)).toEqual(['img1', 'img2']);
+	});
+
+	it('rejects a cover that is not one of the submitted images (falls back to coverless)', () => {
+		insertImage('img1');
+		const id = createRecipe(db, { ...base(), image_ids: ['img1'], cover_image_id: 'ghost' });
+		expect(getRecipe(db, id)!.cover_image_id).toBeNull();
+	});
+
+	it('cannot claim an image that belongs to another recipe', () => {
+		const other = createRecipe(db, { ...base(), title: 'Pancakes' });
+		insertImage('theirs', other);
+		const id = createRecipe(db, { ...base(), image_ids: ['theirs'], cover_image_id: 'theirs' });
+		expect(imageRow('theirs').recipe_id).toBe(other);
+		expect(getRecipe(db, id)!.cover_image_id).toBeNull();
+	});
+
+	it('soft-deletes images removed in an edit and clears a removed cover', () => {
+		insertImage('img1');
+		insertImage('img2');
+		const id = createRecipe(db, { ...base(), image_ids: ['img1', 'img2'], cover_image_id: 'img1' });
+		updateRecipe(db, id, { ...base(), image_ids: ['img2'], cover_image_id: null });
+		expect(imageRow('img1').deleted_at).toBeTruthy();
+		expect(imageRow('img2').deleted_at).toBeNull();
+		const r = getRecipe(db, id)!;
+		expect(r.cover_image_id).toBeNull();
+		expect(r.images.map((i) => i.id)).toEqual(['img2']);
+	});
+
+	it('browse rows carry the cover display key, NULL when coverless (D17)', () => {
+		insertImage('img1');
+		const withCover = createRecipe(db, { ...base(), image_ids: ['img1'], cover_image_id: 'img1' });
+		const coverless = createRecipe(db, { ...base(), title: 'Pancakes' });
+		const rows = Object.fromEntries(listRecipes(db).map((r) => [r.id, r.cover_key]));
+		expect(rows[withCover]).toBe('images/img1/display.jpg');
+		expect(rows[coverless]).toBeNull();
+	});
+
+	it('images do not bump content_version (SPEC 7.2)', () => {
+		insertImage('img1');
+		const id = createRecipe(db, base());
+		updateRecipe(db, id, { ...base(), image_ids: ['img1'], cover_image_id: 'img1' });
+		expect(version(id)).toBe(1);
 	});
 });
