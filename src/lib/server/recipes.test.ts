@@ -10,7 +10,8 @@ import {
 	restoreRecipe,
 	deleteVariation,
 	restoreVariation,
-	listTrash
+	listTrash,
+	retryReconvert
 } from './recipes';
 import { ulid } from './ids';
 import type { RecipeInput } from '$lib/tags';
@@ -42,6 +43,7 @@ const base = (): RecipeInput => ({
 		{ heading: 'For the sauce', items: ['400 g tinned tomatoes'] }
 	],
 	steps: ['Fry the onion.', 'Add everything else and simmer.'],
+	counterpart: null,
 	image_ids: [],
 	cover_image_id: null
 });
@@ -160,17 +162,147 @@ describe('content_version bump rules (ADR-012, ADR-030)', () => {
 		expect(handEdited()).toBe(1);
 	});
 
-	it('never relabels the body unit system on edit', () => {
-		const id = createRecipe(db, base());
-		updateRecipe(db, id, { ...base(), source_units: 'us' });
-		const b = db
-			.prepare(
-				`SELECT b.unit_system FROM body b
-				 JOIN variation v ON v.id = b.variation_id WHERE v.recipe_id = ?`
-			)
-			.get(id) as { unit_system: string };
-		expect(b.unit_system).toBe('metric');
+	it('rejects an edit aimed at a body that does not exist yet', () => {
+		const id = createRecipe(db, base()); // metric only; US reconvert still queued
+		expect(() => updateRecipe(db, id, { ...base(), source_units: 'us' })).toThrow(
+			/unit system/
+		);
 		expect(getRecipe(db, id)?.source_units).toBe('metric');
+	});
+});
+
+describe('dual bodies and reconvert (ADR-019, ADR-028)', () => {
+	const usBody = () => ({
+		ingredients: [
+			{ heading: null, items: ['1 onion, finely diced', '14 oz tinned chickpeas'] },
+			{ heading: 'For the sauce', items: ['14 oz tinned tomatoes'] }
+		],
+		steps: ['Fry the onion.', 'Add everything else and simmer.']
+	});
+	const jobs = (variationId?: string) =>
+		db
+			.prepare(
+				`SELECT * FROM job WHERE kind = 'reconvert'${variationId ? ' AND variation_id = ?' : ''}`
+			)
+			.all(...(variationId ? [variationId] : [])) as {
+			id: string;
+			status: string;
+			variation_id: string;
+			input_json: string;
+		}[];
+	const bodyRows = (recipeId: string) =>
+		db
+			.prepare(
+				`SELECT b.unit_system, b.is_source FROM body b
+				 JOIN variation v ON v.id = b.variation_id
+				 WHERE v.recipe_id = ? ORDER BY b.unit_system`
+			)
+			.all(recipeId) as { unit_system: string; is_source: number }[];
+
+	it('create without a counterpart enqueues one reconvert for the other system', () => {
+		const id = createRecipe(db, base());
+		const r = getRecipe(db, id)!;
+		expect(r.bodies.metric).not.toBeNull();
+		expect(r.bodies.us).toBeNull();
+		const j = jobs(r.variation_id);
+		expect(j).toHaveLength(1);
+		expect(JSON.parse(j[0].input_json)).toEqual({
+			variation_id: r.variation_id,
+			target_units: 'us'
+		});
+		expect(r.reconvert?.status).toBe('pending');
+	});
+
+	it('create with a known-good counterpart stores both bodies and no job', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		const r = getRecipe(db, id)!;
+		expect(r.bodies.us?.ingredients[1].items).toEqual(['14 oz tinned tomatoes']);
+		expect(r.reconvert).toBeNull();
+		expect(jobs()).toHaveLength(0);
+		expect(bodyRows(id)).toEqual([
+			{ unit_system: 'metric', is_source: 1 },
+			{ unit_system: 'us', is_source: 0 }
+		]);
+	});
+
+	it('editing the source body keeps is_source and enqueues a reconvert of the counterpart', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		updateRecipe(db, id, { ...base(), steps: ['Fry the onion slowly.'] });
+		const r = getRecipe(db, id)!;
+		expect(r.source_units).toBe('metric');
+		expect(r.hand_edited).toBe(true);
+		expect(JSON.parse(jobs(r.variation_id)[0].input_json).target_units).toBe('us');
+		expect(r.reconvert?.status).toBe('pending');
+	});
+
+	it('editing the counterpart body moves is_source to it (ADR-028)', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		const edited = usBody();
+		edited.steps[0] = 'Fry the onion in butter.';
+		updateRecipe(db, id, { ...base(), source_units: 'us', ...edited });
+		const r = getRecipe(db, id)!;
+		expect(r.source_units).toBe('us');
+		expect(r.steps[0]).toBe('Fry the onion in butter.');
+		expect(bodyRows(id)).toEqual([
+			{ unit_system: 'metric', is_source: 0 },
+			{ unit_system: 'us', is_source: 1 }
+		]);
+		expect(JSON.parse(jobs(r.variation_id)[0].input_json).target_units).toBe('metric');
+	});
+
+	it('an unchanged save neither moves is_source nor spends a reconvert', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		updateRecipe(db, id, { ...base(), source_units: 'us', ...usBody() }); // client false positive
+		expect(getRecipe(db, id)!.source_units).toBe('metric');
+		expect(jobs()).toHaveLength(0);
+	});
+
+	it('a second edit does not stack a second queued job', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		updateRecipe(db, id, { ...base(), steps: ['Edit one.'] });
+		updateRecipe(db, id, { ...base(), steps: ['Edit two.'] });
+		expect(jobs()).toHaveLength(1);
+	});
+
+	it('search follows is_source: the edited body is what FTS indexes', () => {
+		const id = createRecipe(db, { ...base(), counterpart: usBody() });
+		const edited = usBody();
+		edited.ingredients[0].items[1] = '14 oz tinned garbanzos';
+		updateRecipe(db, id, { ...base(), source_units: 'us', ...edited });
+		expect(listRecipes(db, { q: 'garbanzo' })).toHaveLength(1);
+	});
+
+	it('getRecipe maps job states: queued is pending, failed is failed, done is null', () => {
+		const id = createRecipe(db, base());
+		const r = getRecipe(db, id)!;
+		expect(r.reconvert).toEqual({ job_id: jobs()[0].id, status: 'pending' });
+		db.prepare(`UPDATE job SET status = 'failed' WHERE id = ?`).run(jobs()[0].id);
+		expect(getRecipe(db, id)!.reconvert?.status).toBe('failed');
+		// what the reconvert handler would do on success
+		db.prepare(
+			`INSERT INTO body (id, variation_id, unit_system, is_source, ingredients_json, steps_json, created_at, updated_at)
+			 VALUES ('b-us', ?, 'us', 0, '[]', '[]', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`
+		).run(r.variation_id);
+		db.prepare(`UPDATE job SET status = 'done' WHERE id = ?`).run(jobs()[0].id);
+		expect(getRecipe(db, id)!.reconvert).toBeNull();
+	});
+
+	it('a missing counterpart with no job reads as failed, so retry can rebuild it', () => {
+		const id = createRecipe(db, base());
+		db.prepare(`DELETE FROM job`).run();
+		expect(getRecipe(db, id)!.reconvert).toEqual({ job_id: null, status: 'failed' });
+		retryReconvert(db, id);
+		expect(jobs()).toHaveLength(1);
+		expect(jobs()[0].status).toBe('queued');
+	});
+
+	it('retryReconvert requeues a failed job in place', () => {
+		const id = createRecipe(db, base());
+		db.prepare(`UPDATE job SET status = 'failed', error_code = 'api_error'`).run();
+		retryReconvert(db, id);
+		const j = jobs();
+		expect(j).toHaveLength(1);
+		expect(j[0].status).toBe('queued');
 	});
 });
 

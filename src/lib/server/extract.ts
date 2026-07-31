@@ -11,7 +11,7 @@ import { JobError, type JobHandler } from './jobs';
 // The extract call (SPEC 5.4): one prompt for all three capture paths, with
 // per-path user content.
 
-const BODY_SCHEMA = {
+export const BODY_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
 	properties: {
@@ -81,6 +81,21 @@ export const RECIPE_DRAFT_SCHEMA = {
 	]
 };
 
+// SPEC 5.3: the conversion rules apply everywhere a body pair is produced,
+// so extract and reconvert share them verbatim.
+export const CONVERSION_RULES = `Conversion rules:
+1. Convert quantities ingredient-aware: a cup of flour is about 120 g, a cup
+   of honey is about 340 g. Never apply a generic volume-to-weight ratio.
+2. Convert inside step text too, not just the ingredient list.
+3. Convert oven temperatures, rounding to real oven settings (375°F becomes
+   190°C, not 190.6°C).
+4. Convert pan and tin sizes (9 inch becomes 23 cm).
+5. Convert nothing else: leave ingredient names, technique, and phrasing
+   identical between the two bodies. The two versions must read as the same
+   recipe.
+6. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups"
+   and "500 g" over "497 g".`;
+
 // SPEC 5.4 system prompt skeleton + 3.4 vocabulary and rubric + 5.3
 // conversion rules.
 export const EXTRACT_SYSTEM = `You extract recipes into structured data for a private two-person recipe book.
@@ -125,18 +140,7 @@ Plates and cutlery you eat off do not count. Anything rinsed and reused
 mid-recipe does not count. Total 0 to 2 is tidy, 3 to 5 is messy, 6 or more
 is carnage.
 
-Conversion rules:
-1. Convert quantities ingredient-aware: a cup of flour is about 120 g, a cup
-   of honey is about 340 g. Never apply a generic volume-to-weight ratio.
-2. Convert inside step text too, not just the ingredient list.
-3. Convert oven temperatures, rounding to real oven settings (375°F becomes
-   190°C, not 190.6°C).
-4. Convert pan and tin sizes (9 inch becomes 23 cm).
-5. Convert nothing else: leave ingredient names, technique, and phrasing
-   identical between the two bodies. The two versions must read as the same
-   recipe.
-6. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups"
-   and "500 g" over "497 g".`;
+${CONVERSION_RULES}`;
 
 /** Shared tail of every extract handler: one Claude call, then the gate.
  *  An empty extraction from photos means the page could not be read

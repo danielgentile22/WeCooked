@@ -1,7 +1,19 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
 
 	let { data, form } = $props();
+
+	// The counterpart body seeds the form's toggle; while a reconvert is
+	// pending or failed it may be stale, which the banner explains.
+	const counterpart = $derived(
+		data.recipe.bodies[data.recipe.source_units === 'us' ? 'metric' : 'us']
+	);
+
+	async function retry() {
+		await fetch('?/retry', { method: 'POST', body: new FormData() });
+		await invalidateAll();
+	}
 </script>
 
 <svelte:head>
@@ -14,9 +26,12 @@
 	</header>
 	{#key data.recipe.id}
 		<RecipeForm
-			initial={data.recipe}
+			initial={{ ...data.recipe, counterpart }}
 			draftKey="wc-draft:recipe:{data.recipe.id}"
+			action="?/save"
 			error={form?.error ?? null}
+			reconvert={data.recipe.reconvert}
+			onretry={retry}
 		/>
 	{/key}
 

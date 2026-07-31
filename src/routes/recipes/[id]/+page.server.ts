@@ -1,7 +1,7 @@
-import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import { error, fail } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
-import { getRecipe } from '$lib/server/recipes';
+import { getRecipe, retryReconvert } from '$lib/server/recipes';
 import { presignGet } from '$lib/server/r2';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -18,4 +18,16 @@ export const load: PageServerLoad = async ({ params }) => {
 			}))
 		}
 	};
+};
+
+export const actions: Actions = {
+	// D6 "tap to retry": requeue (or start) the counterpart reconvert.
+	retry: async ({ params }) => {
+		try {
+			retryReconvert(db, params.id);
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Could not retry.' });
+		}
+		return { ok: true };
+	}
 };
