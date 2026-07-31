@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { Pencil, LoaderCircle } from '@lucide/svelte';
 	import { onMount } from 'svelte';
+	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import Chip from '$lib/components/Chip.svelte';
 	import Banner from '$lib/components/Banner.svelte';
 	import { pollJob } from '$lib/jobs';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const r = $derived(data.recipe);
 
 	// D15: US/metric per device, metric default. Read after mount so SSR and
@@ -36,10 +37,9 @@
 		pollJob(job.job_id).then(() => invalidateAll());
 	});
 
-	async function retry() {
-		await fetch('?/retry', { method: 'POST', body: new FormData() });
-		await invalidateAll(); // picks up the requeued job; the effect polls it
-	}
+	// D6 tap-to-retry goes through the hidden form + use:enhance, same as the
+	// drafts page, so a fail(400) surfaces instead of vanishing into a fetch.
+	let retryForm: HTMLFormElement | undefined = $state();
 
 	const UNIT_OPTIONS = ['metric', 'us'] as const;
 	const cover = $derived(r.images.find((i) => i.id === r.cover_image_id) ?? null);
@@ -104,7 +104,15 @@
 				text="Not yet updated from your edit. Updating…"
 			/>
 		{:else}
-			<Banner text="Couldn't update from your edit." action="Tap to retry" onaction={retry} />
+			<Banner
+				text="Couldn't update from your edit."
+				action="Tap to retry"
+				onaction={() => retryForm?.requestSubmit()}
+			/>
+			<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
+		{/if}
+		{#if form?.error}
+			<Banner text={form.error} />
 		{/if}
 	{/if}
 

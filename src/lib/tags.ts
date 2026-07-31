@@ -63,6 +63,9 @@ export type Damage = (typeof DAMAGES)[number];
 
 export type IngredientGroup = { heading: string | null; items: string[] };
 
+export type UnitSystem = 'us' | 'metric';
+export const otherUnits = (u: UnitSystem): UnitSystem => (u === 'us' ? 'metric' : 'us');
+
 /** One body's text: what the form edits and reconvert regenerates. */
 export type BodyText = { ingredients: IngredientGroup[]; steps: string[] };
 

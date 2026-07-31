@@ -104,6 +104,21 @@ describe('reconvert handler (SPEC 5.6, ADR-019)', () => {
 		expect(bodies(vid)).toHaveLength(2);
 	});
 
+	it('is a no-op when is_source moved onto the target while the job was in flight', async () => {
+		// ADR-028: a superseded job must never overwrite the human-authored body.
+		createRecipe(db, { ...input(), counterpart: usBody() });
+		const vid = (db.prepare(`SELECT id FROM variation`).get() as { id: string }).id;
+		db.prepare(
+			`INSERT INTO job (id, kind, status, variation_id, input_json, created_at)
+			 VALUES ('j1', 'reconvert', 'queued', ?, ?, '2026-01-01T00:00:00Z')`
+		).run(vid, JSON.stringify({ variation_id: vid, target_units: 'metric' }));
+		await reconvert(queuedJob(), db);
+		expect(claudeCall).not.toHaveBeenCalled();
+		const [metric] = bodies(vid);
+		expect(metric).toMatchObject({ unit_system: 'metric', is_source: 1 });
+		expect(JSON.parse(metric.ingredients_json)[0].items).toEqual(['400 g tinned chickpeas']);
+	});
+
 	it('fails cleanly when the variation has no source body', async () => {
 		db.prepare(
 			`INSERT INTO job (id, kind, status, input_json, created_at)
