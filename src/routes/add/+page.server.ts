@@ -24,14 +24,17 @@ export const actions: Actions = {
 		try {
 			image_ids = JSON.parse(String((await request.formData()).get('image_ids') ?? ''));
 		} catch {
-			return fail(400, { error: 'Malformed submission.' });
+			return fail(400, { photoError: 'Malformed submission.' });
 		}
 		if (
 			!Array.isArray(image_ids) ||
 			image_ids.length === 0 ||
 			image_ids.some((i) => typeof i !== 'string')
 		)
-			return fail(400, { error: 'Add at least one photo first.' });
+			return fail(400, { photoError: 'Add at least one photo first.' });
+		// SPEC 5.8 headroom: one recipe never spans this many pages, and a cap
+		// bounds the sharp fan-out and the request Claude sees.
+		if (image_ids.length > 8) return fail(400, { photoError: 'At most 8 pages per recipe.' });
 		createJob(db, 'extract_photos', { image_ids });
 		redirect(303, '/');
 	}
