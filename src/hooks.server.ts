@@ -9,17 +9,21 @@ import db from '$lib/server/db'; // opens the database and runs migrations at bo
 import { recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
 import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
 import { reconvert } from '$lib/server/reconvert';
+import { scale } from '$lib/server/scale';
 
 // Job handlers land here as their features are built.
 const handlers: Handlers = {
 	extract_paste: extractPaste,
 	extract_url: extractUrl,
 	extract_photos: extractPhotos,
-	reconvert
+	reconvert,
+	scale
 };
 
 // Guard against double-starting the runner across dev HMR reloads.
-const g = globalThis as typeof globalThis & { __jobRunner?: { stop: () => void } };
+const g = globalThis as typeof globalThis & {
+	__jobRunner?: { stop: () => void };
+};
 if (!g.__jobRunner) {
 	recoverInterrupted(db); // SPEC 6.2
 	g.__jobRunner = startRunner(db, handlers);
