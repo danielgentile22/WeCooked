@@ -2,7 +2,9 @@
 
 Status: build-ready. Written 2026-07-27. Amended 2026-07-29 after a pre-build
 review that resolved contradictions and gaps; those changes are recorded as
-ADR-024 to ADR-032.
+ADR-024 to ADR-032. Amended 2026-07-30 after a second grilling round that
+settled the questions the prototypes and the first review left open; recorded
+as ADR-033 to ADR-040.
 
 This document is the contract for building v1. A fresh agent session should be
 able to implement the whole application from this file without asking a design
@@ -340,8 +342,7 @@ CREATE TABLE job_quota (
 );
 
 CREATE TABLE shopping_list (
-  id         TEXT PRIMARY KEY,
-  is_active  INTEGER NOT NULL DEFAULT 1,
+  id         TEXT PRIMARY KEY,   -- exactly one row, ever (ADR-034)
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -721,9 +722,19 @@ There is no draft state in the `recipe` table and no placeholder rows
 holds the source (URL, pasted text, or uploaded image ids), `result_json`
 holds the extraction once done. The review form is seeded from those. Photos
 uploaded before extraction have `recipe_id = NULL` and are claimed by the
-recipe on save. The browse list unions in queued, running, and failed capture
-jobs as cards ("extracting", "failed, tap to fix") above the saved recipes,
-so a recipe row always means a human confirmed it (Goal 1).
+recipe on save. The browse list unions in every capture job that has not yet
+produced a recipe, as cards above the saved recipes: queued and running
+("extracting"), failed ("failed, tap to fix"), and done but unsaved ("ready
+to review"). On Save the new recipe's id is written to the job row's
+`recipe_id`, so the card condition is simply capture kind plus
+`recipe_id IS NULL`; saved jobs disappear from browse but stay in the table
+(ADR-035). A recipe row always means a human confirmed it (Goal 1).
+
+Failed and ready-to-review drafts carry a **Discard** action (in the review
+form, not a swipe gesture). Discard hard-deletes the job row and soft-deletes
+its capture images: a job row is machine output, not human work, so the
+no-silent-destruction principle does not apply to it (ADR-035). Running jobs
+cannot be cancelled; they finish in seconds and can then be discarded.
 
 ---
 
@@ -812,12 +823,21 @@ Save rules:
   therefore marks scaled variations stale (ADR-012). Editing title, tags, notes,
   source, or images does not.
 - Saving rebuilds the `recipe_fts` row.
+- The form keeps a **sessionStorage draft**, keyed by job id (recipe id when
+  editing an existing recipe, a fixed key for manual entry): written on every
+  change, restored silently when the same form reopens, cleared on Save or
+  Discard (ADR-038). No server-side drafts, no beforeunload prompt; iOS
+  evicting the PWA mid-edit must not cost typed corrections.
+- Concurrent saves from both phones are **last write wins**, accepted and
+  recorded as known risk 7 (ADR-039).
 
 ### 7.3 Browse and search
 
 One list, newest first. Each row: cover thumbnail, title, effort chip, damage
-chip. Pending and failed capture jobs appear as cards at the top (section
-6.5); they are read from the `job` table, not phantom recipe rows.
+chip. A recipe with no cover shows a neutral tile: surface color with the D16
+pot glyph, identical for every coverless recipe (UI.md D17). Unsaved capture
+jobs appear as cards at the top (section 6.5); they are read from the `job`
+table, not phantom recipe rows.
 
 A search box filters as you type, server-side, over `recipe_fts` (title,
 ingredients, tags). Below it, tag chips act as filters, combined with AND across
@@ -851,10 +871,12 @@ Behaviour:
 - **Wake lock while a recipe is open.** `navigator.wakeLock.request('screen')`,
   re-acquired on `visibilitychange`, released on navigate away. Non-negotiable
   for a cooking app.
-- **Tap a step or ingredient to strike it through.** Ephemeral, per device,
-  cleared on leaving the recipe. No DB writes, no sync. (Contrast with shopping
-  list ticks, which are shared and persisted, because one person is in the shop
-  and the other is at home.)
+- **Tap a step or ingredient to strike it through.** Per session, per device:
+  kept in `sessionStorage` keyed by variation id, so strikes survive a locked
+  phone or an accidental tab-away mid-cook, and evaporate by the next day
+  (ADR-036). No DB writes, no sync. (Contrast with shopping list ticks, which
+  are shared and persisted, because one person is in the shop and the other is
+  at home.)
 - **Large type by default**, sized for arm's length rather than phone-in-hand.
 
 ### 7.5 Portion variations
@@ -866,6 +888,11 @@ triggers work** (ADR-012).
   spinner, because they are saved rows.
 - The stepper picks a number you do not have. Moving 4 to 5 to 6 to 7 does
   nothing at all.
+- The stepper moves in whole steps, and the number itself is a tappable
+  numeric input accepting any positive value with up to one decimal place
+  (ADR-037): 0.5 halves a 1-litre stock, and "2 loaves" can become 1. Input
+  is rounded to one decimal; zero and negatives are rejected. Chips display
+  the decimal as typed.
 - When the chosen number has no variation, a button appears: **"Calculate for
   7"**. Only that button spends money.
 - While the job runs, the screen keeps showing the recipe you were reading, with
@@ -917,13 +944,22 @@ List behaviour:
 - Every line records which recipes it came from, so removing a recipe makes the
   consequences visible.
 - **Ticking is shared and persisted.** Both phones see the same ticks. This is
-  the one piece of state that must sync.
+  the one piece of state that must sync, and it syncs by polling (ADR-033):
+  while the Shopping tab is visible, the client polls `GET /api/shopping-list`
+  every 5 s, pauses when the page is hidden, and refetches immediately on
+  `visibilitychange` back to visible. A tick is a per-item POST, applied
+  optimistically on the ticking phone. Conflicts are last write wins per item;
+  a double tick is idempotent. No websockets.
 - Manual lines can be added by hand and survive rebuilds.
 - Changing the recipe set rebuilds the merge. Ticks are preserved where item
   text matches exactly and reset otherwise. This is a deliberately dumb rule:
   fuzzy matching would sometimes keep a tick it should not, which is worse in a
   shop than an extra unticked line.
-- "Done shopping" clears the list.
+- **"Done shopping"** hard-deletes every item (manual lines included: done
+  means you bought the bin bags) and every `shopping_list_recipe` row, behind
+  the two-step confirmation settled in the prototype. The single
+  `shopping_list` row lives for the app's whole life; there is no archive and
+  no list history (ADR-034).
 
 ### 7.7 Trash
 
@@ -1045,6 +1081,20 @@ A naively-signed URL changes on every render and defeats caching entirely.
 - No service worker in v1. Offline is out of scope, and a service worker with
   nothing to cache is a stale-asset bug waiting to happen.
 
+### 8.8 Tests
+
+Vitest (already in the SvelteKit template), unit tests only, covering the
+handful of pure logic where a silent bug costs real work (ADR-040):
+
+1. The EXIF rotation fixture (section 8.2), the one test the spec mandates.
+2. `content_version` bump rules: which edits mark variations stale.
+3. Tick preservation on rebuild: exact text match keeps, anything else resets.
+4. The migration runner.
+5. The daily-cap check in the API wrapper.
+
+No browser or E2E suite, no component tests, no coverage targets. Two users,
+and the review form is the integration test.
+
 ---
 
 ## 9. Deployment and operations
@@ -1165,3 +1215,7 @@ shopping list are produced before phase 3, and reviewed by the owner.
    last hand-edited body (ADR-028). That is the mitigation.
 6. **Medium-effort token overhead is estimated, not documented.** Watch the
    first month's actual bill.
+7. **Concurrent edits are last write wins.** Both phones saving the same
+   recipe means the first save is silently overwritten (ADR-039). Accepted:
+   it is the same exposure as risk 1, and locking machinery for a two-person
+   household is not worth it.

@@ -124,6 +124,13 @@ session, exported at 180, 192, and 512 plus a maskable 512 (SPEC 8.7).
 `theme_color` and `background_color` match the accent and background from D4,
 with sensible dark-mode values.
 
+## D17. Missing-cover fallback
+
+Added 2026-07-30 (second grilling round). A recipe with no cover image shows
+a neutral tile: surface color with the D16 pot glyph, identical for every
+coverless recipe. No initials, no hashed per-recipe colors: that
+reintroduces meaning by color and reads as a contacts app.
+
 ---
 
 ## Prototypes
