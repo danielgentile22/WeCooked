@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Pencil, LoaderCircle, Check } from '@lucide/svelte';
+	import { Pencil, LoaderCircle, Check, Minus, Plus } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -13,9 +13,18 @@
 	// --- Yield control (SPEC 7.5). Changing the number never triggers work:
 	// only the Calculate button submits anything.
 	let countStr = $state('');
+	let showChipDetail = $state(false);
+	let lastVariation: string | null = null;
 	$effect(() => {
-		// snap to the viewed yield on switch, and back on return (remount)
-		countStr = String(r.yield_count);
+		// snap to the viewed yield on switch, and back on return (remount), and
+		// drop banners and detail that belonged to the previous variation
+		if (r.variation_id !== lastVariation) {
+			lastVariation = r.variation_id;
+			countStr = String(r.yield_count);
+			justUpdated = false;
+			calcError = null;
+			showChipDetail = false;
+		}
 	});
 	const count = $derived(Math.round(Number(countStr) * 10) / 10);
 	const countValid = $derived(Number.isFinite(count) && count > 0);
@@ -33,6 +42,7 @@
 	// survives a locked phone and reload) or from a just-submitted action.
 	let calc = $state<{ job_id: string; to_count: number } | null>(null);
 	let calcError = $state<string | null>(null);
+	let justUpdated = $state(false);
 	$effect(() => {
 		if (data.calcJob?.status === 'pending' && !calc)
 			calc = { job_id: data.calcJob.job_id, to_count: data.calcJob.to_count };
@@ -56,7 +66,6 @@
 	});
 
 	// Stale-while-revalidate refresh of an untouched variation (ADR-029).
-	let justUpdated = $state(false);
 	let refreshPolled: string | null = null;
 	$effect(() => {
 		const jid = data.refresh?.status === 'pending' ? data.refresh.job_id : null;
@@ -148,7 +157,10 @@
 		{:else if r.source_text}
 			<p class="source">{r.source_text}</p>
 		{/if}
-		<a class="edit" href="/recipes/{r.id}/edit"><Pencil aria-hidden="true" /> Edit</a>
+		<!-- Editing a scaled variation edits its body (hand edits, SPEC 7.5). -->
+		<a class="edit" href="/recipes/{r.id}/edit{r.is_original ? '' : `?v=${r.variation_id}`}"
+			><Pencil aria-hidden="true" /> Edit</a
+		>
 	</header>
 
 	<div class="chips">
@@ -162,23 +174,64 @@
 	<div class="yield" role="group" aria-label="Yield">
 		<div class="chips ychips">
 			{#each r.variations as v (v.id)}
+				<!-- Tapping the viewed chip opens its detail (D10 delete lives there). -->
 				<Chip
 					label={v.is_original ? `${v.yield_count} · original` : String(v.yield_count)}
 					selected={v.id === r.variation_id}
-					onclick={() => switchTo(v.id)}
+					onclick={() =>
+						v.id === r.variation_id
+							? (showChipDetail = !showChipDetail && !v.is_original)
+							: switchTo(v.id)}
 				/>
 			{/each}
 		</div>
+		{#if showChipDetail && !r.is_original}
+			<!-- D10: delete variation behind the chip's detail; the original never
+			     deletable (SPEC 7.5). Trash is the safety net. -->
+			<form
+				class="chipdetail"
+				method="POST"
+				action="?/deleteVariation"
+				use:enhance={() =>
+					async ({ result, update }) => {
+						if (result.type === 'success') await goto(`/recipes/${r.id}`, { invalidateAll: true });
+						else await update();
+					}}
+			>
+				<input type="hidden" name="variation_id" value={r.variation_id} />
+				<button
+					type="submit"
+					class="delvar"
+					onclick={(e) => {
+						if (!confirm(`Delete the ${r.yield_count}-${r.yield_unit} version? It goes to Trash.`))
+							e.preventDefault();
+					}}
+				>
+					Delete this variation
+				</button>
+			</form>
+		{/if}
 		<form method="POST" action="?/calculate" class="stepper" use:enhance={watchJob}>
-			<button type="button" onclick={() => step(-1)} aria-label="Fewer {r.yield_unit}">−</button>
+			<button type="button" onclick={() => step(-1)} aria-label="Fewer {r.yield_unit}">
+				<Minus aria-hidden="true" />
+			</button>
 			<input
 				name="to_count"
 				type="text"
 				inputmode="decimal"
 				bind:value={countStr}
 				aria-label="Yield count"
+				onkeydown={(e) => {
+					// Enter must never spend money (SPEC 7.5); it just commits the number.
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						e.currentTarget.blur();
+					}
+				}}
 			/>
-			<button type="button" onclick={() => step(1)} aria-label="More {r.yield_unit}">+</button>
+			<button type="button" onclick={() => step(1)} aria-label="More {r.yield_unit}">
+				<Plus aria-hidden="true" />
+			</button>
 			<span class="yunit">{r.yield_unit}</span>
 			{#if countValid && matching && matching.id !== r.variation_id}
 				<button type="button" class="calc" onclick={() => switchTo(matching.id)}>
@@ -206,7 +259,9 @@
 	{#if data.refresh?.status === 'pending'}
 		<Banner role="status" icon={LoaderCircle} text="The original changed, updating this version…" />
 	{:else if data.refresh?.status === 'failed'}
-		<form method="POST" action="?/retryScale" use:enhance={watchJob} bind:this={retryScaleForm} hidden>
+		<!-- Plain enhance: success invalidates, load sees the requeued job and
+		     shows the updating banner (not the calculate one). -->
+		<form method="POST" action="?/retryScale" use:enhance bind:this={retryScaleForm} hidden>
 			<input type="hidden" name="variation_id" value={r.variation_id} />
 		</form>
 		<Banner
@@ -272,7 +327,11 @@
 				action="Tap to retry"
 				onaction={() => retryForm?.requestSubmit()}
 			/>
-			<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
+			<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden>
+				{#if !r.is_original}
+					<input type="hidden" name="variation_id" value={r.variation_id} />
+				{/if}
+			</form>
 		{/if}
 		{#if form?.error}
 			<Banner text={form.error} />
@@ -327,31 +386,6 @@
 		</section>
 	{/if}
 
-	<!-- D10: delete variation behind the chip's detail; the original never
-	     deletable (SPEC 7.5). Trash is the safety net. -->
-	{#if !r.is_original}
-		<form
-			method="POST"
-			action="?/deleteVariation"
-			use:enhance={() =>
-				async ({ result, update }) => {
-					if (result.type === 'success') await goto(`/recipes/${r.id}`, { invalidateAll: true });
-					else await update();
-				}}
-		>
-			<input type="hidden" name="variation_id" value={r.variation_id} />
-			<button
-				type="submit"
-				class="delvar"
-				onclick={(e) => {
-					if (!confirm(`Delete the ${r.yield_count}-${r.yield_unit} version? It goes to Trash.`))
-						e.preventDefault();
-				}}
-			>
-				Delete this variation
-			</button>
-		</form>
-	{/if}
 </main>
 
 <style>
@@ -437,6 +471,9 @@
 		margin-top: 0.6rem;
 	}
 	.stepper > button:not(.calc) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		width: 2.75rem;
 		min-height: 2.75rem;
 		border: 1.5px solid var(--line);
@@ -444,8 +481,14 @@
 		background: var(--card);
 		color: inherit;
 		font: inherit;
-		font-size: 1.3rem;
 		cursor: pointer;
+	}
+	.stepper > button:not(.calc) :global(svg) {
+		width: 1.2em;
+		height: 1.2em;
+	}
+	.chipdetail {
+		margin-top: 0.4rem;
 	}
 	.stepper input {
 		width: 4rem;
@@ -497,14 +540,13 @@
 		margin: 0.6rem 0 0;
 	}
 	.delvar {
-		display: block;
-		margin: 1.4rem auto 0;
 		min-height: 2.75rem;
-		padding: 0 1rem;
+		padding: 0 0.5rem;
 		border: 0;
 		background: none;
 		color: var(--danger);
 		font: inherit;
+		font-size: 0.95rem;
 		font-weight: 600;
 		cursor: pointer;
 		text-decoration: underline;

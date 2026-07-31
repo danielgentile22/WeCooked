@@ -298,6 +298,59 @@ describe('recalculate and keep mine (SPEC 7.5, ADR-025)', () => {
 	});
 });
 
+describe('editing a scaled variation (SPEC 7.5 hand edits)', () => {
+	async function makeScaled(rid: string): Promise<string> {
+		const { job_id } = requestScale(db, rid, 6) as { job_id: string };
+		vi.mocked(claudeCall).mockResolvedValue(scaledResult(21));
+		const { variation_id } = (await scale(jobRow(job_id), db)) as { variation_id: string };
+		vi.mocked(claudeCall).mockReset();
+		return variation_id;
+	}
+
+	it('marks it hand_edited without bumping content_version or clearing staleness', async () => {
+		const rid = createRecipe(db, input());
+		const vid = await makeScaled(rid);
+		updateRecipe(
+			db,
+			rid,
+			{
+				...input(),
+				yield_count: 6,
+				ingredients: [{ heading: null, items: ['2 kg tinned chickpeas'] }],
+				counterpart: null
+			},
+			vid
+		);
+		const v = db
+			.prepare(`SELECT hand_edited, based_on_content_version FROM variation WHERE id = ?`)
+			.get(vid) as { hand_edited: number; based_on_content_version: number };
+		expect(v.hand_edited).toBe(1);
+		expect(v.based_on_content_version).toBe(1); // untouched: not Keep mine's job
+		const version = (
+			db.prepare(`SELECT content_version FROM recipe WHERE id = ?`).get(rid) as {
+				content_version: number;
+			}
+		).content_version;
+		expect(version).toBe(1); // editing a sibling never marks others stale
+		// the counterpart regenerates from the edited body (ADR-019)
+		expect(
+			db
+				.prepare(`SELECT count(*) c FROM job WHERE kind = 'reconvert' AND variation_id = ?`)
+				.get(vid)
+		).toEqual({ c: 1 });
+	});
+
+	it('rejects moving a yield onto an existing variation with a friendly message', async () => {
+		const rid = createRecipe(db, input());
+		const vid = await makeScaled(rid);
+		expect(() => updateRecipe(db, rid, { ...input(), yield_count: 4 }, vid)).toThrow(
+			/already exists/
+		);
+		// and the original cannot take a scaled variation's yield either
+		expect(() => updateRecipe(db, rid, { ...input(), yield_count: 6 })).toThrow(/already exists/);
+	});
+});
+
 describe('getRecipe with variations (SPEC 7.4/7.5)', () => {
 	it('lists variations with staleness and selects one by id', async () => {
 		const rid = createRecipe(db, input());

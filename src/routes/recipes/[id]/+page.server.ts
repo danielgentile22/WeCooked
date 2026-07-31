@@ -68,9 +68,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 export const actions: Actions = {
 	// D6 "tap to retry": requeue (or start) the counterpart reconvert.
-	retry: async ({ params }) => {
+	retry: async ({ params, request }) => {
 		try {
-			retryReconvert(db, params.id);
+			const vid = String((await request.formData()).get('variation_id') ?? '') || undefined;
+			retryReconvert(db, params.id, vid);
 		} catch (e) {
 			return fail(400, {
 				error: e instanceof Error ? e.message : 'Could not retry.'
