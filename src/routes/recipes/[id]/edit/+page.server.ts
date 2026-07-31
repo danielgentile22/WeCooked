@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
-import { getRecipe, updateRecipe } from '$lib/server/recipes';
+import { getRecipe, retryReconvert, updateRecipe } from '$lib/server/recipes';
 import { presignGet } from '$lib/server/r2';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -17,7 +17,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, params }) => {
+	// Named, not default: a page cannot mix a default action with ?/retry.
+	save: async ({ request, params }) => {
 		const payload = (await request.formData()).get('payload');
 		if (typeof payload !== 'string') return fail(400, { error: 'Malformed submission.' });
 		try {
@@ -26,5 +27,15 @@ export const actions: Actions = {
 			return fail(400, { error: e instanceof Error ? e.message : 'Could not save.' });
 		}
 		redirect(303, `/recipes/${params.id}`);
+	},
+
+	// D6 "tap to retry" for a failed counterpart reconvert.
+	retry: async ({ params }) => {
+		try {
+			retryReconvert(db, params.id);
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Could not retry.' });
+		}
+		return { ok: true };
 	}
 };

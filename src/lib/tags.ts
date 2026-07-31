@@ -63,6 +63,28 @@ export type Damage = (typeof DAMAGES)[number];
 
 export type IngredientGroup = { heading: string | null; items: string[] };
 
+/** One body's text: what the form edits and reconvert regenerates. */
+export type BodyText = { ingredients: IngredientGroup[]; steps: string[] };
+
+/** Drop empty lines and empty groups; a heading of '' becomes null. Shared by
+ *  server validation and the form's edited-body detection, so both sides
+ *  compare the same normalised shape. */
+export function cleanIngredients(groups: IngredientGroup[]): IngredientGroup[] {
+	return groups
+		.map((g) => ({
+			heading: g.heading?.trim() || null,
+			items: g.items.map((i) => i.trim()).filter(Boolean)
+		}))
+		.filter((g) => g.items.length > 0);
+}
+
+export function cleanBody(b: BodyText): BodyText {
+	return {
+		ingredients: cleanIngredients(b.ingredients),
+		steps: b.steps.map((s) => s.trim()).filter(Boolean)
+	};
+}
+
 /** Everything the review form submits; also the shape updateRecipe compares. */
 export type RecipeInput = {
 	title: string;
@@ -81,6 +103,10 @@ export type RecipeInput = {
 	damage: Damage;
 	ingredients: IngredientGroup[];
 	steps: string[];
+	/** The other unit system's body, when it is known-good (unedited since the
+	 *  extraction or last reconvert). Null means "stale or unknown": the server
+	 *  stores only the source body and enqueues a reconvert (ADR-019). */
+	counterpart: BodyText | null;
 	image_ids: string[];
 	cover_image_id: string | null;
 };
