@@ -53,6 +53,9 @@
 	}
 	:global(body) {
 		margin: 0;
+		/* SPEC 8.7: standalone + black-translucent lets content run under the
+		   status bar; pad it back out (scrolls away, sticky elements re-inset). */
+		padding-top: env(safe-area-inset-top);
 		background: var(--bg);
 		color: var(--ink);
 		-webkit-text-size-adjust: 100%;
@@ -70,7 +73,10 @@
 		display: flex;
 		background: var(--card);
 		border-top: 1px solid var(--line);
-		padding-bottom: env(safe-area-inset-bottom); /* SPEC 8.7 */
+		/* SPEC 8.7: home indicator + notch in landscape */
+		padding-bottom: env(safe-area-inset-bottom);
+		padding-left: env(safe-area-inset-left);
+		padding-right: env(safe-area-inset-right);
 	}
 	a {
 		position: relative;

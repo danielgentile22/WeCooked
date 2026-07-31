@@ -2,8 +2,22 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
+		<!-- SPEC 8.7 / D16: PWA identity. No service worker in v1. The manifest
+		     can't branch on color scheme, so it carries the light values and the
+		     dark side lives in the theme-color pair below (D16 trade-off). -->
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#b45309" />
+		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171412" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<!-- "default": iOS 15+ tints the standalone status bar from the page
+		     background and picks legible glyphs; black-translucent paints white
+		     glyphs over our light background. -->
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<meta name="apple-mobile-web-app-title" content="We Cooked" />
+		<link rel="apple-touch-icon" href="/icon-180.png" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

@@ -69,7 +69,7 @@
 		letter-spacing: -0.01em;
 	}
 	.danger {
-		margin: 2rem 1rem 6rem;
+		margin: 2rem 1rem calc(6rem + env(safe-area-inset-bottom));
 		padding-top: 1rem;
 		border-top: 1px solid var(--line);
 	}
