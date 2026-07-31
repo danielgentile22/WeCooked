@@ -17,7 +17,11 @@
 		initial = null as Partial<RecipeInput> | null,
 		draftKey, // ADR-038: sessionStorage key; recipe id when editing, fixed for manual
 		error = null as string | null,
-		action = '' // form action; the drafts page posts to a named action
+		action = '', // form action; the drafts page posts to a named action
+		// True when the body's unit system is already fixed (saved recipe, done
+		// extraction). A failed URL draft seeds initial = { source_url } and must
+		// NOT count: the user is about to type the body and picks the system.
+		editing = initial !== null
 	} = $props();
 
 	// Effort and damage start unselected: they are required, scored choices
@@ -28,9 +32,6 @@
 		damage: RecipeInput['damage'] | null;
 		images: FormImage[]; // ids + presigned display URLs; ids go in the payload
 	};
-
-	// svelte-ignore state_referenced_locally -- initial never changes; the edit page re-keys
-	const editing = initial !== null;
 
 	const empty = (): FormState => ({
 		title: '',

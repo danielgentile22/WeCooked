@@ -15,6 +15,17 @@ import type {
 /** A capture job's input_json: pasted text, a url, or image ids (photos later). */
 export type CaptureInput = { text?: string; url?: string; image_ids?: string[] };
 
+/**
+ * SPEC 7.1 text-or-URL detection: a lone link takes the URL path, anything
+ * else is recipe text. Returns the fetchable URL, or null for prose. Bare
+ * "www.site.com/..." counts: that is what copy-a-link flows often produce.
+ */
+export function asUrl(text: string): string | null {
+	if (/^https?:\/\/\S+$/.test(text)) return text;
+	if (/^www\.\S+$/.test(text)) return `https://${text}`;
+	return null;
+}
+
 export type BodyText = { ingredients: IngredientGroup[]; steps: string[] };
 
 export type BodyPair = {
