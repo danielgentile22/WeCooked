@@ -42,7 +42,7 @@ throwaway cache. Not a social platform, not a clipper, not a meal planner.
 ## Capabilities and Constraints
 
 - Full spec in docs/SPEC.md; decision records in docs/DECISIONS.md; settled
-  UI decisions D1 to D16 in docs/UI.md. Those documents are the source of
+  UI decisions D1 to D17 in docs/UI.md. Those documents are the source of
   truth and outrank any design suggestion.
 - Scale: two users, low hundreds of recipes. Nothing is justified by scale.
 - Stack: SvelteKit (Svelte 5), one Node process, SQLite, Fly.io, R2.
@@ -66,8 +66,8 @@ throwaway cache. Not a social platform, not a clipper, not a meal planner.
 
 ## Evidence on Hand
 
-- docs/SPEC.md, docs/DECISIONS.md (ADR-001 to ADR-032), docs/UI.md
-  (D1 to D16), docs/research/tech-stack.md.
+- docs/SPEC.md, docs/DECISIONS.md (ADR-001 to ADR-040), docs/UI.md
+  (D1 to D17), docs/research/tech-stack.md.
 - prototypes/ contains work-in-progress HTML prototypes of the four core
   screens. No logo or icon assets exist yet; the app icon is designed during
   the cooking-screen prototype, not fabricated elsewhere.
