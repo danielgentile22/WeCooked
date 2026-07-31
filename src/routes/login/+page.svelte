@@ -51,13 +51,13 @@
 	}
 	input {
 		border: 1px solid light-dark(#ccc, #444);
-		background: light-dark(#fff, #1c1c1e);
+		background: var(--surface);
 		color: inherit;
 	}
 	button {
 		border: none;
-		background: light-dark(#b45309, #f59e0b);
-		color: light-dark(#fff, #2a1a00);
+		background: var(--accent);
+		color: var(--on-accent);
 		font-weight: 600;
 	}
 	p[role='alert'] {

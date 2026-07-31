@@ -9,6 +9,7 @@ ORIGIN = "https://wecooked.kitchen"
 [[mounts]]
 source = "data"
 destination = "/data"
+initial_size = "3gb"
 
 [http_service]
 internal_port = 3000
