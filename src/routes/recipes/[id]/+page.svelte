@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Pencil, LoaderCircle, Check, Minus, Plus } from '@lucide/svelte';
+	import { Pencil, LoaderCircle, Check, Minus, Plus, ChevronDown } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -96,6 +96,45 @@
 	onMount(() => {
 		if (localStorage.getItem('units') === 'us') units = 'us';
 	});
+
+	// SPEC 7.4 wake lock: held while a recipe is open, re-acquired when the
+	// phone unlocks or the tab comes back, released on navigate away.
+	onMount(() => {
+		let lock: WakeLockSentinel | null = null;
+		const acquire = () =>
+			navigator.wakeLock
+				?.request('screen')
+				.then((l) => (lock = l))
+				.catch(() => {}); // denied (low battery, unsupported): cook on
+		const onVis = () => {
+			if (document.visibilityState === 'visible') acquire();
+		};
+		acquire();
+		document.addEventListener('visibilitychange', onVis);
+		return () => {
+			document.removeEventListener('visibilitychange', onVis);
+			lock?.release().catch(() => {});
+		};
+	});
+
+	// SPEC 7.4 / ADR-036 strikes: sessionStorage keyed by variation id, per
+	// device, never synced. Survives lock and tab-away, gone by tomorrow.
+	let strikes = $state<ReadonlySet<string>>(new Set());
+	$effect(() => {
+		let saved: string[] = [];
+		try {
+			saved = JSON.parse(sessionStorage.getItem(`strikes:${r.variation_id}`) ?? '[]');
+		} catch {
+			/* corrupt entry: start clean */
+		}
+		strikes = new Set(saved);
+	});
+	function toggleStrike(key: string) {
+		const next = new Set(strikes);
+		if (!next.delete(key)) next.add(key);
+		strikes = next;
+		sessionStorage.setItem(`strikes:${r.variation_id}`, JSON.stringify([...next]));
+	}
 	function setUnits(u: 'us' | 'metric') {
 		units = u;
 		localStorage.setItem('units', u);
@@ -343,26 +382,45 @@
 		<p class="scalenote">{r.scaling_note}</p>
 	{/if}
 
-	<section aria-label="Ingredients">
-		<h2>Ingredients</h2>
-		{#each body.ingredients as group (group)}
-			{#if group.heading}
-				<h3>{group.heading}</h3>
-			{/if}
-			<ul>
-				{#each group.items as item, i (i)}
-					<li>{item}</li>
-				{/each}
-			</ul>
-		{/each}
-	</section>
+	<!-- SPEC 7.4: collapsible sticky block, reachable while deep in the steps.
+	     Its body scrolls internally, so page scroll position is never lost. -->
+	<details class="ing" open>
+		<summary>
+			<h2>Ingredients</h2>
+			<ChevronDown aria-hidden="true" />
+		</summary>
+		<div class="ingbody">
+			{#each body.ingredients as group, gi (gi)}
+				{#if group.heading}
+					<h3>{group.heading}</h3>
+				{/if}
+				<ul class="strikable">
+					{#each group.items as item, i (i)}
+						<li>
+							<button
+								type="button"
+								aria-pressed={strikes.has(`i${gi}.${i}`)}
+								onclick={() => toggleStrike(`i${gi}.${i}`)}>{item}</button
+							>
+						</li>
+					{/each}
+				</ul>
+			{/each}
+		</div>
+	</details>
 
 	{#if body.steps.length > 0}
 		<section aria-label="Steps">
 			<h2>Steps</h2>
-			<ol>
+			<ol class="strikable">
 				{#each body.steps as step, i (i)}
-					<li>{step}</li>
+					<li>
+						<button
+							type="button"
+							aria-pressed={strikes.has(`s${i}`)}
+							onclick={() => toggleStrike(`s${i}`)}>{step}</button
+						>
+					</li>
 				{/each}
 			</ol>
 		</section>
@@ -392,7 +450,7 @@
 	main {
 		max-width: 44rem;
 		margin: 0 auto;
-		padding: 1rem 1rem 6rem;
+		padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom));
 	}
 	.cover {
 		width: 100%;
@@ -587,6 +645,77 @@
 		border-radius: 1rem;
 		padding: 0.9rem;
 		margin-top: 0.8rem;
+	}
+	/* Sticky collapsible ingredients (SPEC 7.4, prototype option C) */
+	.ing {
+		position: sticky;
+		top: calc(env(safe-area-inset-top) + 0.4rem);
+		z-index: 5;
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: 1rem;
+		margin-top: 0.8rem;
+		box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
+	}
+	.ing summary {
+		list-style: none;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2.75rem;
+		box-sizing: border-box;
+		padding: 0.7rem 0.9rem;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.ing summary::-webkit-details-marker {
+		display: none;
+	}
+	.ing summary h2 {
+		margin: 0;
+	}
+	.ing summary :global(svg) {
+		margin-left: auto;
+		flex: none;
+		width: 1.2rem;
+		height: 1.2rem;
+		color: var(--muted);
+		transition: transform 0.15s;
+	}
+	.ing[open] summary :global(svg) {
+		transform: rotate(180deg);
+	}
+	.ingbody {
+		max-height: 44vh;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 0 0.9rem 0.9rem;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.ing summary :global(svg) {
+			transition: none;
+		}
+	}
+	/* Tap-to-strike (SPEC 7.4): whole-line buttons with a real pressed state */
+	.strikable li {
+		margin: 0;
+	}
+	.strikable button {
+		display: block;
+		width: 100%;
+		padding: 0.45rem 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.strikable button[aria-pressed='true'] {
+		text-decoration: line-through;
+		text-decoration-thickness: 2px;
+		color: var(--muted);
 	}
 	h2 {
 		font-size: 1.05rem;
