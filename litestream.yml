@@ -1,0 +1,10 @@
+# SPEC 8.3: continuous WAL replication to R2 (ADR-021).
+# Credentials come from LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY (SPEC 9.3).
+dbs:
+  - path: ${DATABASE_PATH}
+    replicas:
+      - type: s3
+        endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+        bucket: ${R2_BUCKET}
+        path: litestream/wecooked.db
+        region: auto
