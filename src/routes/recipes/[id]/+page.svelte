@@ -4,6 +4,7 @@
 
 	let { data } = $props();
 	const r = $derived(data.recipe);
+	const cover = $derived(r.images.find((i) => i.id === r.cover_image_id) ?? null);
 	const tags = $derived(
 		[...r.meal_types, r.cuisine, r.protein, r.effort, r.damage].filter((t) => t !== null)
 	);
@@ -22,6 +23,9 @@
 </svelte:head>
 
 <main>
+	{#if cover}
+		<img class="cover" src={cover.url} alt={r.title} width={cover.width} height={cover.height} />
+	{/if}
 	<header>
 		<h1>{r.title}</h1>
 		<p class="meta">
@@ -73,6 +77,19 @@
 			<p class="notes">{r.notes}</p>
 		</section>
 	{/if}
+
+	{#if r.images.length > 0}
+		<section aria-label="Photos">
+			<h2>Photos</h2>
+			<div class="strip">
+				{#each r.images as img (img.id)}
+					<a href={img.full_url} target="_blank" rel="noreferrer">
+						<img src={img.url} alt="" loading="lazy" />
+					</a>
+				{/each}
+			</div>
+		</section>
+	{/if}
 </main>
 
 <style>
@@ -80,6 +97,24 @@
 		max-width: 44rem;
 		margin: 0 auto;
 		padding: 1rem 1rem 6rem;
+	}
+	.cover {
+		width: 100%;
+		height: auto;
+		max-height: 40vh;
+		object-fit: cover;
+		border-radius: 1rem;
+		margin-bottom: 0.8rem;
+	}
+	.strip {
+		display: flex;
+		gap: 0.6rem;
+		overflow-x: auto;
+	}
+	.strip img {
+		height: 7rem;
+		border-radius: 0.6rem;
+		display: block;
 	}
 	header {
 		position: relative;

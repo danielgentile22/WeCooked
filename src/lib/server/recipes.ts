@@ -40,6 +40,7 @@ export function validateInput(raw: RecipeInput): RecipeInput {
 	if (raw.cuisine !== null && !CUISINES.includes(raw.cuisine)) throw new Error('Unknown cuisine.');
 	if (raw.protein !== null && !PROTEINS.includes(raw.protein)) throw new Error('Unknown protein.');
 	const meal_types = (raw.meal_types ?? []).filter((m) => MEAL_TYPES.includes(m));
+	const image_ids = [...new Set((raw.image_ids ?? []).filter((i) => typeof i === 'string'))];
 	if (raw.source_units !== 'us' && raw.source_units !== 'metric')
 		throw new Error('Unknown unit system.');
 	return {
@@ -58,8 +59,36 @@ export function validateInput(raw: RecipeInput): RecipeInput {
 		effort: raw.effort,
 		damage: raw.damage,
 		ingredients,
-		steps: (raw.steps ?? []).map((s) => s.trim()).filter(Boolean) // steps may be empty
+		steps: (raw.steps ?? []).map((s) => s.trim()).filter(Boolean), // steps may be empty
+		image_ids,
+		cover_image_id: image_ids.includes(raw.cover_image_id!) ? raw.cover_image_id : null
 	};
+}
+
+/**
+ * Reconcile a recipe's photos with what the form submitted (ADR-024): claim
+ * uploaded-before-save rows, soft-delete removed ones, set the cover. The
+ * cover must be a live image of this recipe or it falls back to NULL (D17).
+ */
+function setImages(db: Database, recipeId: string, input: RecipeInput, ts: string): void {
+	const claim = db.prepare(
+		`UPDATE image SET recipe_id = ?
+		 WHERE id = ? AND deleted_at IS NULL AND (recipe_id IS NULL OR recipe_id = ?)`
+	);
+	for (const id of input.image_ids) claim.run(recipeId, id, recipeId);
+	const keep = input.image_ids.map(() => '?').join(',');
+	db.prepare(
+		`UPDATE image SET deleted_at = ? WHERE recipe_id = ? AND deleted_at IS NULL
+		 ${keep ? `AND id NOT IN (${keep})` : ''}`
+	).run(ts, recipeId, ...input.image_ids);
+	const cover =
+		input.cover_image_id &&
+		db
+			.prepare('SELECT 1 FROM image WHERE id = ? AND recipe_id = ? AND deleted_at IS NULL')
+			.get(input.cover_image_id, recipeId)
+			? input.cover_image_id
+			: null;
+	db.prepare('UPDATE recipe SET cover_image_id = ? WHERE id = ?').run(cover, recipeId);
 }
 
 /** SPEC 4: FTS row is rebuilt from the source-unit body of the original variation. */
@@ -141,6 +170,7 @@ export function createRecipe(db: Database, raw: RecipeInput): string {
 			ts,
 			ts
 		);
+		setImages(db, id, input, ts);
 		rebuildFts(db, id);
 	})();
 	return id;
@@ -220,6 +250,7 @@ export function updateRecipe(db: Database, recipeId: string, raw: RecipeInput): 
 		db.prepare(
 			`UPDATE body SET ingredients_json = ?, steps_json = ?, updated_at = ? WHERE id = ?`
 		).run(JSON.stringify(input.ingredients), JSON.stringify(input.steps), ts, cur.body_id);
+		setImages(db, recipeId, input, ts);
 		rebuildFts(db, recipeId);
 	})();
 }
@@ -242,6 +273,16 @@ export type RecipeDetail = {
 	damage: RecipeInput['damage'];
 	ingredients: IngredientGroup[];
 	steps: string[];
+	cover_image_id: string | null;
+	images: RecipeImage[];
+};
+
+export type RecipeImage = {
+	id: string;
+	r2_key_full: string;
+	r2_key_display: string;
+	width: number;
+	height: number;
 };
 
 /** The original variation's source body plus recipe metadata, for view and edit. */
@@ -250,13 +291,13 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 		.prepare(
 			`SELECT r.id, r.title, r.source_text, r.source_url, r.yield_unit, r.prep_minutes,
 			        r.cook_minutes, r.notes, r.source_units, r.cuisine, r.protein, r.effort,
-			        r.damage, v.yield_count, b.ingredients_json, b.steps_json
+			        r.damage, r.cover_image_id, v.yield_count, b.ingredients_json, b.steps_json
 			 FROM recipe r
 			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
 			 JOIN body b ON b.variation_id = v.id AND b.is_source = 1
 			 WHERE r.id = ? AND r.deleted_at IS NULL`
 		)
-		.get(id) as (Omit<RecipeDetail, 'meal_types' | 'ingredients' | 'steps'> & {
+		.get(id) as (Omit<RecipeDetail, 'meal_types' | 'ingredients' | 'steps' | 'images'> & {
 		ingredients_json: string;
 		steps_json: string;
 	}) | undefined;
@@ -266,12 +307,19 @@ export function getRecipe(db: Database, id: string): RecipeDetail | null {
 			meal_type: RecipeInput['meal_types'][number];
 		}[]
 	).map((m) => m.meal_type);
+	const images = db
+		.prepare(
+			`SELECT id, r2_key_full, r2_key_display, width, height FROM image
+			 WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY created_at`
+		)
+		.all(id) as RecipeImage[];
 	const { ingredients_json, steps_json, ...rest } = r;
 	return {
 		...rest,
 		meal_types,
 		ingredients: JSON.parse(ingredients_json),
-		steps: JSON.parse(steps_json)
+		steps: JSON.parse(steps_json),
+		images
 	};
 }
 
@@ -289,6 +337,7 @@ export type BrowseRow = {
 	title: string;
 	effort: string;
 	damage: string;
+	cover_key: string | null; // r2_key_display of the cover, presigned by the route
 };
 
 /**
@@ -333,7 +382,9 @@ export function listRecipes(db: Database, f: BrowseFilters = {}): BrowseRow[] {
 
 	return db
 		.prepare(
-			`SELECT r.id, r.title, r.effort, r.damage FROM recipe r
+			`SELECT r.id, r.title, r.effort, r.damage, c.r2_key_display AS cover_key
+			 FROM recipe r
+			 LEFT JOIN image c ON c.id = r.cover_image_id AND c.deleted_at IS NULL
 			 WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC`
 		)
 		.all(...params) as BrowseRow[];
