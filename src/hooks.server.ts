@@ -14,8 +14,9 @@ const handlers: Handlers = {};
 if (dev) {
 	// Stub for exercising the runner via POST /api/dev/jobs before real
 	// handlers exist (issue #12). Rides the 'reconvert' kind because the
-	// schema CHECK only admits the six real kinds.
-	handlers.reconvert = async (job) => {
+	// schema CHECK only admits the six real kinds; ??= so the real reconvert
+	// handler wins the slot once it exists, then delete this stub.
+	handlers.reconvert ??= async (job) => {
 		const input = JSON.parse(job.input_json);
 		await new Promise((r) => setTimeout(r, input.delay_ms ?? 0));
 		if (input.fail) throw new JobError(input.fail);

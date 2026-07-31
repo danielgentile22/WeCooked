@@ -26,7 +26,8 @@ export const nyDay = (d = new Date()) => dayFmt.format(d);
  * Count one Claude call against today's quota, atomically. Throws
  * JobError('quota_exceeded') once the cap is reached.
  */
-export function takeQuota(db: Database, cap = Number(env.DAILY_CALL_CAP ?? 50), now = new Date()) {
+// `||` not `??`: a set-but-empty DAILY_CALL_CAP= must mean 50, not Number('')=0.
+export function takeQuota(db: Database, cap = Number(env.DAILY_CALL_CAP || 50), now = new Date()) {
 	const row = db
 		.prepare(
 			`INSERT INTO job_quota (day, count) VALUES (?, 1)
