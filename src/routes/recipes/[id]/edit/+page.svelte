@@ -22,17 +22,22 @@
 	<header>
 		<h1>Edit recipe</h1>
 	</header>
-	{#key data.recipe.id}
+	{#key data.recipe.variation_id}
 		<RecipeForm
 			initial={{ ...data.recipe, counterpart }}
-			draftKey="wc-draft:recipe:{data.recipe.id}"
+			draftKey="wc-draft:recipe:{data.recipe.variation_id}"
 			action="?/save"
 			error={form?.error ?? null}
 			reconvert={data.recipe.reconvert}
 			onretry={() => retryForm?.requestSubmit()}
+			variationId={data.recipe.is_original ? null : data.recipe.variation_id}
 		/>
 	{/key}
-	<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden></form>
+	<form method="POST" action="?/retry" use:enhance bind:this={retryForm} hidden>
+		{#if !data.recipe.is_original}
+			<input type="hidden" name="variation_id" value={data.recipe.variation_id} />
+		{/if}
+	</form>
 
 	<!-- D10: destructive zone at the bottom. confirm() is the native-style sheet. -->
 	<form
