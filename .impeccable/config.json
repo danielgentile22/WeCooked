@@ -1,9 +1,7 @@
 {
   "detector": {
     "ignoreRules": [],
-    "ignoreFiles": [
-      "prototypes/banner-variants.html"
-    ],
+    "ignoreFiles": [],
     "ignoreValues": [
       {
         "rule": "side-tab",
@@ -12,7 +10,7 @@
           "src/lib/components/Banner.svelte"
         ],
         "createdAt": "2026-07-31T01:56:06.634Z",
-        "reason": "Daniel confirmed the D6 prototype's 4px accent side border is intentional"
+        "reason": "The 4px accent side border is intentional (docs/UI.md D6)"
       }
     ]
   }

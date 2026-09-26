@@ -144,4 +144,4 @@ Four, matching the list in DECISIONS.md, built in this order:
 3. **Browse list.**
 4. **Shopping list.**
 
-Nothing in D1 to D16 requires a fifth prototype.
+Nothing in D1 to D17 requires a fifth prototype.

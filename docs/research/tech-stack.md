@@ -1,5 +1,10 @@
 # Recipe Book v1: tech stack research
 
+> Pre-build research, kept as delivered. Several recommendations were later
+> overruled (for example Opus instead of Sonnet in ADR-016, one shared
+> password instead of two accounts in ADR-008). [DECISIONS.md](../DECISIONS.md)
+> is authoritative.
+
 Researched 2026-07-27. All sources are first-party (official docs, source repos, specs, official pricing pages) and were accessed on 2026-07-27 unless noted.
 
 ## Recommendation
@@ -423,9 +428,9 @@ Ordered by how much they could change a decision.
 - **Sonnet 5's introductory pricing ends 2026-08-31**, five weeks from now. The costs in this document use the post-August rate deliberately.
 - **The docs host moved.** `docs.claude.com` now redirects to `platform.claude.com`. Anything you bookmarked or that an LLM remembers may point at the old host, and `output_format` (the old beta parameter) is superseded by `output_config.format`.
 
-## Open questions for Daniel
+## Open questions for the owner
 
-These genuinely need you. Everything else in this document I called myself.
+These were the questions left for the owner to decide. Everything else in this document was the researcher's call.
 
 1. **One service or two?** I recommended a single SvelteKit app in TypeScript, which means writing your own JSON-LD normalizer (roughly a day). The alternative is SvelteKit plus a Python FastAPI backend, which gets you `recipe-scrapers` for free but doubles the number of things to deploy and keep running. This is a taste call about what you would rather maintain, and both answers are defensible.
 2. **Do you actually want to run the box?** Fly at about $4/month buys managed TLS, secrets, and one-command deploys. A Hetzner VM with Caddy is cheaper in the EU and gives you total control at the cost of owning OS patching and backups forever. I recommended Fly because attention is your scarce resource, but if you enjoy sysadmin work, the VM is a reasonable choice and simplifies the durability story.

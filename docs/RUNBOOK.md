@@ -47,16 +47,16 @@ and confirm the objects exist in the bucket.
 ### Outstanding
 
 SPEC 8.4 steps 1, 3 and 4 (several real recipes with photos, confirm recipes
-and variations, confirm R2 image keys resolve) cannot be performed until the
-capture feature exists. **Re-run the full drill before trusting the app with
-real recipes.** The 2026-07-30 drill proves the pipeline (replicate, survive
-a deploy, restore, integrity), not the full spec.
+and variations, confirm R2 image keys resolve) have not been run yet. Capture
+has shipped, so they are now possible. **Run the full drill before trusting
+the app with real recipes.** The 2026-07-30 drill proves the pipeline
+(replicate, survive a deploy, restore, integrity), not the full spec.
 
 ### Drill log
 
 | Date | Restored by | litestream | Result |
 |------|-------------|------------|--------|
-| 2026-07-30 | Claude (with Daniel) | 0.5.11 (laptop and container) | Pipeline drill: integrity_check ok, all app tables present, marker recipe row `drill-2026-07-30` restored, user_version 1. Replication survived a fly deploy (clean shutdown, resumed on new machine). Steps 1/3/4 of SPEC 8.4 outstanding, see above. |
+| 2026-07-30 | Daniel | 0.5.11 (laptop and container) | Pipeline drill: integrity_check ok, all app tables present, marker recipe row `drill-2026-07-30` restored, user_version 1. Replication survived a fly deploy (clean shutdown, resumed on new machine). Steps 1/3/4 of SPEC 8.4 outstanding, see above. |
 
 ## Fly volume snapshots
 

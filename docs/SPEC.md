@@ -1,12 +1,12 @@
 # We Cooked: Build Specification v1
 
-Status: build-ready. Written 2026-07-27. Amended 2026-07-29 after a pre-build
+Status: v1 shipped. Written 2026-07-27. Amended 2026-07-29 after a pre-build
 review that resolved contradictions and gaps; those changes are recorded as
 ADR-024 to ADR-032. Amended 2026-07-30 after a second grilling round that
 settled the questions the prototypes and the first review left open; recorded
 as ADR-033 to ADR-040.
 
-This document is the contract for building v1. A fresh agent session should be
+This document is the contract for building v1. An implementer should be
 able to implement the whole application from this file without asking a design
 question. Where a decision looks arbitrary, the reasoning lives in
 [DECISIONS.md](./DECISIONS.md) as a numbered ADR, referenced inline as `ADR-nn`.
@@ -1135,8 +1135,8 @@ gitignored **in the first commit**, before any key is ever written to it.
 
 ### 9.4 Deploy
 
-`fly deploy` from the laptop. Private GitHub repo, work on branches, PRs for
-review per the owner's standing policy.
+`fly deploy` from the laptop. GitHub repo, work on branches, PRs for
+review.
 
 No GitHub Actions pipeline in v1: it is a deploy token, a workflow file, and a
 slower feedback loop, to automate a command run twice a week. Add it the first
