@@ -17,6 +17,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 	try {
 		return json(await saveImage(db, buf, role));
 	} catch (e) {
-		error(400, e instanceof Error ? e.message : 'Could not process image.');
+		// The message can carry R2 object keys and R2's error body: logs only.
+		console.error('image upload failed', e);
+		error(400, 'Could not process image.');
 	}
 };

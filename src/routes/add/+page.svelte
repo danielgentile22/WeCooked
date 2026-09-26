@@ -28,8 +28,8 @@
 			uploading -= 1;
 		}
 	}
-	// ponytail: removal only drops the id from the list; the uploaded orphan
-	// row stays (recipe_id NULL, referenced by no job). Sweep later if R2 fills.
+	// Removal only drops the id from the list. The uploaded row stays behind as
+	// an orphan (recipe_id NULL, referenced by no job); sweep them if R2 fills.
 	function removePhoto(id: string) {
 		photos = photos.filter((p) => p.id !== id);
 	}

@@ -66,7 +66,8 @@
 		});
 	}
 
-	// Verdict C: the accordion closes on selection-free outside taps.
+	// A tap outside the filter bar closes the open filter group without
+	// changing any selection.
 	function onDocClick(e: MouseEvent) {
 		if (open && filterBar && !filterBar.contains(e.target as Node)) open = null;
 	}
@@ -248,7 +249,7 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
-	/* Verdict C note: keep the accordion compact, 44px chips, tight padding */
+	/* Keep the open filter group compact: 44px chips, tight padding */
 	.options {
 		display: flex;
 		flex-wrap: wrap;

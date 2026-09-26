@@ -1,6 +1,8 @@
 import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 import { hasRecipe, type RecipeDraft } from '$lib/extract';
 import type { Database } from 'better-sqlite3';
+import { lookup } from 'node:dns/promises';
+import { BlockList, isIP } from 'node:net';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import type { ErrorCode } from '$lib/jobs';
 import { claudeCall } from './claude';
@@ -169,11 +171,68 @@ export const extractPaste: JobHandler = (job, db) =>
 const DESKTOP_UA =
 	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
-export async function fetchPage(url: string, fetchFn: typeof fetch = fetch): Promise<string> {
+// The pasted URL is untrusted: refuse anything that reaches the app's own
+// network. Loopback, private ranges, link-local (169.254.*, cloud metadata),
+// carrier-grade NAT and Fly's private network (fdaa::/16, inside fc00::/7).
+// IPv4 rules also match IPv4-mapped IPv6 such as ::ffff:127.0.0.1.
+const PRIVATE = new BlockList();
+for (const [net, bits] of [
+	['0.0.0.0', 8],
+	['10.0.0.0', 8],
+	['100.64.0.0', 10],
+	['127.0.0.0', 8],
+	['169.254.0.0', 16],
+	['172.16.0.0', 12],
+	['192.168.0.0', 16]
+] as const)
+	PRIVATE.addSubnet(net, bits, 'ipv4');
+PRIVATE.addAddress('::', 'ipv6');
+PRIVATE.addAddress('::1', 'ipv6');
+PRIVATE.addSubnet('fc00::', 7, 'ipv6');
+PRIVATE.addSubnet('fe80::', 10, 'ipv6');
+
+// Fly's private DNS names (*.internal, *.flycast) and localhost never leave the box.
+const PRIVATE_HOST = /(^|\.)(localhost|internal|flycast)$/;
+
+export type ResolveFn = (host: string) => Promise<string[]>;
+const resolveAll: ResolveFn = async (host) =>
+	(await lookup(host, { all: true })).map((a) => a.address);
+
+/** Throws fetch_failed unless the URL is http(s) and every address its host resolves to is public. */
+export async function assertPublicUrl(url: URL, resolve: ResolveFn = resolveAll): Promise<void> {
+	if (url.protocol !== 'http:' && url.protocol !== 'https:')
+		throw new JobError('fetch_failed', `Refusing ${url.protocol} URL`);
+	const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+	if (PRIVATE_HOST.test(host)) throw new JobError('fetch_failed', `Refusing private host ${host}`);
+	let addrs: string[];
+	try {
+		addrs = isIP(host) ? [host] : await resolve(host);
+	} catch (e) {
+		throw new JobError('fetch_failed', e instanceof Error ? e.message : String(e));
+	}
+	if (addrs.length === 0) throw new JobError('fetch_failed', `No address for ${host}`);
+	for (const a of addrs)
+		if (PRIVATE.check(a, isIP(a) === 6 ? 'ipv6' : 'ipv4'))
+			throw new JobError('fetch_failed', `Refusing private address ${a} for ${host}`);
+}
+
+export async function fetchPage(
+	url: string,
+	fetchFn: typeof fetch = fetch,
+	resolve: ResolveFn = resolveAll
+): Promise<string> {
 	// One 10 s deadline for the whole fetch, redirects included, not per hop.
 	const signal = AbortSignal.timeout(10_000);
 	let current = url;
 	for (let hop = 0; hop <= 5; hop++) {
+		// Every hop, not just the first: a public page can redirect inward.
+		let target: URL;
+		try {
+			target = new URL(current);
+		} catch {
+			throw new JobError('fetch_failed', `Not a URL: ${current}`);
+		}
+		await assertPublicUrl(target, resolve);
 		let res: Response;
 		try {
 			res = await fetchFn(current, {
@@ -220,7 +279,7 @@ export function findRecipeJsonLd(html: string): object | null {
 	return null;
 }
 
-// ponytail: regex HTML stripping, swap in a real parser if a site defeats it.
+// HTML is stripped with regexes. Swap in a real parser if a site defeats them.
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', nbsp: ' ' };
 
 /** SPEC 7.1 step 4: 300 kB of blog HTML down to the readable text. */
@@ -249,7 +308,7 @@ export const extractUrl: JobHandler = async (job, db) => {
 	const { url } = JSON.parse(job.input_json) as { url: string };
 	const html = await fetchPage(url);
 	const jsonLd = findRecipeJsonLd(html);
-	// ponytail: 100k-char cap so a pathological page cannot blow the context.
+	// Cap at 100k characters so a pathological page cannot blow the context.
 	let content = stripHtml(html).slice(0, 100_000);
 	if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
 	return extract(db, content);

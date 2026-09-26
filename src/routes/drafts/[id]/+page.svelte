@@ -12,7 +12,7 @@
 	const draftKey = $derived(`wc-draft:job:${data.id}`);
 
 	// A warning like "step 4 was cut off" jumps to the section it talks about
-	// (issue #13: warnings banner with jump-links).
+	// (the extraction warnings banner, SPEC 7.2 field 1).
 	const jumpTarget = (w: string) =>
 		/step/i.test(w) ? '#steps' : /ingredient/i.test(w) ? '#ingredients' : null;
 	const jump = (w: string) =>

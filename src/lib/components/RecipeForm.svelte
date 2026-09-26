@@ -232,7 +232,8 @@
 		if (draft.cover_image_id === id) draft.cover_image_id = draft.images[0]?.id ?? null;
 	}
 
-	// Show-all collapse for long tag groups (prototype verdict A note).
+	// Tag groups longer than CUTOFF collapse behind a "show all" toggle, but a
+	// picked value always stays visible.
 	const CUTOFF = 8;
 	let expanded = $state<Record<string, boolean>>({});
 	function visible<T extends string>(group: string, values: readonly T[], picked: T[]): T[] {

@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import Database from 'better-sqlite3';
 import { asUrl, draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
-import { extractPhotos, fetchPage, findRecipeJsonLd, photoBlocks, stripHtml, PHOTOS_INSTRUCTION } from './extract';
+import {
+	assertPublicUrl,
+	extractPhotos,
+	fetchPage as realFetchPage,
+	findRecipeJsonLd,
+	photoBlocks,
+	stripHtml,
+	PHOTOS_INSTRUCTION
+} from './extract';
 import { migrate } from './migrate';
 import { JobError, type JobRow } from './jobs';
 import { claudeCall } from './claude';
@@ -72,6 +80,10 @@ describe('draftToInput (SPEC 6.5: result_json seeds the review form)', () => {
 const resp = (status: number, body = '', headers: Record<string, string> = {}) =>
 	new Response(status >= 300 && status < 400 ? null : body, { status, headers });
 
+// Every test host resolves to a public address: no real DNS in unit tests.
+const publicDns = async () => ['93.184.216.34'];
+const fetchPage = (url: string, fetchFn: typeof fetch) => realFetchPage(url, fetchFn, publicDns);
+
 const code = async (p: Promise<unknown>): Promise<string> =>
 	p.then(
 		() => 'ok',
@@ -128,6 +140,52 @@ describe('fetchPage (SPEC 7.1 URL path)', () => {
 				fetchPage('https://x.com', () => Promise.reject(new TypeError('getaddrinfo ENOTFOUND')))
 			)
 		).toBe('fetch_failed');
+	});
+});
+
+describe('assertPublicUrl (no fetching into the private network)', () => {
+	const check = (url: string, dns: string[] = ['93.184.216.34']) =>
+		code(assertPublicUrl(new URL(url), async () => dns));
+	const noDns = async (): Promise<string[]> => {
+		throw new Error('asked DNS');
+	};
+
+	it('refuses loopback, private, link-local, CGNAT and Fly private addresses', async () => {
+		const ips = ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254'];
+		ips.push('100.64.0.1', '0.0.0.0', '::1', 'fdaa:0:1::3', 'fe80::1', '::ffff:127.0.0.1');
+		for (const ip of ips) expect(await check('https://evil.example/', [ip]), ip).toBe('fetch_failed');
+	});
+
+	it('refuses when any one of several resolved addresses is private', async () => {
+		expect(await check('https://evil.example/', ['93.184.216.34', '10.0.0.1'])).toBe('fetch_failed');
+	});
+
+	it('refuses IP literals, localhost, Fly private names and non-http schemes before DNS', async () => {
+		const urls = ['http://127.0.0.1:3000/', 'http://[::1]/', 'http://localhost/'];
+		urls.push('http://my-app.internal/', 'http://my-app.flycast./', 'file:///etc/passwd');
+		for (const url of urls)
+			expect(await code(assertPublicUrl(new URL(url), noDns)), url).toBe('fetch_failed');
+	});
+
+	it('allows public hosts and public IP literals', async () => {
+		expect(await check('https://smittenkitchen.com/soup')).toBe('ok');
+		expect(await code(assertPublicUrl(new URL('http://93.184.216.34/'), noDns))).toBe('ok');
+	});
+
+	it('maps DNS failures to fetch_failed', async () => {
+		expect(await code(assertPublicUrl(new URL('https://nope.example/'), noDns))).toBe('fetch_failed');
+	});
+
+	it('fetchPage checks every redirect hop, not just the first', async () => {
+		const seen: string[] = [];
+		const dns = async (host: string) =>
+			host === 'inside.example' ? ['10.0.0.5'] : ['93.184.216.34'];
+		const redirectInward = async (url: string | URL | Request) => {
+			seen.push(String(url));
+			return resp(302, '', { location: 'http://inside.example/secret' });
+		};
+		expect(await code(realFetchPage('https://x.com/a', redirectInward, dns))).toBe('fetch_failed');
+		expect(seen).toEqual(['https://x.com/a']);
 	});
 });
 

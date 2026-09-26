@@ -9,6 +9,10 @@ import { presignGet, putObject } from './r2';
 // SPEC 8.2: .rotate() honours EXIF orientation before resizing, so even an
 // upload that skipped client normalisation cannot come out sideways.
 
+// Decompression-bomb guard: a small file can declare billions of pixels.
+// 50 MP is well above a 3000px normalised upload or any phone camera.
+const opts = { limitInputPixels: 50_000_000 };
+
 export const DISPLAY_EDGE = 1200;
 export const CLAUDE_EDGE = 2576;
 
@@ -19,13 +23,13 @@ export const CLAUDE_EDGE = 2576;
  * pixels and drops the metadata, GPS included (ADR-026: private photos).
  */
 export async function normaliseFull(file: Buffer): Promise<Buffer> {
-	const m = await sharp(file).metadata();
+	const m = await sharp(file, opts).metadata();
 	if (!m.exif && (m.orientation ?? 1) === 1) return file;
-	return sharp(file).rotate().jpeg({ quality: 90 }).toBuffer();
+	return sharp(file, opts).rotate().jpeg({ quality: 90 }).toBuffer();
 }
 
 export function deriveDisplay(full: Buffer) {
-	return sharp(full)
+	return sharp(full, opts)
 		.rotate()
 		.resize(DISPLAY_EDGE, DISPLAY_EDGE, { fit: 'inside', withoutEnlargement: true })
 		.jpeg({ quality: 85 })
@@ -36,7 +40,7 @@ export function deriveDisplay(full: Buffer) {
  *  this is a page of printed text. Derived from the stored full at extraction
  *  time, not stored: an extraction happens once per capture. */
 export function deriveClaude(full: Buffer): Promise<Buffer> {
-	return sharp(full)
+	return sharp(full, opts)
 		.rotate()
 		.resize(CLAUDE_EDGE, CLAUDE_EDGE, { fit: 'inside', withoutEnlargement: true })
 		.jpeg({ quality: 85 })
@@ -45,7 +49,7 @@ export function deriveClaude(full: Buffer): Promise<Buffer> {
 
 /** Pixel dimensions as displayed, i.e. with EXIF orientation applied. */
 export async function orientedDims(buf: Buffer): Promise<{ width: number; height: number }> {
-	const m = await sharp(buf).metadata();
+	const m = await sharp(buf, opts).metadata();
 	const flipped = (m.orientation ?? 1) >= 5;
 	return flipped ? { width: m.height, height: m.width } : { width: m.width, height: m.height };
 }

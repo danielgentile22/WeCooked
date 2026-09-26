@@ -18,7 +18,7 @@ export const ERROR_COPY: Record<ErrorCode, string> = {
 	no_recipe_found: 'Could not find a recipe there. Try pasting the text or a photo.',
 	image_unreadable:
 		'Could not read that photo. Try again with more light, or crop tighter on the recipe.',
-	quota_exceeded: 'Daily limit reached (50 Claude calls). This usually means something is stuck.',
+	quota_exceeded: 'Daily limit on Claude calls reached. This usually means something is stuck.',
 	api_error: 'Claude is unavailable right now. Try again in a minute.',
 	interrupted: 'That was interrupted by a restart. Tap to try again.'
 };

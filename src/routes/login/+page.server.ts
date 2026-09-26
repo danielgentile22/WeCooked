@@ -5,7 +5,7 @@ import { setSessionCookie } from '$lib/server/session';
 import type { Actions } from './$types';
 
 // 5 failed attempts per IP per 15 minutes, in memory (SPEC 8.5).
-// ponytail: unbounded Map, fine for two users behind Fly; prune on read only.
+// The Map is unbounded and only pruned on read. Fine for two users behind Fly.
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 5;
 const failures = new Map<string, number[]>();
@@ -21,18 +21,19 @@ export const actions: Actions = {
 	default: async ({ request, cookies, getClientAddress }) => {
 		// Fly-Client-IP, not the socket address, or every attempt is Fly's proxy
 		const ip = request.headers.get('fly-client-ip') ?? getClientAddress();
-		if (recentFailures(ip).length >= MAX_FAILURES) {
+		const attempts = recentFailures(ip);
+		if (attempts.length >= MAX_FAILURES) {
 			return fail(429, { error: 'Too many attempts. Try again in 15 minutes.' });
 		}
+		// Count the attempt before the slow verify, so parallel requests all see
+		// it. A success clears the slate below.
+		attempts.push(Date.now());
 		const password = (await request.formData()).get('password');
 		const ok =
 			typeof password === 'string' &&
 			password.length > 0 &&
 			(await verify(env.APP_PASSWORD_HASH ?? '', password).catch(() => false));
-		if (!ok) {
-			recentFailures(ip).push(Date.now());
-			return fail(400, { error: 'Wrong password.' });
-		}
+		if (!ok) return fail(400, { error: 'Wrong password.' });
 		failures.delete(ip);
 		setSessionCookie(cookies, Date.now());
 		redirect(303, '/');

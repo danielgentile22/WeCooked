@@ -62,4 +62,13 @@ describe('image pipeline (SPEC 8.1, 8.2)', () => {
 		expect(m.width).toBe(Math.round((3000 / 4000) * CLAUDE_EDGE));
 		expect(m.orientation ?? 1).toBe(1);
 	});
+
+	it('refuses decompression bombs: more than 50 MP of declared pixels', async () => {
+		const bomb = await sharp({
+			create: { width: 8000, height: 7000, channels: 3, background: '#000' }
+		})
+			.png()
+			.toBuffer();
+		await expect(deriveDisplay(bomb)).rejects.toThrow(/pixel limit/i);
+	});
 });
