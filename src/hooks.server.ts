@@ -12,7 +12,6 @@ import { reconvert } from '$lib/server/reconvert';
 import { scale } from '$lib/server/scale';
 import { shoppingMerge } from '$lib/server/shopping';
 
-// Job handlers land here as their features are built.
 const handlers: Handlers = {
 	extract_paste: extractPaste,
 	extract_url: extractUrl,

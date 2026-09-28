@@ -25,3 +25,6 @@ vite.config.ts.timestamp-*
 # SQLite
 *.db
 *.db-*
+
+# Design tool config
+.impeccable/

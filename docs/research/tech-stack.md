@@ -9,6 +9,8 @@ Researched 2026-07-27. All sources are first-party (official docs, source repos,
 
 ## Recommendation
 
+> Superseded in part. The build uses Opus 5 at medium effort and one shared password, not the model and two password hashes below. See [DECISIONS.md](../DECISIONS.md), ADR-008 and ADR-016.
+
 Build it as a **single SvelteKit app** (`adapter-node`, TypeScript, server routes as the backend, no separate API service), deployed as one **Fly machine** with `min_machines_running = 1`, storing data in **SQLite on a Fly volume continuously replicated to Cloudflare R2 with Litestream**, and recipe photos in the same **R2** bucket. Authenticate with a **single server-set `HttpOnly` session cookie** and two Argon2id password hashes: no identity provider. For extraction, call **Claude Sonnet 5 (`claude-sonnet-5`)** with **structured outputs** (`output_config.format`) and `effort: "low"`, run as a **background job the client polls**, never as a request the phone holds open.
 
 The most important finding is about the URL feature, and it changes the design: **most recipe sites embed schema.org Recipe JSON-LD, so parse that first and only fall back to Claude when it is missing.** In a 19-site check today, 9 of the 14 pages that could be fetched had usable Recipe JSON-LD. That path is free, instant, and more accurate than an LLM, because it is the publisher's own data. The real problem with URLs turns out not to be extraction quality at all: **4 of 19 sites hard-blocked a server-side fetch with 403**, including Serious Eats, AllRecipes and Food Network. Budget engineering effort accordingly, and ship a "paste the text instead" escape hatch on day one.
