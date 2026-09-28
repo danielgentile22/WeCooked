@@ -7,7 +7,7 @@ deferred to prototypes"); prototypes are built in separate sessions and
 reviewed by the owner.
 
 Constraint carried into everything: no meaning encoded in color alone, and
-never in red versus green. The owner is red-green colorblind. Every status
+never in red versus green, the most common color blindness. Every status
 carries a word or an icon; every chip carries its word.
 
 ---

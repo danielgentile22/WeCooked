@@ -18,7 +18,7 @@ Supporting research, with primary sources, is in
 
 ## 1. What this is
 
-A private recipe book for two people (Daniel and his wife). It holds the
+A private recipe book for two people. It holds the
 recipes they actually cook with, and it uses Claude at runtime to do the work
 that would otherwise need fiddly hand-rolled machinery: reading a recipe off a
 web page, reading one off a photo of a cookbook page, rescaling a recipe to a

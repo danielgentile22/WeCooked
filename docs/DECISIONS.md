@@ -247,7 +247,7 @@ genuinely two cuisines are rare, and multi-select turns the filter into noise.
 Effort and damage are exactly one and required. Meal type is multi.
 
 **Accessibility.** Chips always carry their word. Meaning is never encoded in
-colour, and never in red versus green, which the owner cannot distinguish.
+colour, and never in red versus green, the most common color blindness.
 
 **Revisit if.** A vocabulary value is missing. The lists live in the prompt and
 in a `CHECK` constraint, so adding one is a one-line change plus a migration of
@@ -269,9 +269,9 @@ the constraint, not a migration of meaning.
 
 **Decision: A.**
 
-**Why.** The access boundary here is "us versus the internet", not "Daniel versus
-his wife". They share a kitchen and they share the book. B buys per-user
-attribution, which nobody wants, and costs a users table, a real login form, and
+**Why.** The access boundary here is "us versus the internet", not one
+household member versus the other. They share a kitchen and they share the
+book. B buys per-user attribution, which nobody wants, and costs a users table, a real login form, and
 password resets that would be handled by SSHing into a box.
 
 C is the nicest login on an iPhone (Face ID directly) but is real WebAuthn

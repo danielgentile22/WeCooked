@@ -1,14 +1,12 @@
 # Product
 
-<!-- impeccable:product-schema 1 -->
-
 ## Platform
 
 web
 
 ## Users
 
-Two people, Daniel and his wife, sharing one private recipe book. Primary
+Two people sharing one private recipe book. Primary
 situation: cooking in their kitchen from an iPhone propped up at arm's length,
 often with wet hands. Secondary situations: capturing a recipe from a web
 page, a cookbook photo, or pasted text; building a shopping list where one
@@ -86,7 +84,7 @@ throwaway cache. Not a social platform, not a clipper, not a meal planner.
 
 ## Accessibility & Inclusion
 
-The owner is red-green colorblind. Meaning is never encoded in color alone,
+Red-green color blindness is common, so meaning is never encoded in color alone,
 and never in red versus green: every status carries a word or an icon, every
 chip carries its word, selected states change shape or fill plus a checkmark.
 Large type on the cooking screen (19 to 20px) for arm's-length reading.
