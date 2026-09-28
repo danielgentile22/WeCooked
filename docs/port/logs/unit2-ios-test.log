@@ -1,0 +1,29 @@
+xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+xcodebuild test -project WeCooked.xcodeproj -scheme WeCooked -destination 'platform=iOS Simulator,name=iPhone 17e' | tail -20
+2026-09-28 17:31:14.101 xcodebuild[1925:969918] [MT] IDETestOperationsObserverDebug: 1.396 elapsed -- Testing started completed.
+2026-09-28 17:31:14.101 xcodebuild[1925:969918] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-28 17:31:14.101 xcodebuild[1925:969918] [MT] IDETestOperationsObserverDebug: 1.396 sec, +1.396 sec -- end
+✔ Test writesToOneKeyLandInOrder() passed after 0.012 seconds.
+◇ Test theOriginalVariationSharesOneEntryWithTheDefaultKey() started.
+✔ Test theOriginalVariationSharesOneEntryWithTheDefaultKey() passed after 0.001 seconds.
+✔ Suite StoreTests passed after 0.122 seconds.
+◇ Suite StoreWatcherTests started.
+◇ Test aPendingCalcJobStartsExactlyOneWaitAndTheEndRefetchesTheOwner() started.
+✔ Test aPendingCalcJobStartsExactlyOneWaitAndTheEndRefetchesTheOwner() passed after 0.008 seconds.
+◇ Test aReplyThatStopsListingTheJobCancelsItsWait() started.
+✔ Test aReplyThatStopsListingTheJobCancelsItsWait() passed after 0.050 seconds.
+◇ Test aCachedReplyWithAPendingJobResumesTheWaitOnRelaunch() started.
+✔ Test aCachedReplyWithAPendingJobResumesTheWaitOnRelaunch() passed after 0.001 seconds.
+✔ Suite StoreWatcherTests passed after 0.059 seconds.
+✔ Test run with 59 tests in 13 suites passed after 0.423 seconds.
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.28_17-31-11--0400.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

@@ -1,0 +1,3 @@
+// Shared build settings. Personal, uncommitted overrides (the signing team)
+// go in Local.xcconfig; copy Local.xcconfig.example.
+#include? "Local.xcconfig"

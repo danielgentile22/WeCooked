@@ -1,0 +1,141 @@
+# XcodeGen spec. The .xcodeproj is generated and gitignored.
+#
+#   brew install xcodegen
+#   xcodegen generate
+#   xcodebuild build -project WeCooked.xcodeproj -scheme WeCooked \
+#     -destination 'platform=iOS Simulator,name=iPhone 17'
+#   xcodebuild test  -project WeCooked.xcodeproj -scheme WeCooked \
+#     -destination 'platform=iOS Simulator,name=iPhone 17'
+#
+# The second `xcodebuild` runs the WeCookedKit package tests (they read
+# WeCookedKit/Tests/Fixtures). For a seconds-fast loop while editing the
+# package alone: `cd WeCookedKit && swift test`.
+name: WeCooked
+
+options:
+  bundleIdPrefix: kitchen.wecooked
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # The server the app talks to; read from Info.plist as WCBaseURL.
+    WC_BASE_URL: https://wecooked.kitchen/api/v1/
+  configs:
+    Debug:
+      # A local `npm run dev` in server/. Reachable from the simulator as-is;
+      # on a device, put the Mac's LAN address in Local.xcconfig.
+      WC_BASE_URL: http://localhost:5173/api/v1/
+
+packages:
+  WeCookedKit:
+    path: WeCookedKit
+
+targets:
+  WeCooked:
+    type: application
+    platform: iOS
+    sources:
+      - path: WeCooked
+        excludes: ["*.entitlements"]
+    dependencies:
+      - package: WeCookedKit
+        product: WeCookedKit
+      - target: WeCookedShare
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: kitchen.wecooked.ios
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # No icon until unit 8; xcodegen would otherwise ask for one named AppIcon.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: WeCooked/Info.plist
+      properties:
+        CFBundleDisplayName: We Cooked
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+        WCBaseURL: $(WC_BASE_URL)
+        WCAppGroup: group.kitchen.wecooked
+        WCKeychainGroup: $(AppIdentifierPrefix)kitchen.wecooked.shared
+        CFBundleURLTypes:
+          - CFBundleURLName: kitchen.wecooked.ios
+            CFBundleURLSchemes: [wecooked]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSCameraUsageDescription: Take photos of recipes to add them.
+        NSPhotoLibraryUsageDescription: Choose photos of recipes to add them.
+    entitlements:
+      path: WeCooked/WeCooked.entitlements
+      properties:
+        com.apple.security.application-groups: [group.kitchen.wecooked]
+        keychain-access-groups: [$(AppIdentifierPrefix)kitchen.wecooked.shared]
+
+  # Placeholder for the share-sheet unit. It builds, embeds and shares the
+  # Keychain group and app group with the app, so the token and units are
+  # already readable from it; it does nothing yet.
+  WeCookedShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WeCookedShare
+        excludes: ["*.entitlements"]
+    dependencies:
+      - package: WeCookedKit
+        product: WeCookedKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: kitchen.wecooked.ios.share
+        SKIP_INSTALL: YES
+        # WeCookedKit must stay free of application-only API (UIApplication).
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      path: WeCookedShare/Info.plist
+      properties:
+        CFBundleDisplayName: We Cooked
+        WCBaseURL: $(WC_BASE_URL)
+        WCAppGroup: group.kitchen.wecooked
+        WCKeychainGroup: $(AppIdentifierPrefix)kitchen.wecooked.shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+    entitlements:
+      path: WeCookedShare/WeCookedShare.entitlements
+      properties:
+        com.apple.security.application-groups: [group.kitchen.wecooked]
+        keychain-access-groups: [$(AppIdentifierPrefix)kitchen.wecooked.shared]
+
+schemes:
+  WeCooked:
+    build:
+      targets:
+        WeCooked: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      # The package's own test target, so `xcodebuild test -scheme WeCooked`
+      # runs the fixture decoding tests. No second copy of the tests.
+      targets:
+        - package: WeCookedKit/WeCookedKitTests
+    archive:
+      config: Release
