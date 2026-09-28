@@ -34,9 +34,14 @@ export function verifySession(cookie: string | undefined): number | null {
 	return iat;
 }
 
-export function setSessionCookie(cookies: Cookies, iat: number): void {
+/** The signed token: the cookie value, and the bearer token for native clients. */
+export function issueSessionToken(iat: number): string {
 	const payload = String(iat);
-	cookies.set(SESSION_COOKIE, `${payload}.${sign(payload)}`, {
+	return `${payload}.${sign(payload)}`;
+}
+
+export function setSessionCookie(cookies: Cookies, iat: number): void {
+	cookies.set(SESSION_COOKIE, issueSessionToken(iat), {
 		path: '/',
 		httpOnly: true,
 		secure: !dev,

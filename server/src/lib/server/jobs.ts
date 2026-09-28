@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
-import { ERROR_COPY, type ErrorCode } from '$lib/jobs';
+import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
 
 // The in-process job runner (SPEC 6): 500 ms poll, concurrency 2,
 // transactional claim, startup recovery. No queue service, no second process.
@@ -67,6 +67,30 @@ export function createJob(
 		now()
 	);
 	return id;
+}
+
+/** SPEC 6.3 polling contract, or null for an unknown job. */
+export function getJobPoll(db: Database, id: string): JobPoll | null {
+	const row = db
+		.prepare(
+			'SELECT status, error_code, error_text, recipe_id, variation_id, list_id FROM job WHERE id = ?'
+		)
+		.get(id) as
+		| (Pick<JobPoll, 'status' | 'error_code' | 'error_text'> & {
+				recipe_id: string | null;
+				variation_id: string | null;
+				list_id: string | null;
+		  })
+		| undefined;
+	if (!row) return null;
+	return {
+		status: row.status,
+		error_code: row.error_code,
+		error_text: row.error_text,
+		// variation first: a done scale job's ref is the variation it produced
+		// (its recipe_id is set from creation, so recipe-first would mask it).
+		result_ref: row.variation_id ?? row.recipe_id ?? row.list_id ?? null
+	};
 }
 
 /** SPEC 6.2: on boot, anything left running failed with 'interrupted'. */

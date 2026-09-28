@@ -1,0 +1,28 @@
+{
+  "list": {
+    "build": null,
+    "items": [],
+    "list_id": "01TEST00000000000000000026",
+    "picks": []
+  },
+  "recipes": [
+    {
+      "id": "01TEST00000000000000000022",
+      "title": "Lemon drizzle cake",
+      "yield_count": 8,
+      "yield_unit": "slices"
+    },
+    {
+      "id": "01TEST00000000000000000007",
+      "title": "Quick omelette",
+      "yield_count": 4,
+      "yield_unit": "servings"
+    },
+    {
+      "id": "01TEST00000000000000000003",
+      "title": "Chickpea stew",
+      "yield_count": 4,
+      "yield_unit": "servings"
+    }
+  ]
+}

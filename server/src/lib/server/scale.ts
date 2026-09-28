@@ -327,6 +327,36 @@ export function recalcVariation(db: Database, variationId: string): string {
 	})();
 }
 
+export type CalcJob = {
+	job_id: string;
+	status: 'pending' | 'failed';
+	error_text: string | null;
+	to_count: number;
+};
+
+/** Working/failed state of the calculate-for-N job, resumed across reloads
+ *  (SPEC 7.5: survives a locked phone). Failures surface for 15 minutes, then
+ *  read as history. */
+export function getCalcJob(db: Database, recipeId: string): CalcJob | null {
+	const row = db
+		.prepare(
+			`SELECT id, status, error_text, json_extract(input_json, '$.to_count') AS to_count
+			 FROM job WHERE kind = 'scale' AND recipe_id = ? AND variation_id IS NULL
+			   AND (status IN ('queued','running') OR (status = 'failed' AND finished_at > ?))
+			 ORDER BY created_at DESC, id DESC LIMIT 1`
+		)
+		.get(recipeId, new Date(Date.now() - 15 * 60_000).toISOString()) as
+		| { id: string; status: string; error_text: string | null; to_count: number }
+		| undefined;
+	if (!row) return null;
+	return {
+		job_id: row.id,
+		status: row.status === 'failed' ? 'failed' : 'pending',
+		error_text: row.error_text,
+		to_count: row.to_count
+	};
+}
+
 /** SPEC 7.5 Keep mine: dismiss the stale banner permanently. */
 export function keepMine(db: Database, variationId: string): void {
 	db.prepare(

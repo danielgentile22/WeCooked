@@ -1,0 +1,12 @@
+{
+  "damage_reasoning": null,
+  "error_text": "This site blocks automated readers.",
+  "id": "01TEST00000000000000000018",
+  "initial": {
+    "images": [],
+    "source_url": "https://www.example.com/soup"
+  },
+  "source_text": null,
+  "status": "failed",
+  "warnings": []
+}

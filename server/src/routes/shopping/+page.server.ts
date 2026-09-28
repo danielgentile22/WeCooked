@@ -1,21 +1,10 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
-import { addManual, doneShopping, getShoppingState, requestBuild, retryBuild } from '$lib/server/shopping';
+import { shoppingView } from '$lib/server/views';
+import { addManual, doneShopping, requestBuild, retryBuild } from '$lib/server/shopping';
 
-export const load: PageServerLoad = async () => ({
-	list: getShoppingState(db),
-	// D11 pick mode: every live recipe, with its original yield as the
-	// stepper's starting point.
-	recipes: db
-		.prepare(
-			`SELECT r.id, r.title, r.yield_unit, v.yield_count
-			 FROM recipe r
-			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
-			 WHERE r.deleted_at IS NULL ORDER BY r.created_at DESC`
-		)
-		.all() as { id: string; title: string; yield_unit: string; yield_count: number }[]
-});
+export const load: PageServerLoad = async () => shoppingView(db);
 
 export const actions: Actions = {
 	// SPEC 7.6: one shopping_merge job for the whole build (ADR-027).

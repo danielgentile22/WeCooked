@@ -1,0 +1,59 @@
+{
+  "damage_reasoning": "One bowl and a tin.",
+  "error_text": null,
+  "id": "01TEST00000000000000000021",
+  "initial": {
+    "cook_minutes": 45,
+    "counterpart": {
+      "ingredients": [
+        {
+          "heading": null,
+          "items": [
+            "1 cup sugar",
+            "2 lemons"
+          ]
+        }
+      ],
+      "steps": [
+        "Bake."
+      ]
+    },
+    "cuisine": "british",
+    "damage": "tidy",
+    "effort": "project",
+    "images": [
+      {
+        "id": "01TEST00000000000000000020",
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000020/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=542ea2b5dd1981fa26299fd95cfc321249a89c1682578b50e572e8a09211e439"
+      }
+    ],
+    "ingredients": [
+      {
+        "heading": null,
+        "items": [
+          "200 g sugar",
+          "2 lemons"
+        ]
+      }
+    ],
+    "meal_types": [
+      "dessert"
+    ],
+    "prep_minutes": 20,
+    "protein": null,
+    "source_text": "Grandma, handwritten card",
+    "source_units": "metric",
+    "source_url": null,
+    "steps": [
+      "Bake."
+    ],
+    "title": "Lemon drizzle cake",
+    "yield_count": 8,
+    "yield_unit": "slices"
+  },
+  "source_text": null,
+  "status": "done",
+  "warnings": [
+    "Step 3 was cut off in the photo."
+  ]
+}

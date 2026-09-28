@@ -1,0 +1,16 @@
+Web app smoke after the server move and the /api/v1 addition, 2026-09-28.
+Dev server on a throwaway SQLite file with throwaway SESSION_SECRET and
+APP_PASSWORD_HASH exported in the shell only. Plain curl form posts.
+
+GET / no cookie:         303 -> /login
+GET /login:              200
+POST /login wrong:       200 (error page rendered)
+POST /login right:       cookie set
+GET /                    200
+GET /add                 200
+GET /shopping            200
+GET /trash               200
+GET /recipes/new         200
+POST /add?/paste         draft created
+GET /                    shows the "Extracting" draft card
+GET /api/v1/recipes      401 {"error":"unauthorized"}

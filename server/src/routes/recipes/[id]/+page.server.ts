@@ -1,69 +1,14 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
-import { getRecipe, retryReconvert, deleteVariation } from '$lib/server/recipes';
-import {
-	ensureFresh,
-	keepMine,
-	recalcVariation,
-	requestScale,
-	retryScale
-} from '$lib/server/scale';
-import { presignGet } from '$lib/server/r2';
-
-/** Working/failed state of the calculate-for-N job, resumed across reloads
- *  (SPEC 7.5: survives a locked phone). Failures surface for 15 minutes, then
- *  read as history. */
-function calcJob(recipeId: string) {
-	const row = db
-		.prepare(
-			`SELECT id, status, error_text, json_extract(input_json, '$.to_count') AS to_count
-			 FROM job WHERE kind = 'scale' AND recipe_id = ? AND variation_id IS NULL
-			   AND (status IN ('queued','running') OR (status = 'failed' AND finished_at > ?))
-			 ORDER BY created_at DESC, id DESC LIMIT 1`
-		)
-		.get(recipeId, new Date(Date.now() - 15 * 60_000).toISOString()) as
-		| {
-				id: string;
-				status: string;
-				error_text: string | null;
-				to_count: number;
-		  }
-		| undefined;
-	if (!row) return null;
-	return {
-		job_id: row.id,
-		status: row.status === 'failed' ? ('failed' as const) : ('pending' as const),
-		error_text: row.error_text,
-		to_count: row.to_count
-	};
-}
+import { retryReconvert, deleteVariation } from '$lib/server/recipes';
+import { keepMine, recalcVariation, requestScale, retryScale } from '$lib/server/scale';
+import { recipeView } from '$lib/server/views';
 
 export const load: PageServerLoad = async ({ params, url }) => {
-	const recipe = getRecipe(db, params.id, url.searchParams.get('v') ?? undefined);
-	if (!recipe) error(404, 'Recipe not found');
-	// SPEC 7.5 stale-while-revalidate (ADR-029): opening a stale untouched
-	// variation queues its refresh; the stale body renders behind the banner.
-	// ensureFresh returning null here means the last attempt failed (it never
-	// auto-requeues after a failure), so the banner offers tap-to-retry.
-	let refresh: { job_id: string | null; status: 'pending' | 'failed' } | null = null;
-	if (recipe.stale && !recipe.hand_edited) {
-		const jid = ensureFresh(db, recipe.variation_id);
-		refresh = jid ? { job_id: jid, status: 'pending' } : { job_id: null, status: 'failed' };
-	}
-	return {
-		recipe: {
-			...recipe,
-			images: recipe.images.map((i) => ({
-				id: i.id,
-				url: presignGet(i.r2_key_display),
-				width: i.width,
-				height: i.height
-			}))
-		},
-		refresh,
-		calcJob: calcJob(recipe.id)
-	};
+	const view = recipeView(db, params.id, url.searchParams.get('v') ?? undefined);
+	if (!view) error(404, 'Recipe not found');
+	return view;
 };
 
 export const actions: Actions = {

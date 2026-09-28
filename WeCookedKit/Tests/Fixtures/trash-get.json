@@ -1,0 +1,20 @@
+{
+  "trash": {
+    "recipes": [
+      {
+        "deleted_at": "2026-09-28T12:08:00.000Z",
+        "id": "01TEST00000000000000000007",
+        "title": "Quick omelette"
+      }
+    ],
+    "variations": [
+      {
+        "deleted_at": "2026-09-28T12:03:00.000Z",
+        "id": "01TEST00000000000000000013",
+        "title": "Chickpea stew",
+        "yield_count": 8,
+        "yield_unit": "servings"
+      }
+    ]
+  }
+}

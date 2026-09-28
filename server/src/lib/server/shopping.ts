@@ -312,6 +312,21 @@ export function addManual(db: Database, text: string): void {
 	})();
 }
 
+export type PickableRecipe = { id: string; title: string; yield_unit: string; yield_count: number };
+
+/** D11 pick mode: every live recipe, with its original yield as the
+ *  stepper's starting point, newest first. */
+export function listPickable(db: Database): PickableRecipe[] {
+	return db
+		.prepare(
+			`SELECT r.id, r.title, r.yield_unit, v.yield_count
+			 FROM recipe r
+			 JOIN variation v ON v.recipe_id = r.id AND v.is_original = 1 AND v.deleted_at IS NULL
+			 WHERE r.deleted_at IS NULL ORDER BY r.created_at DESC`
+		)
+		.all() as PickableRecipe[];
+}
+
 /** A tick is shared, persisted, last write wins per item (ADR-033). */
 export function setTicked(db: Database, itemId: string, ticked: boolean): void {
 	db.prepare('UPDATE shopping_list_item SET ticked = ? WHERE id = ?').run(ticked ? 1 : 0, itemId);

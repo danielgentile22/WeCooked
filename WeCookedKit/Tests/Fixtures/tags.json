@@ -1,0 +1,78 @@
+{
+  "cuisines": [
+    "italian",
+    "french",
+    "spanish",
+    "greek",
+    "middle-eastern",
+    "north-african",
+    "indian",
+    "thai",
+    "vietnamese",
+    "chinese",
+    "japanese",
+    "korean",
+    "mexican",
+    "american",
+    "british",
+    "central-european",
+    "nordic",
+    "caribbean",
+    "west-african"
+  ],
+  "damages": [
+    "tidy",
+    "messy",
+    "carnage"
+  ],
+  "efforts": [
+    "quick",
+    "weeknight",
+    "project"
+  ],
+  "error_copy": {
+    "api_error": "Claude is unavailable right now. Try again in a minute.",
+    "fetch_blocked": "This site blocks automated readers. Copy the recipe text and paste it instead, or screenshot the page.",
+    "fetch_failed": "Could not load that page. Paste the text instead?",
+    "image_unreadable": "Could not read that photo. Try again with more light, or crop tighter on the recipe.",
+    "interrupted": "That was interrupted by a restart. Tap to try again.",
+    "no_recipe_found": "Could not find a recipe there. Try pasting the text or a photo.",
+    "quota_exceeded": "Daily limit on Claude calls reached. This usually means something is stuck."
+  },
+  "meal_types": [
+    "breakfast",
+    "lunch",
+    "dinner",
+    "side",
+    "salad",
+    "soup",
+    "bread",
+    "dessert",
+    "snack",
+    "sauce",
+    "drink"
+  ],
+  "proteins": [
+    "chicken",
+    "beef",
+    "pork",
+    "lamb",
+    "fish",
+    "seafood",
+    "egg",
+    "tofu",
+    "beans",
+    "cheese",
+    "none"
+  ],
+  "section_order": [
+    "produce",
+    "meat-fish",
+    "dairy",
+    "dry-goods",
+    "spices",
+    "frozen",
+    "other",
+    "staples"
+  ]
+}
