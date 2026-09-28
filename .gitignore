@@ -5,8 +5,8 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
-/build
+server/.svelte-kit
+server/build
 
 # OS
 .DS_Store
@@ -28,3 +28,16 @@ vite.config.ts.timestamp-*
 
 # Design tool config
 .impeccable/
+
+# Xcode
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.build/
+*.xcresult
+
+# XcodeGen output (generated from project.yml) and personal signing overrides
+WeCooked/Info.plist
+WeCookedShare/Info.plist
+*.entitlements
+Config/Local.xcconfig

@@ -97,6 +97,7 @@ Claude API for extraction, scaling, and unit conversion.
 Needs Node 22 or newer, the version the Dockerfile ships.
 
 ```sh
+cd server
 npm install
 cp .env.example .env
 npm run dev
@@ -119,7 +120,7 @@ In `.env`, local development needs:
 
 The `LITESTREAM_*` values are only used in production.
 
-`npm test` runs the unit tests, `npm run check` typechecks, and `fly deploy`
+From `server/`, `npm test` runs the unit tests, `npm run check` typechecks, and `fly deploy`
 ships.
 
 ## License
