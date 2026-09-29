@@ -8,9 +8,10 @@ with its evidence.
 
 ## Where things stand
 
-Units 1 to 5 of the plan are done and verified. Unit 3 landed in the
-second session (2026-09-28, evening), unit 4 in the third and unit 5 in the
-fourth (both 2026-09-29).
+Units 1 to 6 of the plan are done and verified, except the three shopping
+flows that spend Claude calls (see unit 6 below). Unit 3 landed in the
+second session (2026-09-28, evening), unit 4 in the third, unit 5 in the
+fourth and unit 6 in the fifth (all 2026-09-29).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -24,8 +25,11 @@ fourth (both 2026-09-29).
   toggle with the "as written" marker, stepper, variation chips, banners and
   wake lock. The Add tab captures pasted text, URLs and photos; the one
   editor reviews drafts, edits recipes and takes typed-in ones.
-  `RecipeModel`, `CaptureModel` and `EditorModel` are implemented and
-  tested (105 package tests). The shopping and trash screens are still stubs.
+  The Shopping tab lists the built list by section with optimistic ticks
+  that sync between phones, pick mode, manual lines and Done shopping.
+  `RecipeModel`, `CaptureModel`, `EditorModel` and `ShoppingModel` are
+  implemented and tested (117 package tests). The trash screen is still a
+  stub.
 - `WeCookedUITests` is an XCUITest target that drives the app on the
   simulator against a local seeded server and writes screenshots to
   `screenshots/`. It is the lever for ticking the Sim column: there is no
@@ -34,7 +38,8 @@ fourth (both 2026-09-29).
   for the lazy Form, pickPhotos for the system picker). `Unit3Tests.swift`
   covers rows 5 to 7, 10 to 15, 17, 18, 24, 26, 27 and 29, `Unit4Tests.swift`
   the editor and Add rows, `Unit4DraftTests.swift` the draft rows and
-  `Unit5Tests.swift` the variation rows. The draft and variation tests spend
+  `Unit5Tests.swift` the variation rows and `Unit6Tests.swift` the shopping
+  rows. The draft and variation tests spend
   Claude calls, so they skip unless `TEST_RUNNER_WC_CLAUDE=1` is set. The
   variation tests each start from a server state that
   `server/scripts/unit5-prep.mjs` forges in `local.db` (a failed or stuck
@@ -57,8 +62,10 @@ Checks a reviewer reruns, one command each, from the root `Makefile`:
 `make server-test`, `make kit-test`, `make ios-build`, `make ios-test`
 (package tests on the simulator, no server needed), `make ios-ui-test`
 (needs `npm run dev` in `server/` plus the seed script) and
-`make ios-ui-test-unit5` (the same server, and it spends Claude calls). Logs of the last
-runs are in `logs/`.
+`make ios-ui-test-unit5` (the same server, and it spends Claude calls) and
+`make ios-ui-test-unit6` (the same server; free by default, `WC_CLAUDE=1`
+adds the three tests that spend up to four calls). Logs of the last runs are
+in `logs/`.
 
 ## Owner decisions taken
 
@@ -82,6 +89,16 @@ runs are in `logs/`.
   and pick your team in the Team dropdown, which shows the ID in
   parentheses. Put it in `Config/Local.xcconfig` (copy
   `Config/Local.xcconfig.example`). That file is ignored by git.
+- **A Claude allowance for unit 6's three gated tests** (four calls: one
+  build, two for a rebuild that keeps and resets ticks, one retry of a
+  forged failure), then `WC_CLAUDE=1 make ios-ui-test-unit6`. Until then row
+  59 stays unticked: the building banner and skeletons are proven from a
+  forged running job, the switch to the finished list is not.
+- **Ratify the row 57 second phone.** The simulator is phone A and the test
+  process is phone B over the API (`Unit6Tests.testRow57TickSyncsBothWays`),
+  instead of two simulators; see decisions.tsv. The offline half (a tick
+  queued without signal) is proven by the `DeviceState` and `ShoppingModel`
+  tests only, so tick it on the phone like rows 33, 42 and 50.
 - A tap-through of wecooked.kitchen after the next deploy. The curl smoke in
   `logs/unit1-web-smoke.log` covers every page, but six route files were
   rewritten to share code with the API, and a real click-through is the
@@ -126,9 +143,18 @@ simulator with seeded data, then in the Phone column by the owner.
    allowed (unit 5 spent 9: five planned, three on reruns after the two
    fixes above, one on an automatic refresh a mis-ordered rerun queued).
    Ask the owner before any further Claude-spending run.
-6. **Shopping.** Rows 54 to 64. `ShoppingModel`, the tick outbox and the
-   section layout are real and tested. Verify two-phone sync with two
-   simulators against one local server.
+6. **Done, except row 59's finish.** Rows 54 to 58 and 60 to 64 ticked, all
+   from list states that `server/scripts/unit6-prep.mjs` forges in
+   `local.db` (a built list, a running build, a failed build, a done build
+   with resets not yet seen), so the unit spent no Claude calls. Row 60's
+   banner is proven from a forged result; the real kept and reset counts,
+   row 59's finished list and row 61's retry are the gated tests. Two rules
+   worth knowing: the pick sheet runs on a `ShoppingModel` of its own (the
+   `Router` opens it with no arguments), so the tab's model learns of a new
+   build from the reply, and a pending build clears the old rebuild notice
+   there. The tab's confirmation button says "Clear list" as the web's does,
+   so `Unit6Tests.confirm` needs no frame trick. `ShoppingLayout` now joins
+   several source titles with ", " as the web does, not " · ".
 7. **Trash.** Rows 65 to 67.
 8. **Polish and TestFlight.** Rows 68 to 70 plus: app icon (regenerate from
    the pot glyph in `server/scripts/make-icons.mjs`), dark mode pass,

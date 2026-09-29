@@ -41,7 +41,7 @@ public enum ShoppingLayout {
 					var parts: [String] = []
 					if item.isManual { parts.append("added by hand") } else {
 						if alt != item.text(units) { parts.append("about \(alt)") }
-						parts.append(contentsOf: item.fromTitles)
+						if !item.fromTitles.isEmpty { parts.append(item.fromTitles.joined(separator: ", ")) }
 					}
 					return ShoppingRow(
 						id: item.id, primary: item.text(units),
@@ -67,7 +67,7 @@ public enum ShoppingLayout {
 
 /// Two phones, one list, no lock:
 ///  - the server row holds the truth; `Resource<ShoppingResponse>` mirrors it,
-///    polled every 5 s while the tab is visible;
+///    polled every 5 s by the view while the tab is visible;
 ///  - a tap writes the *target state* into `device.pendingTicks` (idempotent:
 ///    "item 7 is ticked", never "toggle item 7");
 ///  - the view reads `server ⊕ pendingTicks` (`ShoppingLayout.sections`);
@@ -75,32 +75,148 @@ public enum ShoppingLayout {
 ///    it still matches what was sent, and `Resource.mutate` writes the
 ///    acknowledged value into the mirror so a slow poll cannot flip it back;
 ///  - the other phone's tick arrives on the next poll, last write wins per item.
-/// A failed send leaves the entry in place; the next poll cycle or foreground
-/// retries it, so a tick made in a dead spot lands when the signal returns.
+/// A failed send leaves the entry in place; the next poll's reply retries it,
+/// so a tick made in a dead spot lands when the signal returns.
 @MainActor @Observable
 public final class ShoppingModel {
+	public enum Phase: Equatable, Sendable { case building, empty, list }
+
 	public var resource: Resource<ShoppingResponse> { env.store.resource(.shopping) }
+	/// The rebuild notice, shown once per build job.
 	public private(set) var notice: String?
+	/// The last failed action's message; cleared when the next action starts.
+	public private(set) var banner: String?
+
 	@ObservationIgnored private let env: AppEnvironment
+	/// The send in progress. Internal so tests can tell a send has started.
+	@ObservationIgnored private(set) var flushing: Task<Void, Never>?
 
-	public init(env: AppEnvironment) { fatalError("not implemented") }
+	public init(env: AppEnvironment) { self.env = env }
 
-	public var sections: [ShoppingSection] {
-		fatalError("not implemented")
-		// resource.value + vocabulary.sectionOrder + device.units + device.pendingTicks
-		// -> ShoppingLayout.sections
+	private var items: [ShoppingItem] { resource.value?.list.items ?? [] }
+
+	/// The web's branches: a pending build hides everything else; otherwise
+	/// the empty state or the list, under `buildError` and `notice`.
+	public var phase: Phase {
+		if resource.value?.list.build?.status == .pending { return .building }
+		return items.isEmpty ? .empty : .list
 	}
 
-	/// While the tab is visible: flush the outbox, revalidate every 5 s, show
-	/// the rebuild notice once per `build.jobId` (`device.seenBuild`). A pending
-	/// `list.build` is waited on by the Store, which refetches the list when the
-	/// merge ends.
-	public func appear() async { fatalError("not implemented") }
+	public var buildError: String? {
+		guard let b = resource.value?.list.build, b.status == .failed else { return nil }
+		return b.errorText ?? "The build failed."
+	}
 
-	public func setTicked(_ id: ShoppingItemID, _ ticked: Bool) { fatalError("not implemented") }
-	public func flush() async { fatalError("not implemented") }
-	public func addManual(_ text: String) async { fatalError("not implemented") }
-	public func startBuild(_ picks: [BuildPick]) async { fatalError("not implemented") }
-	public func retryBuild() async { fatalError("not implemented") }
-	public func doneShopping() async { fatalError("not implemented") }
+	public var sections: [ShoppingSection] {
+		let order = env.store.resource(.vocabulary).value?.sectionOrder ?? Section.known
+		return ShoppingLayout.sections(
+			items: items, order: order, units: units, pending: env.device.pendingTicks)
+	}
+
+	public var progress: (ticked: Int, total: Int) {
+		ShoppingLayout.progress(items: items, pending: env.device.pendingTicks)
+	}
+
+	public var units: UnitSystem { env.device.units }
+	public var pickable: [PickableRecipe] { resource.value?.recipes ?? [] }
+	public var picks: [ShoppingPick] { resource.value?.list.picks ?? [] }
+	public var hasList: Bool { !items.isEmpty }
+
+	/// Run while the tab is visible; the view's `.watching` owns the poll.
+	/// Every reply (the first is the cached one) may carry a finished build to
+	/// announce, and is a moment to retry ticks a dead spot left behind.
+	public func appear() async {
+		for await reply in Observations({ self.resource.value }) {
+			if let reply { noticed(reply) }
+			if !env.device.pendingTicks.isEmpty { await flush() }
+		}
+	}
+
+	/// Marks a done build seen even when nothing was reset, as the web does,
+	/// so a later reply for the same job never raises the notice. A build in
+	/// progress ends the old notice: the pick sheet starts builds on a model of
+	/// its own, so the tab's model only learns of them from the reply.
+	func noticed(_ reply: ShoppingResponse) {
+		guard let b = reply.list.build else { return }
+		if b.status == .pending { notice = nil; return }
+		guard b.status == .done, let result = b.result, env.device.seenBuild != b.jobId else { return }
+		env.device.seenBuild = b.jobId
+		notice = ShoppingLayout.rebuildNotice(result)
+	}
+
+	public func setTicked(_ id: ShoppingItemID, _ ticked: Bool) {
+		env.device.queueTick(id, ticked)
+		mirror(id, ticked)
+		Task { await flush() }
+	}
+
+	/// One send at a time. A call during a send waits for it, then sends
+	/// whatever is still pending, so a second tap is neither lost nor raced.
+	public func flush() async {
+		while let running = flushing { await running.value }
+		let batch = env.device.pendingTicks
+		guard !batch.isEmpty else { return }
+		let task = Task {
+			await send(batch)
+			flushing = nil
+		}
+		flushing = task
+		await task.value
+	}
+
+	/// Stops at the first failure without a banner: the entry stays queued
+	/// and the next reply retries it.
+	private func send(_ batch: [ShoppingItemID: Bool]) async {
+		for (id, ticked) in batch {
+			do { try await env.api.setTicked(id, ticked) } catch { return }
+			env.device.settleTick(id, sent: ticked)
+			mirror(id, ticked)
+		}
+	}
+
+	private func mirror(_ id: ShoppingItemID, _ ticked: Bool) {
+		resource.mutate { r in
+			if let i = r.list.items.firstIndex(where: { $0.id == id }) { r.list.items[i].ticked = ticked }
+		}
+	}
+
+	public func addManual(_ text: String) async {
+		await run { try await env.api.addManualLine(text) }
+	}
+
+	/// The reply lists the pending job under `list.build`; the Store waits on
+	/// it and refetches when the merge ends.
+	public func startBuild(_ picks: [BuildPick]) async {
+		notice = nil
+		await run { _ = try await env.api.buildShopping(picks) }
+	}
+
+	public func retryBuild() async {
+		notice = nil
+		await run { _ = try await env.api.retryShopping() }
+	}
+
+	public func doneShopping() async {
+		notice = nil
+		await run {
+			try await env.api.doneShopping()
+			env.device.clearTicks()
+		}
+	}
+
+	public func toggleUnits() { env.device.units = env.device.units.other }
+	public func dismissNotice() { notice = nil }
+
+	/// Refetches this reply rather than invalidating the family:
+	/// `Store.invalidate` refetches only watched resources, and the outcome is
+	/// what the screen shows next.
+	private func run(_ work: () async throws -> Void) async {
+		banner = nil
+		do {
+			try await work()
+			await resource.revalidate()
+		} catch {
+			banner = APIError.wrapping(error).message
+		}
+	}
 }

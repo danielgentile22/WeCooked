@@ -5,7 +5,7 @@ SIM ?= platform=iOS Simulator,name=iPhone 17e
 PROJECT = WeCooked.xcodeproj
 SCHEME = WeCooked
 
-.PHONY: ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 kit-test server-test
+.PHONY: ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 ios-ui-test-unit6 kit-test server-test
 
 ios-generate:
 	xcodegen generate
@@ -30,6 +30,10 @@ ios-ui-test: ios-generate
 # Unit 5's variation tests, each after its forged server state: spends up to 5 Claude calls.
 ios-ui-test-unit5: ios-generate
 	SIM='$(SIM)' WeCookedUITests/run-unit5.sh
+
+# Free by default; WC_CLAUDE=1 make ios-ui-test-unit6 adds the tests that spend Claude calls.
+ios-ui-test-unit6: ios-generate
+	SIM='$(SIM)' WeCookedUITests/run-unit6.sh
 
 kit-test:
 	cd WeCookedKit && swift test

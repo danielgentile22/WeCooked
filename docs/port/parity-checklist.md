@@ -60,17 +60,17 @@ column is ticked by the owner on a device.
 | 51 | Editor | Draft autosaves per device for 7 days and restores silently, Start over asks twice (owner decision) | x | |
 | 52 | Editor | Payload rule matches the web app exactly (unit tests) | x | |
 | 53 | Editor | Delete recipe at the bottom with confirmation, goes to Trash | x | |
-| 54 | Shopping | Sections in order, generated then manual, staples collapsed | | |
-| 55 | Shopping | Item text follows units, secondary line shows the other units and source titles | | |
-| 56 | Shopping | Header count "N of M ticked" | | |
-| 57 | Shopping | Tick is instant, queued without signal and sent later, and a tick from the other phone appears within 5 s (owner decision) | | |
-| 58 | Shopping | Pick mode: checkbox per recipe, whole number stepper min 1, Build | | |
+| 54 | Shopping | Sections in order, generated then manual, staples collapsed | x | |
+| 55 | Shopping | Item text follows units, secondary line shows the other units and source titles | x | |
+| 56 | Shopping | Header count "N of M ticked" | x | |
+| 57 | Shopping | Tick is instant, queued without signal and sent later, and a tick from the other phone appears within 5 s (owner decision) | x | |
+| 58 | Shopping | Pick mode: checkbox per recipe, whole number stepper min 1, Build | x | |
 | 59 | Shopping | Build shows a banner and skeletons, then the list | | |
-| 60 | Shopping | Rebuild banner with kept and reset counts, shown once | | |
-| 61 | Shopping | Build failure shows error text with retry | | |
-| 62 | Shopping | Add a manual line | | |
-| 63 | Shopping | Done shopping asks twice, clears everything | | |
-| 64 | Shopping | Empty state "Pick recipes to build a list" | | |
+| 60 | Shopping | Rebuild banner with kept and reset counts, shown once | x | |
+| 61 | Shopping | Build failure shows error text with retry | x | |
+| 62 | Shopping | Add a manual line | x | |
+| 63 | Shopping | Done shopping asks twice, clears everything | x | |
+| 64 | Shopping | Empty state "Pick recipes to build a list" | x | |
 | 65 | Trash | Two groups, title, yield for variations, deleted date, Restore | | |
 | 66 | Trash | Restore variation that displaces shows the displaced banner | | |
 | 67 | Trash | Restore errors shown | | |
