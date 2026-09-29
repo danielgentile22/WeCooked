@@ -11,31 +11,31 @@ column is ticked by the owner on a device.
 | 2 | Login | Five failures show the 15 minute rate limit message | | |
 | 3 | Login | Success lands on Recipes, token survives relaunch | | |
 | 4 | Login | A 401 from any call returns to the login screen | | |
-| 5 | Browse | Recipes newest first with thumbnail or pot tile, title, effort and damage chips | | |
-| 6 | Browse | Search filters as you type, prefix matching, debounced | | |
-| 7 | Browse | Tag filters per group, OR within a group, AND across groups | | |
+| 5 | Browse | Recipes newest first with thumbnail or pot tile, title, effort and damage chips | x | |
+| 6 | Browse | Search filters as you type, prefix matching, debounced | x | |
+| 7 | Browse | Tag filters per group, OR within a group, AND across groups | x | |
 | 8 | Browse | Extracting drafts show a status row and update when done or failed | | |
 | 9 | Browse | Ready and failed drafts open the draft screen | | |
-| 10 | Browse | Empty states: "No recipes match." and "Add your first recipe" | | |
-| 11 | Browse | Trash link at the bottom | | |
-| 12 | Browse | A recipe seen before opens instantly, then refreshes | | |
-| 13 | Recipe | Header: title, yield, prep and cook, cover, source line linked when a URL exists | | |
-| 14 | Recipe | Tag chips in order: meal types, cuisine, protein, effort, damage | | |
-| 15 | Recipe | Variation chips ascending, original marked, tap switches | | |
+| 10 | Browse | Empty states: "No recipes match." and "Add your first recipe" | x | |
+| 11 | Browse | Trash link at the bottom | x | |
+| 12 | Browse | A recipe seen before opens instantly, then refreshes | x | |
+| 13 | Recipe | Header: title, yield, prep and cook, cover, source line linked when a URL exists | x | |
+| 14 | Recipe | Tag chips in order: meal types, cuisine, protein, effort, damage | x | |
+| 15 | Recipe | Variation chips ascending, original marked, tap switches | x | |
 | 16 | Recipe | Selected non-original chip reveals Delete this variation with confirmation | | |
-| 17 | Recipe | Stepper: plus and minus by 1, decimal input, never zero, resets on variation change | | |
-| 18 | Recipe | "Show N" when the yield exists, "Calculate for N" otherwise | | |
+| 17 | Recipe | Stepper: plus and minus by 1, decimal input, never zero, resets on variation change | x | |
+| 18 | Recipe | "Show N" when the yield exists, "Calculate for N" otherwise | x | |
 | 19 | Recipe | Calculate shows the banner, polls, and switches to the new variation | | |
 | 20 | Recipe | A pending calculation resumes after relaunch | | |
 | 21 | Recipe | Calculation failure shows the error text with retry | | |
 | 22 | Recipe | Stale untouched variation: "updating" banner, then "Updated to match the original." | | |
 | 23 | Recipe | Stale hand-edited: Recalculate (confirmed) and Keep mine | | |
-| 24 | Recipe | Unit toggle with "as written" marker, remembered per device, default metric | | |
+| 24 | Recipe | Unit toggle with "as written" marker, remembered per device, default metric | x | |
 | 25 | Recipe | Reconvert pending and failed banners on the non-source units, with retry | | |
-| 26 | Recipe | Sticky collapsible ingredients with group headings, numbered steps, notes, photo strip | | |
-| 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | | |
+| 26 | Recipe | Sticky collapsible ingredients with group headings, numbered steps, notes, photo strip | x | |
+| 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | x | |
 | 28 | Recipe | Screen stays awake while the recipe is visible | | |
-| 29 | Recipe | Edit opens the editor for the viewed variation | | |
+| 29 | Recipe | Edit opens the editor for the viewed variation | x | |
 | 30 | Add | Paste box: URL creates an extract_url job, text an extract_paste job | | |
 | 31 | Add | Empty paste shows "Paste some recipe text first." | | |
 | 32 | Add | Photos upload on pick, thumbnails with remove, at most 8 | | |

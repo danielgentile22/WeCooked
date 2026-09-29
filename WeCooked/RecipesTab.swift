@@ -10,6 +10,7 @@ struct RecipesTab: View {
 	@Environment(Router.self) private var router
 	@State private var filters = BrowseFilters()
 	@State private var searchText = ""
+	@State private var showFilters = false
 
 	private var resource: Resource<BrowseResponse> { env.store.resource(.recipes(filters)) }
 
@@ -44,6 +45,20 @@ struct RecipesTab: View {
 			try? await Task.sleep(for: .milliseconds(300))
 			if !Task.isCancelled { filters.q = searchText }
 		}
+		.toolbar {
+			ToolbarItem(placement: .topBarTrailing) {
+				Button { showFilters = true } label: {
+					if filters.tagCount > 0 {
+						Label("\(filters.tagCount)", systemImage: "line.3.horizontal.decrease")
+							.labelStyle(.titleAndIcon)
+					} else {
+						Label("Filters", systemImage: "line.3.horizontal.decrease")
+					}
+				}
+				.accessibilityLabel(filters.tagCount > 0 ? "Filters, \(filters.tagCount) active" : "Filters")
+			}
+		}
+		.sheet(isPresented: $showFilters) { FilterSheet(filters: $filters) }
 	}
 
 	@ViewBuilder
@@ -56,7 +71,7 @@ struct RecipesTab: View {
 					.buttonStyle(.borderedProminent)
 			}
 		} else {
-			ContentUnavailableView.search(text: filters.q)
+			ContentUnavailableView("No recipes match.", systemImage: "magnifyingglass")
 		}
 	}
 }
@@ -170,8 +185,85 @@ extension Damage {
 	}
 }
 
-struct FilterSheet: View { var body: some View { Text("Filters") } }
-struct UnitsSheet: View { var body: some View { NotBuiltYet() } }
+extension BrowseFilters {
+	var tagCount: Int {
+		mealTypes.count + cuisines.count + proteins.count + efforts.count + damages.count
+	}
+	/// The search text stays; only the chips clear.
+	var withoutTags: BrowseFilters {
+		var cleared = BrowseFilters()
+		cleared.q = q
+		return cleared
+	}
+}
+
+/// Five groups of chips over `Vocabulary`. OR within a group and AND across
+/// groups is the server's rule; this only edits the sets.
+struct FilterSheet: View {
+	@Binding var filters: BrowseFilters
+	@Environment(AppEnvironment.self) private var env
+	@Environment(\.dismiss) private var dismiss
+
+	var body: some View {
+		NavigationStack {
+			Loaded(resource: env.store.resource(.vocabulary)) { vocab in
+				ScrollView {
+					VStack(alignment: .leading, spacing: 24) {
+						TagGroup("Meal type", vocab.mealTypes, $filters.mealTypes) { $0.title }
+						TagGroup("Cuisine", vocab.cuisines, $filters.cuisines) { $0.title }
+						TagGroup("Protein", vocab.proteins, $filters.proteins) { $0.title }
+						TagGroup("Effort", vocab.efforts, $filters.efforts) { $0.word }
+						TagGroup("Damage", vocab.damages, $filters.damages) { $0.word }
+					}
+					.padding()
+				}
+			}
+			.watching(env.store.resource(.vocabulary))
+			.navigationTitle("Filters")
+			.navigationBarTitleDisplayMode(.inline)
+			.toolbar {
+				ToolbarItem(placement: .topBarLeading) {
+					if filters.tagCount > 0 {
+						Button("Clear") { filters = filters.withoutTags }
+					}
+				}
+				ToolbarItem(placement: .topBarTrailing) {
+					Button("Done") { dismiss() }
+				}
+			}
+		}
+	}
+}
+
+private struct TagGroup<T: Hashable>: View {
+	let title: String
+	let values: [T]
+	@Binding var selected: Set<T>
+	let label: (T) -> String
+
+	init(_ title: String, _ values: [T], _ selected: Binding<Set<T>>, label: @escaping (T) -> String) {
+		self.title = title
+		self.values = values
+		self._selected = selected
+		self.label = label
+	}
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Text(title).font(.headline)
+			Flow {
+				ForEach(values, id: \.self) { value in
+					Button {
+						if selected.remove(value) == nil { selected.insert(value) }
+					} label: {
+						Chip(title: label(value), isSelected: selected.contains(value))
+					}
+					.buttonStyle(.plain)
+				}
+			}
+		}
+	}
+}
 
 struct TrashScreen: View {
 	@Environment(AppEnvironment.self) private var env

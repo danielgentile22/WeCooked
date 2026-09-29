@@ -1,0 +1,71 @@
+xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+set -o pipefail; TEST_RUNNER_WC_SCREENSHOT_DIR=/Users/daniel/Projects/we-cooked/docs/port/screenshots \
+		xcodebuild test -project WeCooked.xcodeproj -scheme WeCooked -destination 'platform=iOS Simulator,name=iPhone 17e' \
+		-only-testing:WeCookedUITests | tail -40
+2026-09-28 20:31:25.799 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:31:25.799 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:31:41.108 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:31:41.108 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:32:05.126 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:32:05.126 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:32:37.202 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:32:37.202 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:32:48.141 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:32:48.141 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:01.484 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:33:01.484 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:09.309 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:33:09.309 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:20.369 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:33:20.369 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:36.766 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:33:36.766 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:47.885 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-28 20:33:47.885 xcodebuild[65827:1862671] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-28 20:33:58.352 xcodebuild[65827:1862671] [MT] IDETestOperationsObserverDebug: 155.256 elapsed -- Testing started completed.
+2026-09-28 20:33:58.352 xcodebuild[65827:1862671] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-28 20:33:58.352 xcodebuild[65827:1862671] [MT] IDETestOperationsObserverDebug: 155.256 sec, +155.256 sec -- end
+    t =     5.70s     Synthesize event
+    t =     5.99s     Wait for kitchen.wecooked.ios to idle
+    t =     6.37s Waiting 10.0s for "Sunday ragù" StaticText to exist
+    t =     7.43s     Checking `Expect predicate `existsNoRetry == 1` for object "Sunday ragù" StaticText`
+    t =     7.43s         Checking existence of `"Sunday ragù" StaticText`
+    t =     7.49s Tap "Edit" Button
+    t =     7.49s     Wait for kitchen.wecooked.ios to idle
+    t =     7.49s     Find the "Edit" Button
+    t =     7.52s     Check for interrupting elements affecting "Edit" Button
+    t =     7.55s     Synthesize event
+    t =     7.84s     Wait for kitchen.wecooked.ios to idle
+    t =     8.14s Waiting 5.0s for "Not built yet" StaticText to exist
+    t =     9.16s     Checking `Expect predicate `existsNoRetry == 1` for object "Not built yet" StaticText`
+    t =     9.16s         Checking existence of `"Not built yet" StaticText`
+    t =     9.19s Find the Target Application 'kitchen.wecooked.ios'
+    t =     9.27s Added attachment named 'unit3-edit'
+    t =     9.27s Tap Button (Element at index 0)
+    t =     9.27s     Wait for kitchen.wecooked.ios to idle
+    t =     9.27s     Find the Button (Element at index 0)
+    t =     9.28s     Check for interrupting elements affecting "BackButton" Button
+    t =     9.29s     Synthesize event
+    t =     9.58s     Wait for kitchen.wecooked.ios to idle
+    t =     9.89s Waiting 5.0s for "Sunday ragù" StaticText to exist
+    t =    10.92s     Checking `Expect predicate `existsNoRetry == 1` for object "Sunday ragù" StaticText`
+    t =    10.92s         Checking existence of `"Sunday ragù" StaticText`
+    t =    10.97s Tear Down
+Test Case '-[WeCookedUITests.Unit3Tests testRow29Edit]' passed (11.220 seconds).
+Test Suite 'Unit3Tests' passed at 2026-09-28 20:33:58.040.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 152.290 (152.299) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-28 20:33:58.041.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 152.290 (152.300) seconds
+Test Suite 'All tests' passed at 2026-09-28 20:33:58.041.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 152.290 (152.301) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.28_20-31-20--0400.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

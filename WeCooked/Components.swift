@@ -158,6 +158,43 @@ struct CachedImage: View {
 	}
 }
 
+/// Chips wrap left to right, as on the web. Rows break at the proposed width.
+struct Flow: Layout {
+	var spacing: CGFloat = 8
+
+	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+		let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+		return CGSize(width: width, height: rows(in: width, subviews: subviews).height)
+	}
+
+	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+		for (index, origin) in rows(in: bounds.width, subviews: subviews).origins.enumerated() {
+			subviews[index].place(
+				at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+				proposal: .unspecified)
+		}
+	}
+
+	private func rows(in width: CGFloat, subviews: Subviews) -> (origins: [CGPoint], height: CGFloat) {
+		var origins: [CGPoint] = []
+		var x: CGFloat = 0
+		var y: CGFloat = 0
+		var rowHeight: CGFloat = 0
+		for view in subviews {
+			let size = view.sizeThatFits(.unspecified)
+			if x > 0 && x + size.width > width {
+				x = 0
+				y += rowHeight + spacing
+				rowHeight = 0
+			}
+			origins.append(CGPoint(x: x, y: y))
+			x += size.width + spacing
+			rowHeight = max(rowHeight, size.height)
+		}
+		return (origins, y + rowHeight)
+	}
+}
+
 /// Shown by every screen whose unit has not been built, instead of trapping.
 struct NotBuiltYet: View {
 	var body: some View { ContentUnavailableView("Not built yet", systemImage: "hammer") }

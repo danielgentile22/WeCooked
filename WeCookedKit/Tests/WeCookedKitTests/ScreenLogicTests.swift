@@ -138,12 +138,12 @@ struct RecipeDisplayTests {
 		#expect(d.banners.contains(.calculating(toCount: 8)))
 	}
 
-	@Test func asWrittenOnlyForOriginalsOrHandEditedInSourceUnits() throws {
+	@Test func asWrittenOnlyForOriginalsOrHandEditedWhicheverUnitsShow() throws {
 		let orig = try Self.response("recipe-get")
-		#expect(RecipeDisplay.make(orig, units: .metric, struck: []).showsAsWritten)
-		#expect(!RecipeDisplay.make(orig, units: .us, struck: []).showsAsWritten)
+		#expect(RecipeDisplay.make(orig, units: .metric, struck: []).sourceIsAsWritten)
+		#expect(RecipeDisplay.make(orig, units: .us, struck: []).sourceIsAsWritten)
 		let scaled = try Self.response("recipe-get-variation")
-		#expect(!RecipeDisplay.make(scaled, units: .metric, struck: []).showsAsWritten)
+		#expect(!RecipeDisplay.make(scaled, units: .metric, struck: []).sourceIsAsWritten)
 	}
 
 	@Test func missingCounterpartFallsBackToTheSourceBody() throws {

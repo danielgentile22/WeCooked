@@ -73,6 +73,8 @@ public struct RecipeDisplay: Equatable, Sendable {
 		/// The client stopped polling after five minutes; the job may still finish.
 		case calculationTimedOut(toCount: Double)
 		case updated
+		/// A recalculate, keep, delete or retry request failed.
+		case actionFailed(String)
 	}
 
 	public let detail: RecipeDetail
@@ -80,9 +82,10 @@ public struct RecipeDisplay: Equatable, Sendable {
 	public let body: BodyText
 	/// The requested units have no body yet, so the source body is shown.
 	public let isFallback: Bool
-	/// "as written": the original, or one carrying hand edits, viewed in the
-	/// units it was authored in.
-	public let showsAsWritten: Bool
+	/// The source units carry the text as a person wrote it: the original, or a
+	/// variation with hand edits. The units toggle marks that side "as written"
+	/// whichever side is showing.
+	public let sourceIsAsWritten: Bool
 	public let struck: Set<LineKey>
 	public let banners: [Banner]
 
@@ -112,7 +115,7 @@ public struct RecipeDisplay: Equatable, Sendable {
 		}
 		return RecipeDisplay(
 			detail: r, units: units, body: body, isFallback: chosen == nil,
-			showsAsWritten: (r.isOriginal || r.handEdited) && units == r.sourceUnits,
+			sourceIsAsWritten: r.isOriginal || r.handEdited,
 			struck: struck, banners: banners)
 	}
 }
@@ -159,7 +162,21 @@ public final class RecipeModel {
 	/// Run while the screen is visible (`.watching` already revalidates).
 	/// Prefetches the other variations at low priority so chip taps are
 	/// instant. Jobs need nothing here: the reply lists them and the Store waits.
-	public func appear() async { fatalError("not implemented") }
+	public func appear() async {
+		if resource.value == nil {
+			await resource.revalidate()
+			// init guessed a yield; the first reply says the real one.
+			if let y = resource.value?.recipe.yieldCount { stepper.reset(viewed: y) }
+		}
+		guard let r = resource.value?.recipe else { return }
+		let missing = r.variations
+			.filter { $0.id != r.variationId }
+			.map { env.store.resource(.recipe(recipeID, variation: $0.id)) }
+			.filter { $0.value == nil }
+		await withTaskGroup(of: Void.self) { group in
+			for other in missing { group.addTask(priority: .utility) { await other.revalidate() } }
+		}
+	}
 
 	public func toggleUnits() { env.device.units = env.device.units.other }
 
@@ -170,18 +187,105 @@ public final class RecipeModel {
 
 	/// Chip tap or "Show N": swap `variationID`; the new key's resource is
 	/// usually cached already. Resets the stepper and clears local banners.
-	public func show(_ variation: VariationID) { fatalError("not implemented") }
+	public func show(_ variation: VariationID) {
+		let chip = resource.value?.recipe.variations.first { $0.id == variation }
+		variationID = variation
+		localBanner = nil
+		if let y = resource.value?.recipe.yieldCount ?? chip?.yieldCount { stepper.reset(viewed: y) }
+	}
 
 	/// The stepper's button. `.show` switches locally; `.calculate` POSTs and
 	/// either switches (`existing`) or calls `store.calculationStarted`, which
 	/// writes `calcJob` into the cached reply so the Store's wait begins; when
 	/// it ends the refetched reply carries the new chip (or the failure text).
-	public func commitStepper() async { fatalError("not implemented") }
+	public func commitStepper() async {
+		guard let chips = resource.value?.recipe.variations else { return }
+		switch stepper.action(chips: chips) {
+		case .invalid, .unchanged: return
+		case .show(let v): show(v)
+		case .calculate(let n): await calculate(n)
+		}
+	}
 
-	public func retryCalculation() async { fatalError("not implemented") }
-	public func recalculate() async { fatalError("not implemented") }
-	public func keepMine() async { fatalError("not implemented") }
-	public func deleteVariation() async { fatalError("not implemented") }
-	public func deleteRecipe() async { fatalError("not implemented") }
-	public func retryReconvert() async { fatalError("not implemented") }
+	/// A failed calculate is retried by asking for the same yield again; the
+	/// server starts a fresh job since only pending ones are reused.
+	public func retryCalculation() async {
+		guard let c = resource.value?.calcJob else { return }
+		await calculate(c.toCount)
+	}
+
+	/// The server trashes this variation and queues a calculate for the same
+	/// yield, so the job is a `calcJob` on the recipe, not this variation's
+	/// `refresh`. Back to the original, whose reply now lists it.
+	public func recalculate() async {
+		guard let r = resource.value?.recipe, !r.isOriginal else { return }
+		await run(RecipeDisplay.Banner.actionFailed) {
+			let job = try await env.api.recalculate(r.variationId)
+			// Show first so the original's resource is loaded and gets the patch.
+			showOriginal(of: r)
+			env.store.calculationStarted(recipeID, job: job, toCount: r.yieldCount)
+			env.store.variationChanged(recipe: recipeID)
+		}
+	}
+
+	/// A stale refresh that failed is never retried by the server on its own.
+	public func retryRefresh() async {
+		guard let vid = resource.value?.recipe.variationId else { return }
+		await run(RecipeDisplay.Banner.actionFailed) {
+			_ = try await env.api.retryScale(vid)
+			env.store.invalidate(.recipe(recipeID))
+		}
+	}
+
+	public func keepMine() async {
+		guard let vid = resource.value?.recipe.variationId else { return }
+		await run(RecipeDisplay.Banner.actionFailed) {
+			try await env.api.keepMine(vid)
+			env.store.invalidate(.recipe(recipeID))
+		}
+	}
+
+	public func deleteVariation() async {
+		guard let r = resource.value?.recipe, !r.isOriginal else { return }
+		await run(RecipeDisplay.Banner.actionFailed) {
+			try await env.api.deleteVariation(r.variationId)
+			showOriginal(of: r)
+			env.store.variationChanged(recipe: recipeID)
+		}
+	}
+
+	public func deleteRecipe() async {
+		await run(RecipeDisplay.Banner.actionFailed) {
+			try await env.api.deleteRecipe(recipeID)
+			env.store.recipeDeleted(recipeID)
+		}
+	}
+
+	public func retryReconvert() async {
+		guard let r = resource.value?.recipe else { return }
+		await run(RecipeDisplay.Banner.actionFailed) {
+			try await env.api.retryReconvert(recipeID, variation: r.isOriginal ? nil : r.variationId)
+			env.store.invalidate(.recipe(recipeID))
+		}
+	}
+
+	private func calculate(_ n: Double) async {
+		await run(RecipeDisplay.Banner.calculationFailed) {
+			switch try await env.api.calculate(recipeID, toCount: n) {
+			case .existing(let v): show(v)
+			case .job(let id): env.store.calculationStarted(recipeID, job: id, toCount: n)
+			}
+		}
+	}
+
+	private func showOriginal(of r: RecipeDetail) {
+		if let original = r.variations.first(where: \.isOriginal) { show(original.id) }
+	}
+
+	private func run(
+		_ banner: (String) -> RecipeDisplay.Banner, _ work: () async throws -> Void
+	) async {
+		localBanner = nil
+		do { try await work() } catch { localBanner = banner(APIError.wrapping(error).message) }
+	}
 }

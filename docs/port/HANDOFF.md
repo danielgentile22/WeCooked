@@ -8,7 +8,8 @@ with its evidence.
 
 ## Where things stand
 
-Units 1 and 2 of the plan are done and verified.
+Units 1, 2 and 3 of the plan are done and verified. Unit 3 landed in the
+second session (2026-09-28, evening).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -17,12 +18,32 @@ Units 1 and 2 of the plan are done and verified.
   silently.
 - The repo root holds the XcodeGen spec, the `WeCookedKit` package, the app
   target and a share extension target that builds but does nothing yet.
-- The app signs in, shows the three tabs and lists recipes. Every other
-  screen is a stub with pseudocode.
+- The app signs in, shows the three tabs, lists recipes with search and tag
+  filters, and has the cooking screen: pinned ingredients, strikes, units
+  toggle with the "as written" marker, stepper, variation chips, banners and
+  wake lock. `RecipeModel` is fully implemented and tested (67 package
+  tests). The editor, draft, shopping and trash screens are still stubs.
+- `WeCookedUITests` is an XCUITest target that drives the app on the
+  simulator against a local seeded server and writes screenshots to
+  `screenshots/`. It is the lever for ticking the Sim column: there is no
+  tap tool on this Mac and the Simulator window is not scriptable from the
+  shell. `Unit3Tests.swift` covers rows 5 to 7, 10 to 15, 17, 18, 24, 26,
+  27 and 29. Its first run caught four screen bugs the build never would
+  (lines dropped by duplicate list identities, a stepper that wrapped at
+  390 pt, the wrong empty-state copy, and the "as written" marker vanishing
+  on the converted side).
+- `server/scripts/seed-local.mjs` fills a local server with six recipes
+  through the API (idempotent by title). No photos: uploads go to R2 only,
+  so the photo strip is unverified on the simulator until a device build
+  against production, or a local image store exists.
+- The dev password is `wecooked`; `server/.env` (untracked) now carries a
+  matching `APP_PASSWORD_HASH` and a `SESSION_SECRET`.
 
 Checks a reviewer reruns, one command each, from the root `Makefile`:
-`make server-test`, `make kit-test`, `make ios-build`, `make ios-test`.
-Logs of the last runs are in `logs/`.
+`make server-test`, `make kit-test`, `make ios-build`, `make ios-test`
+(package tests on the simulator, no server needed) and `make ios-ui-test`
+(needs `npm run dev` in `server/` plus the seed script). Logs of the last
+runs are in `logs/`.
 
 ## Owner decisions taken
 
@@ -56,17 +77,23 @@ Logs of the last runs are in `logs/`.
 Each unit ends with its checklist rows ticked in the Sim column on the
 simulator with seeded data, then in the Phone column by the owner.
 
-3. **Browse and the cooking screen.** Rows 5 to 29. Search, tag filters,
-   draft cards, recipe view with sticky ingredients, strikes, unit toggle,
-   wake lock (`isIdleTimerDisabled`), photo strip. `RecipeModel` and
-   `RecipeDisplay` in the package are already real and tested; the screen
-   is the work.
+3. **Done.** Rows 8 and 9 (draft cards) wait for unit 4 because a draft
+   needs a Claude extraction job; row 28 (wake lock) is code-only
+   (`keepsScreenAwake` in `Components.swift`); rows 16, 19 to 23 and 25
+   render from the reply but need a second variation, so they are ticked
+   with unit 5.
 4. **Capture and the editor.** Rows 30 to 53. `EditorForm.payload()` is
    real and tested (10 cases). `EditorModel` still traps in `init`. Photo
    upload uses `JPEG.normalise` from the package.
-5. **Variations.** Rows 15 to 23. The store already polls `calcJob`,
-   `refresh` and `reconvert` from the recipe reply; the screen renders
-   banners from the reply plus `Store.timedOutJobs`.
+5. **Variations.** Rows 16 and 19 to 25. The screen already renders every
+   banner and the confirmations, and `RecipeModel` has `commitStepper`,
+   `retryCalculation`, `retryRefresh`, `recalculate`, `keepMine`,
+   `deleteVariation` and `retryReconvert`, all unit-tested against a stub
+   server. What is left is running them against a real Claude-backed
+   server and adding `Unit5Tests` for the flows. Note `recalculate` lands as
+   the recipe's `calcJob`, not the variation's `refresh` (the server trashes
+   the variation and queues a new scale job), so the model switches to the
+   original first.
 6. **Shopping.** Rows 54 to 64. `ShoppingModel`, the tick outbox and the
    section layout are real and tested. Verify two-phone sync with two
    simulators against one local server.
@@ -76,6 +103,10 @@ simulator with seeded data, then in the Phone column by the owner.
    transitions and haptics, launch screen, first device build, TestFlight
    to both phones. The Keychain access group is exercised only on a device,
    so the token store is unproven until then.
+
+`make ios-test` runs the whole `WeCooked` scheme minus the UI tests. To
+grow the UI suite for a unit, add `UnitNTests.swift` next to `Unit3Tests`
+and reuse its `launch`, `snap` and `openRecipe` helpers.
 
 Also before the next commit that touches CI: add a macOS job that runs
 `swift test` in `WeCookedKit`. It needs a runner image with Xcode 27, which
@@ -103,6 +134,8 @@ was not confirmed this session.
 cd server && npm run dev           # needs SESSION_SECRET and APP_PASSWORD_HASH in .env
 make ios-build                     # generates the project and builds for the simulator
 ```
+
+Seed it once: `cd server && SEED_PASSWORD=wecooked node scripts/seed-local.mjs`.
 
 Debug builds point at `http://localhost:5173/api/v1/`. Two Debug-only
 launch arguments help automation: `-wc-password <pw>` prefills the sign-in

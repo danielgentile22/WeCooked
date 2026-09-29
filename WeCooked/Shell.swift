@@ -20,9 +20,7 @@ enum Route: Hashable {
 
 /// Presented over a tab, not pushed.
 enum Sheet: Identifiable, Hashable {
-	case filters
 	case pickRecipes
-	case units
 	var id: Self { self }
 }
 
@@ -115,9 +113,7 @@ struct SheetContent: View {
 	let sheet: Sheet
 	var body: some View {
 		switch sheet {
-		case .filters: FilterSheet()
 		case .pickRecipes: PickRecipesSheet()
-		case .units: UnitsSheet()
 		}
 	}
 }
