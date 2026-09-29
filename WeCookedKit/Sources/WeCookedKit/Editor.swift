@@ -28,6 +28,8 @@ extension BodyText {
 /// front doors read the same.
 public enum EditorIssue: Hashable, Sendable, Error {
 	case titleRequired, yieldInvalid, ingredientRequired, effortRequired, damageRequired
+	/// The server refused the save (a 400's text) or a request failed.
+	case server(String)
 
 	public var message: String {
 		switch self {
@@ -36,6 +38,7 @@ public enum EditorIssue: Hashable, Sendable, Error {
 		case .ingredientRequired: "At least one ingredient line is required."
 		case .effortRequired: "Effort is required."
 		case .damageRequired: "Damage is required."
+		case .server(let text): text
 		}
 	}
 }
@@ -258,15 +261,28 @@ public struct EditorForm: Codable, Hashable, Sendable {
 				coverImageId: coverImageId))
 	}
 
-	public mutating func moveIngredient(group: Int, from: Int, by delta: Int) { fatalError("not implemented") }
-	public mutating func moveStep(from: Int, by delta: Int) { fatalError("not implemented") }
-	public mutating func addPhoto(_ image: DraftImage) {
-		// first photo becomes the cover
-		fatalError("not implemented")
+	/// Up/down arrows: swap a line with its neighbour; a move past either end is a no-op.
+	public mutating func moveIngredient(group: Int, from: Int, by delta: Int) {
+		guard shown.ingredients.indices.contains(group) else { return }
+		let to = from + delta
+		let items = shown.ingredients[group].items
+		guard items.indices.contains(from), items.indices.contains(to) else { return }
+		shown.ingredients[group].items.swapAt(from, to)
 	}
+	public mutating func moveStep(from: Int, by delta: Int) {
+		let to = from + delta
+		guard shown.steps.indices.contains(from), shown.steps.indices.contains(to) else { return }
+		shown.steps.swapAt(from, to)
+	}
+	/// The first photo becomes the cover.
+	public mutating func addPhoto(_ image: DraftImage) {
+		images.append(image)
+		if coverImageId == nil { coverImageId = image.id }
+	}
+	/// Removing the cover moves it to the first remaining photo.
 	public mutating func removePhoto(_ id: ImageID) {
-		// removing the cover moves it to the first remaining photo
-		fatalError("not implemented")
+		images.removeAll { $0.id == id }
+		if coverImageId == id { coverImageId = images.first?.id }
 	}
 	/// Single-select groups: tapping the selected value clears it.
 	public mutating func toggleCuisine(_ c: Cuisine) { cuisine = (cuisine == c) ? nil : c }

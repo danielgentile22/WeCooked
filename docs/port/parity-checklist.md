@@ -14,8 +14,8 @@ column is ticked by the owner on a device.
 | 5 | Browse | Recipes newest first with thumbnail or pot tile, title, effort and damage chips | x | |
 | 6 | Browse | Search filters as you type, prefix matching, debounced | x | |
 | 7 | Browse | Tag filters per group, OR within a group, AND across groups | x | |
-| 8 | Browse | Extracting drafts show a status row and update when done or failed | | |
-| 9 | Browse | Ready and failed drafts open the draft screen | | |
+| 8 | Browse | Extracting drafts show a status row and update when done or failed | x | |
+| 9 | Browse | Ready and failed drafts open the draft screen | x | |
 | 10 | Browse | Empty states: "No recipes match." and "Add your first recipe" | x | |
 | 11 | Browse | Trash link at the bottom | x | |
 | 12 | Browse | A recipe seen before opens instantly, then refreshes | x | |
@@ -36,30 +36,30 @@ column is ticked by the owner on a device.
 | 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | x | |
 | 28 | Recipe | Screen stays awake while the recipe is visible | | |
 | 29 | Recipe | Edit opens the editor for the viewed variation | x | |
-| 30 | Add | Paste box: URL creates an extract_url job, text an extract_paste job | | |
-| 31 | Add | Empty paste shows "Paste some recipe text first." | | |
-| 32 | Add | Photos upload on pick, thumbnails with remove, at most 8 | | |
+| 30 | Add | Paste box: URL creates an extract_url job, text an extract_paste job | x | |
+| 31 | Add | Empty paste shows "Paste some recipe text first." | x | |
+| 32 | Add | Photos upload on pick, thumbnails with remove, at most 8 | x | |
 | 33 | Add | Upload failure copy shown | | |
-| 34 | Add | "Type it in myself" opens the empty editor | | |
-| 35 | Draft | Queued or running shows progress and polls | | |
-| 36 | Draft | Failed shows the error text and Try again | | |
-| 37 | Draft | Warnings shown as banners | | |
-| 38 | Draft | Damage reasoning and pasted text shown | | |
-| 39 | Draft | Done seeds the editor with the draft, images and source URL | | |
-| 40 | Draft | Save creates the recipe and opens it; the card leaves Browse | | |
-| 41 | Draft | Discard asks twice, then removes the draft | | |
+| 34 | Add | "Type it in myself" opens the empty editor | x | |
+| 35 | Draft | Queued or running shows progress and polls | x | |
+| 36 | Draft | Failed shows the error text and Try again | x | |
+| 37 | Draft | Warnings shown as banners | x | |
+| 38 | Draft | Damage reasoning and pasted text shown | x | |
+| 39 | Draft | Done seeds the editor with the draft, images and source URL | x | |
+| 40 | Draft | Save creates the recipe and opens it; the card leaves Browse | x | |
+| 41 | Draft | Discard asks twice, then removes the draft | x | |
 | 42 | Draft | A saved draft reopened goes to its recipe | | |
-| 43 | Editor | Defaults: yield 4 servings, metric, effort and damage unselected | | |
-| 44 | Editor | Opens in the device's units when a counterpart exists | | |
-| 45 | Editor | Unit toggle swaps bodies when editing, disabled without a counterpart | | |
-| 46 | Editor | Ingredient groups: add, remove, reorder lines and groups | | |
-| 47 | Editor | Steps: add, remove, reorder | | |
-| 48 | Editor | Tags: multi meal types, single cuisine and protein with clear, effort and damage required | | |
-| 49 | Editor | Photos upload on pick, first is cover, tap sets cover, removing cover moves it | | |
+| 43 | Editor | Defaults: yield 4 servings, metric, effort and damage unselected | x | |
+| 44 | Editor | Opens in the device's units when a counterpart exists | x | |
+| 45 | Editor | Unit toggle swaps bodies when editing, disabled without a counterpart | x | |
+| 46 | Editor | Ingredient groups: add, remove, reorder lines and groups | x | |
+| 47 | Editor | Steps: add, remove, reorder | x | |
+| 48 | Editor | Tags: multi meal types, single cuisine and protein with clear, effort and damage required | x | |
+| 49 | Editor | Photos upload on pick, first is cover, tap sets cover, removing cover moves it | x | |
 | 50 | Editor | Server validation messages shown inline | | |
-| 51 | Editor | Draft autosaves per device for 7 days and restores silently, Start over asks twice (owner decision) | | |
-| 52 | Editor | Payload rule matches the web app exactly (unit tests) | | |
-| 53 | Editor | Delete recipe at the bottom with confirmation, goes to Trash | | |
+| 51 | Editor | Draft autosaves per device for 7 days and restores silently, Start over asks twice (owner decision) | x | |
+| 52 | Editor | Payload rule matches the web app exactly (unit tests) | x | |
+| 53 | Editor | Delete recipe at the bottom with confirmation, goes to Trash | x | |
 | 54 | Shopping | Sections in order, generated then manual, staples collapsed | | |
 | 55 | Shopping | Item text follows units, secondary line shows the other units and source titles | | |
 | 56 | Shopping | Header count "N of M ticked" | | |

@@ -46,6 +46,18 @@ final class Router {
 		}
 	}
 
+	/// A saved editor gives way to its recipe on the Recipes tab. Editing from
+	/// the recipe screen pops back to it rather than stacking a second copy.
+	func leaveEditor(showing saved: Route) {
+		switch tab {
+		case .recipes: recipesPath.removeLast()
+		case .add: addPath.removeLast()
+		case .shopping: shoppingPath.removeLast()
+		}
+		tab = .recipes
+		if recipesPath.last != saved { recipesPath.append(saved) }
+	}
+
 	static let pendingLinkKey = "pendingLink"
 
 	/// Extension hand-off: the extension writes `pendingLink` (a URL string) in
@@ -81,7 +93,7 @@ struct Tabs: View {
 			}
 			Tab("Add", systemImage: "plus.circle", value: AppTab.add) {
 				NavigationStack(path: $router.addPath) {
-					AddTab().navigationDestination(for: Route.self) { destination($0) }
+					AddTab(model: CaptureModel(env: env)).navigationDestination(for: Route.self) { destination($0) }
 				}
 			}
 			Tab("Shopping", systemImage: "cart", value: AppTab.shopping) {
@@ -98,11 +110,12 @@ struct Tabs: View {
 		switch route {
 		case .recipe(let id, let v):
 			RecipeScreen(model: RecipeModel(recipe: id, variation: v, env: env))
-		// Each becomes `EditorScreen(model: EditorModel(origin: ..., env: env))`
-		// with origin .recipe(id, v), .draft(job) and .manual once
-		// `EditorModel.init` exists; it traps today.
-		case .edit, .draft, .newRecipe:
-			NotBuiltYet()
+		case .edit(let id, let v):
+			EditorScreen(model: EditorModel(origin: .recipe(id, v), env: env))
+		case .draft(let job):
+			EditorScreen(model: EditorModel(origin: .draft(job), env: env))
+		case .newRecipe:
+			EditorScreen(model: EditorModel(origin: .manual, env: env))
 		case .trash:
 			TrashScreen()
 		}

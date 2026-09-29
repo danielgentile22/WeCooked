@@ -4,8 +4,9 @@
 //   cd server && SEED_PASSWORD=<pw> node scripts/seed-local.mjs
 //   cd server && node scripts/seed-local.mjs --password <pw>
 //
-// Photos are not seeded: image uploads go straight to R2 and the dev .env
-// carries the production bucket's credentials.
+// Photos are not seeded. Run the dev server with IMAGE_STORE=local before
+// uploading any: otherwise uploads reach the production R2 bucket, whose
+// credentials the dev .env carries.
 
 const BASE = process.env.SEED_BASE ?? 'http://localhost:5173/api/v1';
 

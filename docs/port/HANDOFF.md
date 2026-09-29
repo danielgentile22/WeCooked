@@ -8,8 +8,8 @@ with its evidence.
 
 ## Where things stand
 
-Units 1, 2 and 3 of the plan are done and verified. Unit 3 landed in the
-second session (2026-09-28, evening).
+Units 1 to 4 of the plan are done and verified. Unit 3 landed in the
+second session (2026-09-28, evening), unit 4 in the third (2026-09-29).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -21,21 +21,29 @@ second session (2026-09-28, evening).
 - The app signs in, shows the three tabs, lists recipes with search and tag
   filters, and has the cooking screen: pinned ingredients, strikes, units
   toggle with the "as written" marker, stepper, variation chips, banners and
-  wake lock. `RecipeModel` is fully implemented and tested (67 package
-  tests). The editor, draft, shopping and trash screens are still stubs.
+  wake lock. The Add tab captures pasted text, URLs and photos; the one
+  editor reviews drafts, edits recipes and takes typed-in ones.
+  `RecipeModel`, `CaptureModel` and `EditorModel` are implemented and
+  tested (96 package tests). The shopping and trash screens are still stubs.
 - `WeCookedUITests` is an XCUITest target that drives the app on the
   simulator against a local seeded server and writes screenshots to
   `screenshots/`. It is the lever for ticking the Sim column: there is no
   tap tool on this Mac and the Simulator window is not scriptable from the
-  shell. `Unit3Tests.swift` covers rows 5 to 7, 10 to 15, 17, 18, 24, 26,
-  27 and 29. Its first run caught four screen bugs the build never would
+  shell. Shared helpers live in `PortUITest.swift` (launch, snap, reveal
+  for the lazy Form, pickPhotos for the system picker). `Unit3Tests.swift`
+  covers rows 5 to 7, 10 to 15, 17, 18, 24, 26, 27 and 29, `Unit4Tests.swift`
+  the editor and Add rows, and `Unit4DraftTests.swift` the draft rows. The
+  draft tests spend Claude calls, so they skip unless
+  `TEST_RUNNER_WC_CLAUDE=1` is set. Its first run caught four screen bugs the build never would
   (lines dropped by duplicate list identities, a stepper that wrapped at
   390 pt, the wrong empty-state copy, and the "as written" marker vanishing
   on the converted side).
 - `server/scripts/seed-local.mjs` fills a local server with six recipes
-  through the API (idempotent by title). No photos: uploads go to R2 only,
-  so the photo strip is unverified on the simulator until a device build
-  against production, or a local image store exists.
+  through the API (idempotent by title), without photos.
+- `IMAGE_STORE=local` in `server/.env` makes a dev server keep photos in
+  `server/.dev-images` and serve them at `/dev-images/`, instead of writing
+  to the production R2 bucket whose credentials the dev `.env` holds. It is
+  refused outside dev. The UI tests need it for the photo rows.
 - The dev password is `wecooked`; `server/.env` (untracked) now carries a
   matching `APP_PASSWORD_HASH` and a `SESSION_SECRET`.
 
@@ -82,9 +90,16 @@ simulator with seeded data, then in the Phone column by the owner.
    (`keepsScreenAwake` in `Components.swift`); rows 16, 19 to 23 and 25
    render from the reply but need a second variation, so they are ticked
    with unit 5.
-4. **Capture and the editor.** Rows 30 to 53. `EditorForm.payload()` is
-   real and tested (10 cases). `EditorModel` still traps in `init`. Photo
-   upload uses `JPEG.normalise` from the package.
+4. **Done.** Rows 8, 9, 30 to 32, 34 to 41, 43 to 49 and 51 to 53 ticked. Rows 33
+   (upload failure copy), 42 (a saved draft reopened goes to its recipe) and
+   50 (server validation inline) have no cheap simulator trigger and are
+   proven by package tests only (`aFailedUploadShowsTheWebCopy`,
+   `aSavedDraftGoesStraightToItsRecipe`,
+   `aServerRefusalBecomesAnIssueAndTheFormStaysOpen`); tick them on the
+   phone. Not ported yet: the editor's reconvert banner ("Not yet updated
+   from your edit. Updating…"), which needs the recipe's `reconvert`
+   exposed on `EditorModel`. Claude calls spent on verification so far: 1
+   of the 10 the owner allowed for units 4 and 5.
 5. **Variations.** Rows 16 and 19 to 25. The screen already renders every
    banner and the confirmations, and `RecipeModel` has `commitStepper`,
    `retryCalculation`, `retryRefresh`, `recalculate`, `keepMine`,
@@ -131,7 +146,7 @@ was not confirmed this session.
 ## Running the app locally
 
 ```sh
-cd server && npm run dev           # needs SESSION_SECRET and APP_PASSWORD_HASH in .env
+cd server && IMAGE_STORE=local npm run dev   # needs SESSION_SECRET and APP_PASSWORD_HASH in .env
 make ios-build                     # generates the project and builds for the simulator
 ```
 

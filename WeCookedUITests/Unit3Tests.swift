@@ -1,8 +1,8 @@
 import XCTest
 
 @MainActor
-final class Unit3Tests: XCTestCase {
-	private let app = XCUIApplication()
+final class Unit3Tests: PortUITest {
+	override var unit: String { "unit3" }
 	private let titles = [
 		"Chickpea and spinach curry",
 		"Slow-roasted salmon",
@@ -11,32 +11,6 @@ final class Unit3Tests: XCTestCase {
 		"Shakshuka",
 		"Weeknight chicken thighs",
 	]
-
-	private func launch() {
-		continueAfterFailure = false
-		app.launchArguments = ["-wc-password", "wecooked", "-wc-autologin", "YES"]
-		app.launch()
-		XCTAssertTrue(app.buttons["Trash"].waitForExistence(timeout: 15), "signed in and listed")
-	}
-
-	private func snap(_ name: String) {
-		let png = app.screenshot().pngRepresentation
-		let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-		attachment.name = "unit3-\(name)"
-		attachment.lifetime = .keepAlways
-		add(attachment)
-		guard let dir = ProcessInfo.processInfo.environment["WC_SCREENSHOT_DIR"] else { return }
-		XCTAssertNoThrow(try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("unit3-\(name).png")))
-	}
-
-	private func openRecipe(_ title: String) {
-		app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch.tap()
-		XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 10), "\(title) opened")
-	}
-
-	private func rows(_ title: String) -> XCUIElementQuery {
-		app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title))
-	}
 
 	private func assertListShows(_ shown: [String]) {
 		for title in titles {
@@ -197,7 +171,9 @@ final class Unit3Tests: XCTestCase {
 		launch()
 		openRecipe("Sunday ragù")
 		app.buttons["Edit"].tap()
-		XCTAssertTrue(app.staticTexts["Not built yet"].waitForExistence(timeout: 5))
+		let title = app.textFields["editor.title"]
+		XCTAssertTrue(title.waitForExistence(timeout: 5), "editor opened")
+		XCTAssertEqual(title.value as? String, "Sunday ragù")
 		snap("edit")
 		app.navigationBars.buttons.element(boundBy: 0).tap()
 		XCTAssertTrue(app.staticTexts["Sunday ragù"].waitForExistence(timeout: 5))

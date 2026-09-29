@@ -11,10 +11,15 @@ export type Gate =
 
 const PUBLIC_PATHS = new Set(['/login', '/healthz', '/api/v1/login']);
 
+// Stands in for R2 presigned URLs, which carry no credentials, so the iOS
+// image loader sends no bearer. The route 404s unless IMAGE_STORE=local in dev.
+const isPublic = (pathname: string) =>
+	PUBLIC_PATHS.has(pathname) || pathname.startsWith('/dev-images/');
+
 /** token: the bearer token if the request sent one, else the cookie value. */
 export function gate(pathname: string, token: string | undefined, now = Date.now()): Gate {
 	const iat = verifySession(token);
-	if (PUBLIC_PATHS.has(pathname)) {
+	if (isPublic(pathname)) {
 		return pathname === '/login' && iat !== null
 			? { kind: 'redirect', location: '/' }
 			: { kind: 'pass', reissue: false };

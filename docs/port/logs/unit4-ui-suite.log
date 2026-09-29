@@ -1,0 +1,90 @@
+xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+set -o pipefail; TEST_RUNNER_WC_SCREENSHOT_DIR=/Users/daniel/Projects/we-cooked/docs/port/screenshots \
+		xcodebuild test -project WeCooked.xcodeproj -scheme WeCooked -destination 'platform=iOS Simulator,name=iPhone 17e' \
+		-only-testing:WeCookedUITests | tail -40
+2026-09-29 14:00:54.611 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:00:54.612 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:01:10.188 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:01:10.188 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:01:23.273 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:01:23.273 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:01:47.410 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:01:47.410 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:02:19.388 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:02:19.389 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:02:30.485 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:02:30.485 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:02:44.106 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:02:44.106 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:02:52.393 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:02:52.393 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:03:03.841 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:03:03.841 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:03:20.331 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:03:20.331 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:03:31.616 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:03:31.616 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:03:43.423 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:03:43.423 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:04:06.247 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:04:06.247 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:04:16.111 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:04:16.111 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:04:33.043 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:04:33.043 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:06:08.624 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:06:08.624 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:06:26.909 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:06:26.909 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:07:12.667 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:07:12.667 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:09:28.389 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:09:28.389 xcodebuild[24778:2233670] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:10:41.500 xcodebuild[24778:2233670] [MT] IDETestOperationsObserverDebug: 600.978 elapsed -- Testing started completed.
+2026-09-29 14:10:41.500 xcodebuild[24778:2233670] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 14:10:41.500 xcodebuild[24778:2233670] [MT] IDETestOperationsObserverDebug: 600.978 sec, +600.978 sec -- end
+    t =    70.23s Find the "editor.ingredient.0.5" TextField
+    t =    70.39s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    70.53s Find the "editor.ingredient.0.5" TextField
+    t =    70.68s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    70.83s Find the "editor.ingredient.0.5" TextField
+    t =    70.98s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    71.12s Find the "editor.ingredient.0.5" TextField
+    t =    71.27s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    71.41s Find the "editor.ingredient.0.5" TextField
+    t =    71.57s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    71.72s Find the "editor.ingredient.0.5" TextField
+    t =    71.87s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    72.03s Find the "editor.ingredient.0.5" TextField
+    t =    72.20s Checking existence of `"editor.ingredient.0.5" TextField`
+    t =    72.34s Find the "editor.ingredient.0.5" TextField
+    t =    72.51s Find the "editor.ingredient.0.5" TextField
+    t =    72.67s Find the "editor.ingredient.0.5" TextField
+    t =    72.81s Find the Target Application 'kitchen.wecooked.ios'
+    t =    72.91s Added attachment named 'unit4-units-after'
+    t =    72.91s Tap Button (Element at index 0)
+    t =    72.91s     Wait for kitchen.wecooked.ios to idle
+    t =    72.91s     Find the Button (Element at index 0)
+    t =    72.94s     Check for interrupting elements affecting "BackButton" Button
+    t =    72.98s     Synthesize event
+    t =    73.28s     Wait for kitchen.wecooked.ios to idle
+    t =    73.60s Tear Down
+Test Case '-[WeCookedUITests.Unit4Tests testRows44And45Units]' passed (73.834 seconds).
+Test Suite 'Unit4Tests' passed at 2026-09-29 14:10:41.180.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 418.839 (418.841) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 14:10:41.180.
+	 Executed 20 tests, with 2 tests skipped and 0 failures (0 unexpected) in 586.695 (586.708) seconds
+Test Suite 'All tests' passed at 2026-09-29 14:10:41.181.
+	 Executed 20 tests, with 2 tests skipped and 0 failures (0 unexpected) in 586.695 (586.708) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_14-00-39--0400.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started
+ui exit 0

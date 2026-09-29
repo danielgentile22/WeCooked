@@ -1,4 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 
 // SPEC 8.6 / ADR-026: private bucket, SigV4 presigned URLs, no aws-sdk.
@@ -58,8 +61,37 @@ export function presign(
 	return `https://${host}${path}?${params}&X-Amz-Signature=${signature}`;
 }
 
+// IMAGE_STORE=local keeps a dev server's photos on disk: the dev .env holds
+// the production bucket's credentials. Refused outside dev so a stray variable
+// on Fly cannot switch production storage.
+type LocalStore = { dir: string; origin: string };
+
+export function localStore(): LocalStore | null {
+	const mode = env.IMAGE_STORE ?? '';
+	if (mode === '' || mode === 'r2') return null;
+	if (mode !== 'local') throw new Error(`IMAGE_STORE=${mode} is not "local" or "r2".`);
+	if (!dev) throw new Error('IMAGE_STORE=local is only allowed in dev.');
+	return {
+		dir: resolve(env.IMAGE_STORE_DIR || '.dev-images'),
+		origin: env.IMAGE_STORE_ORIGIN || 'http://localhost:5173'
+	};
+}
+
+// No dot segments are possible: only the final ".jpg" may contain a dot.
+const SAFE_KEY = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\.jpg$/;
+
+export function localPath(store: LocalStore, key: string): string {
+	if (!SAFE_KEY.test(key)) throw new Error(`Unsafe image key: ${key}`);
+	return resolve(store.dir, key);
+}
+
 /** Presigned GET with the timestamp rounded to the UTC day (SPEC 8.6). */
 export function presignGet(key: string, cfg?: R2Config): string {
+	const local = localStore();
+	if (local) {
+		localPath(local, key);
+		return `${local.origin}/dev-images/${key}`;
+	}
 	const day = new Date();
 	day.setUTCHours(0, 0, 0, 0);
 	return presign('GET', key, day, cfg);
@@ -67,6 +99,8 @@ export function presignGet(key: string, cfg?: R2Config): string {
 
 /** Server-side download: presign a GET and fetch it. */
 export async function getObject(key: string, cfg?: R2Config): Promise<Buffer> {
+	const local = localStore();
+	if (local) return readFile(localPath(local, key));
 	const res = await fetch(presign('GET', key, new Date(), cfg));
 	if (!res.ok) throw new Error(`R2 GET ${key} failed: ${res.status} ${await res.text()}`);
 	return Buffer.from(await res.arrayBuffer());
@@ -74,6 +108,12 @@ export async function getObject(key: string, cfg?: R2Config): Promise<Buffer> {
 
 /** Server-side upload: presign a PUT and fetch it. */
 export async function putObject(key: string, body: Uint8Array, cfg?: R2Config): Promise<void> {
+	const local = localStore();
+	if (local) {
+		const path = localPath(local, key);
+		await mkdir(dirname(path), { recursive: true });
+		return writeFile(path, body);
+	}
 	const res = await fetch(presign('PUT', key, new Date(), cfg), {
 		method: 'PUT',
 		body: new Blob([body as Uint8Array<ArrayBuffer>]),

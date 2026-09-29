@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 import WeCookedKit
@@ -267,5 +268,100 @@ struct Loaded<V: Codable & Sendable, Content: View>: View {
 		} else if case .failed(let e) = resource.phase {
 			Banner(kind: .error, text: e.message, actionTitle: "Try again") { Task { await resource.revalidate() } }
 		}
+	}
+}
+
+/// One button that adds photos from the library, or the camera when the phone
+/// has one. Every image goes through `JPEG.normalise` (orientation applied,
+/// long edge 3000 px, quality 0.9) before `onJPEG`, in the order picked.
+struct PhotoSources<Label: View>: View {
+	/// How many more may be added; nil is no limit.
+	var remaining: Int?
+	let identifier: String
+	let onJPEG: (Data) async -> Void
+	@ViewBuilder var label: () -> Label
+
+	@State private var choosingSource = false
+	@State private var libraryOpen = false
+	@State private var cameraOpen = false
+	@State private var picked: [PhotosPickerItem] = []
+	@State private var unreadable = false
+
+	private static var hasCamera: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			Button {
+				if Self.hasCamera { choosingSource = true } else { libraryOpen = true }
+			} label: {
+				label()
+			}
+			.disabled(remaining.map { $0 <= 0 } ?? false)
+			.accessibilityIdentifier(identifier)
+			if unreadable {
+				Banner(kind: .error, text: "Could not read that photo.")
+			}
+		}
+		.confirmationDialog("Add photos", isPresented: $choosingSource) {
+			Button("Take photo") { cameraOpen = true }
+			Button("Choose from library") { libraryOpen = true }
+		}
+		.photosPicker(
+			isPresented: $libraryOpen, selection: $picked, maxSelectionCount: remaining ?? 0,
+			selectionBehavior: .ordered, matching: .images)
+		.onChange(of: picked) { _, items in
+			guard !items.isEmpty else { return }
+			picked = []
+			Task {
+				for item in items {
+					await accept(try? await item.loadTransferable(type: Data.self))
+				}
+			}
+		}
+		.fullScreenCover(isPresented: $cameraOpen) {
+			CameraPicker { data in Task { await accept(data) } }
+				.ignoresSafeArea()
+		}
+	}
+
+	private func accept(_ raw: Data?) async {
+		guard let raw else { unreadable = true; return }
+		// ImageIO decoding a 48 MP photo takes long enough to hitch the main thread.
+		let jpeg = await Task.detached(priority: .userInitiated) { try? JPEG.normalise(raw) }.value
+		guard let jpeg else { unreadable = true; return }
+		unreadable = false
+		await onJPEG(jpeg)
+	}
+}
+
+/// The system camera. Hands back the shot as JPEG; `JPEG.normalise` applies the
+/// orientation the camera wrote into it.
+private struct CameraPicker: UIViewControllerRepresentable {
+	let onShot: (Data) -> Void
+	@Environment(\.dismiss) private var dismiss
+
+	func makeUIViewController(context: Context) -> UIImagePickerController {
+		let picker = UIImagePickerController()
+		picker.sourceType = .camera
+		picker.delegate = context.coordinator
+		return picker
+	}
+
+	func updateUIViewController(_ picker: UIImagePickerController, context: Context) {}
+
+	func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+	@MainActor final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+		let parent: CameraPicker
+		init(_ parent: CameraPicker) { self.parent = parent }
+
+		func imagePickerController(
+			_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+		) {
+			if let data = (info[.originalImage] as? UIImage)?.jpegData(compressionQuality: 1) { parent.onShot(data) }
+			parent.dismiss()
+		}
+
+		func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
 	}
 }

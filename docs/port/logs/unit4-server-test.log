@@ -1,0 +1,20 @@
+
+> we-cooked@0.0.1 test
+> vitest run
+
+
+ RUN  v4.1.11 /Users/daniel/Projects/we-cooked/server
+
+
+ Test Files  13 passed (13)
+      Tests  148 passed (148)
+   Start at  14:10:58
+   Duration  873ms (transform 2.10s, setup 0ms, import 3.11s, tests 1.01s, environment 8ms)
+
+
+> we-cooked@0.0.1 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+1790705462230 START "/Users/daniel/Projects/we-cooked/server"
+1790705462237 COMPLETED 4282 FILES 0 ERRORS 0 WARNINGS 0 FILES_WITH_PROBLEMS
+server exit 0
