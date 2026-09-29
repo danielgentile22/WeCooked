@@ -22,19 +22,19 @@ column is ticked by the owner on a device.
 | 13 | Recipe | Header: title, yield, prep and cook, cover, source line linked when a URL exists | x | |
 | 14 | Recipe | Tag chips in order: meal types, cuisine, protein, effort, damage | x | |
 | 15 | Recipe | Variation chips ascending, original marked, tap switches | x | |
-| 16 | Recipe | Selected non-original chip reveals Delete this variation with confirmation | | |
+| 16 | Recipe | Selected non-original chip reveals Delete this variation with confirmation | x | |
 | 17 | Recipe | Stepper: plus and minus by 1, decimal input, never zero, resets on variation change | x | |
 | 18 | Recipe | "Show N" when the yield exists, "Calculate for N" otherwise | x | |
-| 19 | Recipe | Calculate shows the banner, polls, and switches to the new variation | | |
-| 20 | Recipe | A pending calculation resumes after relaunch | | |
-| 21 | Recipe | Calculation failure shows the error text with retry | | |
-| 22 | Recipe | Stale untouched variation: "updating" banner, then "Updated to match the original." | | |
-| 23 | Recipe | Stale hand-edited: Recalculate (confirmed) and Keep mine | | |
+| 19 | Recipe | Calculate shows the banner, polls, and switches to the new variation | x | |
+| 20 | Recipe | A pending calculation resumes after relaunch | x | |
+| 21 | Recipe | Calculation failure shows the error text with retry | x | |
+| 22 | Recipe | Stale untouched variation: "updating" banner, then "Updated to match the original." | x | |
+| 23 | Recipe | Stale hand-edited: Recalculate (confirmed) and Keep mine | x | |
 | 24 | Recipe | Unit toggle with "as written" marker, remembered per device, default metric | x | |
-| 25 | Recipe | Reconvert pending and failed banners on the non-source units, with retry | | |
+| 25 | Recipe | Reconvert pending and failed banners on the non-source units, with retry | x | |
 | 26 | Recipe | Sticky collapsible ingredients with group headings, numbered steps, notes, photo strip | x | |
 | 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | x | |
-| 28 | Recipe | Screen stays awake while the recipe is visible | | |
+| 28 | Recipe | Screen stays awake while the recipe is visible | x | |
 | 29 | Recipe | Edit opens the editor for the viewed variation | x | |
 | 30 | Add | Paste box: URL creates an extract_url job, text an extract_paste job | x | |
 | 31 | Add | Empty paste shows "Paste some recipe text first." | x | |

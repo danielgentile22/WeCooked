@@ -161,6 +161,21 @@ struct RecipeModelTests {
 		#expect(env.store.activeJobs.contains(Self.job))
 	}
 
+	/// Keep mine on the 8 refetches the 8 itself: nothing else may be watching
+	/// it, and the stale banner clears only from its fresh reply.
+	@Test func keepMineRefetchesTheViewedVariation() async throws {
+		let server = FakeServer([
+			"POST /api/v1/variations/\(Self.eight)/keep-mine": FakeServer.json(#"{"ok":true}"#),
+			"GET \(Self.base)?v=\(Self.eight)": FakeServer.fixture("recipe-get-variation"),
+		])
+		let env = Self.env(server)
+		try Self.seed(env)
+		let model = RecipeModel(recipe: Self.recipe, variation: Self.eight, env: env)
+		await model.keepMine()
+		#expect(server.requests == ["POST /api/v1/variations/\(Self.eight)/keep-mine", "GET \(Self.base)?v=\(Self.eight)"])
+		#expect(model.localBanner == nil)
+	}
+
 	@Test func aFailedActionSetsTheActionBanner() async throws {
 		let env = Self.env(FakeServer())
 		try Self.seed(env)
@@ -174,8 +189,99 @@ struct RecipeModelTests {
 		let env = Self.env(server)
 		try Self.seed(env, withEight: false)
 		let model = RecipeModel(recipe: Self.recipe, variation: nil, env: env)
-		await model.appear()
+		let eight = env.store.resource(.recipe(Self.recipe, variation: Self.eight))
+		await Self.appear(model) { eight.value != nil }
 		#expect(server.requests == ["GET \(Self.base)?v=\(Self.eight)"])
-		#expect(env.store.resource(.recipe(Self.recipe, variation: Self.eight)).value?.recipe.yieldCount == 8)
+		#expect(eight.value?.recipe.yieldCount == 8)
+	}
+
+	// MARK: Transitions
+
+	/// Runs `appear()` (which reads replies until cancelled), lets its loop
+	/// record the current reply, applies `change`, and waits for `done`.
+	static func appear(_ model: RecipeModel, change: () -> Void = {}, until done: () -> Bool) async {
+		let task = Task { await model.appear() }
+		try? await Task.sleep(for: .milliseconds(50))
+		change()
+		for _ in 0..<200 where !done() { try? await Task.sleep(for: .milliseconds(10)) }
+		task.cancel()
+		await task.value
+	}
+
+	static func calculating(_ reply: RecipeResponse, _ status: PendingStatus = .pending) -> RecipeResponse {
+		var r = reply
+		r.calcJob = CalcJob(jobId: job, status: status, errorText: nil, toCount: 8)
+		return r
+	}
+
+	@Test func aCalculateThatEndedSwitchesToTheNewChip() async throws {
+		let env = Self.env(FakeServer())
+		try Self.seed(env)
+		let original = env.store.resource(.recipe(Self.recipe, variation: nil))
+		let finished = try #require(original.value)
+		var busy = Self.calculating(finished)
+		busy.recipe.variations = busy.recipe.variations.filter(\.isOriginal)
+		original.replace(busy)
+		let model = RecipeModel(recipe: Self.recipe, variation: nil, env: env)
+		model.stepper.text = "8"
+		await Self.appear(model, change: { original.replace(finished) }) { model.variationID != nil }
+		#expect(model.variationID == Self.eight)
+		#expect(model.stepper.viewed == 8)
+		#expect(model.stepper.text == "8")
+		#expect(model.display?.detail.yieldCount == 8)
+	}
+
+	@Test func aCalculateThatFailedStaysPut() throws {
+		let env = Self.env(FakeServer())
+		try Self.seed(env)
+		let finished = try #require(env.store.resource(.recipe(Self.recipe, variation: nil)).value)
+		let model = RecipeModel(recipe: Self.recipe, variation: nil, env: env)
+		model.noticed(Self.calculating(finished))
+		model.noticed(Self.calculating(finished, .failed))
+		#expect(model.variationID == nil)
+	}
+
+	/// The failure forged for row 21 outlived the retry that succeeded: the
+	/// server filed the finished job under its variation, so the older
+	/// failure was the recipe's calcJob again beside the new chip.
+	@Test func aCalculateThatEndedBesideAnOlderFailureStillSwitches() throws {
+		let env = Self.env(FakeServer())
+		try Self.seed(env)
+		let finished = try #require(env.store.resource(.recipe(Self.recipe, variation: nil)).value)
+		let model = RecipeModel(recipe: Self.recipe, variation: nil, env: env)
+		model.noticed(Self.calculating(finished))
+		var older = finished
+		older.calcJob = CalcJob(
+			jobId: "01TEST00000000000000000099", status: .failed,
+			errorText: "Claude is unavailable right now. Try again in a minute.", toCount: 8)
+		model.noticed(older)
+		#expect(model.variationID == Self.eight)
+	}
+
+	@Test func aRefreshThatEndedShowsUpdatedUntilAChipTap() throws {
+		let env = Self.env(FakeServer())
+		try Self.seed(env)
+		let current = try Self.reply("recipe-get-variation")
+		var refreshing = current
+		refreshing.refresh = PendingWork(jobId: Self.job, status: .pending)
+		let model = RecipeModel(recipe: Self.recipe, variation: Self.eight, env: env)
+		model.noticed(refreshing)
+		model.noticed(current)
+		#expect(model.localBanner == .updated)
+		model.show(Self.original)
+		#expect(model.localBanner == nil)
+	}
+
+	@Test func aReplyForAnotherVariationIsRecordedWithoutATransition() throws {
+		let env = Self.env(FakeServer())
+		try Self.seed(env)
+		var busy = Self.calculating(try #require(env.store.resource(.recipe(Self.recipe, variation: nil)).value))
+		busy.refresh = PendingWork(jobId: Self.job, status: .pending)
+		let model = RecipeModel(recipe: Self.recipe, variation: nil, env: env)
+		model.noticed(busy)
+		model.show(Self.eight)
+		model.noticed(try Self.reply("recipe-get-variation"))
+		#expect(model.variationID == Self.eight)
+		#expect(model.localBanner == nil)
 	}
 }

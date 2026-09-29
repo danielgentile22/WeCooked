@@ -243,6 +243,9 @@ struct WatchModifier<V: Codable & Sendable>: ViewModifier {
 		content
 			.onAppear { start() }
 			.onDisappear { task?.cancel(); task = nil }
+			// A chip tap hands the cooking screen another variation's resource;
+			// its cached reply shows at once, and the watch moves to it.
+			.onChange(of: ObjectIdentifier(resource)) { start() }
 			.onChange(of: phase) { _, new in
 				if new == .active { start() } else { task?.cancel(); task = nil }
 			}

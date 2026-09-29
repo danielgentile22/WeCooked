@@ -5,7 +5,7 @@ SIM ?= platform=iOS Simulator,name=iPhone 17e
 PROJECT = WeCooked.xcodeproj
 SCHEME = WeCooked
 
-.PHONY: ios-generate ios-build ios-test ios-ui-test kit-test server-test
+.PHONY: ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 kit-test server-test
 
 ios-generate:
 	xcodegen generate
@@ -26,6 +26,10 @@ ios-ui-test: ios-generate
 	set -o pipefail; TEST_RUNNER_WC_SCREENSHOT_DIR=$(CURDIR)/docs/port/screenshots \
 		xcodebuild test -project $(PROJECT) -scheme $(SCHEME) -destination '$(SIM)' \
 		-only-testing:WeCookedUITests | tail -40
+
+# Unit 5's variation tests, each after its forged server state: spends up to 5 Claude calls.
+ios-ui-test-unit5: ios-generate
+	SIM='$(SIM)' WeCookedUITests/run-unit5.sh
 
 kit-test:
 	cd WeCookedKit && swift test

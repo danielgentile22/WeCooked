@@ -1,0 +1,733 @@
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app/PlugIns/WeCookedUITests.xctest
+
+CodeSign /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app (in target 'WeCookedUITests' from project 'WeCooked')
+    cd /Users/daniel/Projects/we-cooked
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app
+/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app: replacing existing signature
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow20PendingCalculationResumes
+reset Shakshuka: done
+stuck-scale Shakshuka 6: done
+2026-09-29 14:59:11.226 xcodebuild[42450:2479087] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:59:11.226 xcodebuild[42450:2479087] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:59:21.491 xcodebuild[42450:2479087] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:59:21.491 xcodebuild[42450:2479087] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 14:59:30.073 xcodebuild[42450:2479087] [MT] IDETestOperationsObserverDebug: 32.678 elapsed -- Testing started completed.
+2026-09-29 14:59:30.073 xcodebuild[42450:2479087] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 14:59:30.073 xcodebuild[42450:2479087] [MT] IDETestOperationsObserverDebug: 32.678 sec, +32.678 sec -- end
+    t =     9.28s         Checking existence of `"Calculating for 6…" StaticText`
+    t =     9.31s Find the Target Application 'kitchen.wecooked.ios'
+    t =     9.40s Added attachment named 'unit5-calc-pending'
+    t =     9.40s Terminate kitchen.wecooked.ios:42738
+    t =    10.49s Open kitchen.wecooked.ios
+    t =    10.49s     Launch kitchen.wecooked.ios
+    t =    10.85s         Setting up automation session
+    t =    12.57s         Wait for kitchen.wecooked.ios to idle
+    t =    14.23s Waiting 15.0s for "Recipes" Button to exist
+    t =    15.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Recipes" Button`
+    t =    15.31s         Checking existence of `"Recipes" Button`
+    t =    15.40s Tap Button (First Match)
+    t =    15.40s     Wait for kitchen.wecooked.ios to idle
+    t =    15.41s     Find the Button (First Match)
+    t =    15.47s     Check for interrupting elements affecting "Shakshuka, Quick, Tidy" Button
+    t =    15.50s     Synthesize event
+    t =    15.81s     Wait for kitchen.wecooked.ios to idle
+    t =    16.24s Waiting 10.0s for "Shakshuka" StaticText to exist
+    t =    17.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Shakshuka" StaticText`
+    t =    17.32s         Checking existence of `"Shakshuka" StaticText`
+    t =    17.36s Waiting 10.0s for "Calculating for 6…" StaticText to exist
+    t =    18.42s     Checking `Expect predicate `existsNoRetry == 1` for object "Calculating for 6…" StaticText`
+    t =    18.42s         Checking existence of `"Calculating for 6…" StaticText`
+    t =    18.45s Find the Target Application 'kitchen.wecooked.ios'
+    t =    18.52s Added attachment named 'unit5-calc-resumed'
+    t =    18.53s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow20PendingCalculationResumes]' passed (18.673 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 14:59:29.758.
+	 Executed 1 test, with 0 failures (0 unexpected) in 18.673 (18.763) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 14:59:29.758.
+	 Executed 1 test, with 0 failures (0 unexpected) in 18.673 (18.763) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 14:59:29.758.
+	 Executed 1 test, with 0 failures (0 unexpected) in 18.673 (18.764) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_14-58-57--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow20PendingCalculationResumes passed
+exit 0
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    Target 'WeCookedKit-product' in project 'WeCookedKit'
+        ➜ Explicit dependency on target 'WeCookedKit' in project 'WeCookedKit'
+    Target 'WeCookedKit' in project 'WeCookedKit' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk /Users/daniel/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+    cd /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -o /Users/daniel/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow21FailedCalculationRetried
+reset Shakshuka: done
+fail-scale Shakshuka 6: done
+2026-09-29 14:59:58.365 xcodebuild[42944:2484070] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 14:59:58.365 xcodebuild[42944:2484070] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:04:18.109 xcodebuild[42944:2484070] [MT] IDETestOperationsObserverDebug: 273.161 elapsed -- Testing started completed.
+2026-09-29 15:04:18.109 xcodebuild[42944:2484070] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:04:18.109 xcodebuild[42944:2484070] [MT] IDETestOperationsObserverDebug: 273.161 sec, +273.161 sec -- end
+Failing tests:
+	Unit5Tests.testRow21FailedCalculationRetried()
+
+** TEST EXECUTE FAILED **
+
+    t =   249.00s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   249.04s         Find: Descendants matching type Button
+    t =   249.04s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   249.04s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   249.08s         Find: Descendants matching type Button
+    t =   249.09s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   249.81s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =   249.81s     Checking existence of `"6" Button`
+    t =   249.84s     Find the "6" Button
+    t =   249.87s     Capturing element debug description
+    t =   249.95s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   250.00s         Find: Descendants matching type Button
+    t =   250.00s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   250.00s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   250.04s         Find: Descendants matching type Button
+    t =   250.04s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   250.81s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =   250.81s     Checking existence of `"6" Button`
+    t =   250.84s     Find the "6" Button
+    t =   250.87s     Capturing element debug description
+    t =   250.98s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   251.02s         Find: Descendants matching type Button
+    t =   251.02s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   251.03s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+    t =   251.07s         Find: Descendants matching type Button
+    t =   251.07s         Requesting snapshot of accessibility hierarchy for app with pid 43191
+/Users/daniel/Projects/we-cooked/WeCookedUITests/Unit5Tests.swift:71: error: -[WeCookedUITests.Unit5Tests testRow21FailedCalculationRetried] : XCTAssertTrue failed - switched to the new variation
+    t =   251.31s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow21FailedCalculationRetried]' failed (251.525 seconds).
+Test Suite 'Unit5Tests' failed at 2026-09-29 15:04:09.752.
+	 Executed 1 test, with 1 failure (0 unexpected) in 251.525 (251.528) seconds
+Test Suite 'WeCookedUITests.xctest' failed at 2026-09-29 15:04:09.753.
+	 Executed 1 test, with 1 failure (0 unexpected) in 251.525 (251.529) seconds
+Test Suite 'Selected tests' failed at 2026-09-29 15:04:09.753.
+	 Executed 1 test, with 1 failure (0 unexpected) in 251.525 (251.530) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_14-59-44--0400.xcresult
+
+Testing started
+== testRows19And16CalculateThenDeleteVariation
+reset Buttermilk pancakes: done
+2026-09-29 15:04:36.442 xcodebuild[44401:2497586] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:04:36.442 xcodebuild[44401:2497586] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:05:07.721 xcodebuild[44401:2497586] [MT] IDETestOperationsObserverDebug: 45.282 elapsed -- Testing started completed.
+2026-09-29 15:05:07.721 xcodebuild[44401:2497586] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:05:07.721 xcodebuild[44401:2497586] [MT] IDETestOperationsObserverDebug: 45.282 sec, +45.282 sec -- end
+    t =    25.86s     Check for interrupting elements affecting "Delete this variation" Button
+    t =    25.88s     Synthesize event
+    t =    26.17s     Wait for kitchen.wecooked.ios to idle
+    t =    26.55s Waiting 5.0s for "Delete the 13-pancakes version? It goes to Trash." StaticText to exist
+    t =    27.62s     Checking `Expect predicate `existsNoRetry == 1` for object "Delete the 13-pancakes version? It goes to Trash." StaticText`
+    t =    27.62s         Checking existence of `"Delete the 13-pancakes version? It goes to Trash." StaticText`
+    t =    27.66s Find the Target Application 'kitchen.wecooked.ios'
+    t =    27.74s Added attachment named 'unit5-variation-delete-confirm'
+    t =    27.74s Get all elements bound by index for: Elements matching predicate 'label == "Delete this variation"'
+    t =    27.77s Find the Button (Element at index 0)
+    t =    27.81s Find the Button (Element at index 1)
+    t =    27.84s Tap "Delete this variation" Button
+    t =    27.84s     Wait for kitchen.wecooked.ios to idle
+    t =    27.84s     Find the "Delete this variation" Button
+    t =    27.88s     Check for interrupting elements affecting "Delete this variation" Button
+    t =    27.91s     Synthesize event
+    t =    28.20s     Wait for kitchen.wecooked.ios to idle
+    t =    29.61s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object Button (First Match)`
+    t =    29.61s     Checking existence of `Button (First Match)`
+    t =    29.65s     Find the Button (First Match)
+    t =    29.69s Waiting 10.0s for "13" Button to not exist
+    t =    30.73s     Checking `Expect predicate `existsNoRetry == 0` for object "13" Button`
+    t =    30.73s         Checking existence of `"13" Button`
+    t =    30.76s Find the Target Application 'kitchen.wecooked.ios'
+    t =    30.84s Added attachment named 'unit5-variation-deleted'
+    t =    30.84s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRows19And16CalculateThenDeleteVariation]' passed (31.073 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:05:07.384.
+	 Executed 1 test, with 0 failures (0 unexpected) in 31.073 (31.076) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:05:07.384.
+	 Executed 1 test, with 0 failures (0 unexpected) in 31.073 (31.077) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:05:07.385.
+	 Executed 1 test, with 0 failures (0 unexpected) in 31.073 (31.077) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-04-22--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRows19And16CalculateThenDeleteVariation passed
+== testRow22StaleUntouchedRefresh
+stale Shakshuka: done
+2026-09-29 15:05:25.250 xcodebuild[44983:2503110] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:05:25.250 xcodebuild[44983:2503110] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:05:49.645 xcodebuild[44983:2503110] [MT] IDETestOperationsObserverDebug: 38.105 elapsed -- Testing started completed.
+2026-09-29 15:05:49.645 xcodebuild[44983:2503110] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:05:49.645 xcodebuild[44983:2503110] [MT] IDETestOperationsObserverDebug: 38.105 sec, +38.105 sec -- end
+    t =    16.68s         Checking existence of `"Updated to match the original." StaticText`
+    t =    16.71s         Capturing element debug description
+    t =    17.66s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    17.66s         Checking existence of `"Updated to match the original." StaticText`
+    t =    17.69s         Capturing element debug description
+    t =    18.66s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    18.66s         Checking existence of `"Updated to match the original." StaticText`
+    t =    18.69s         Capturing element debug description
+    t =    19.65s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    19.65s         Checking existence of `"Updated to match the original." StaticText`
+    t =    19.68s         Capturing element debug description
+    t =    20.65s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    20.65s         Checking existence of `"Updated to match the original." StaticText`
+    t =    20.68s         Capturing element debug description
+    t =    21.65s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    21.65s         Checking existence of `"Updated to match the original." StaticText`
+    t =    21.69s         Capturing element debug description
+    t =    22.66s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    22.66s         Checking existence of `"Updated to match the original." StaticText`
+    t =    22.69s         Capturing element debug description
+    t =    23.66s     Checking `Expect predicate `existsNoRetry == 1` for object "Updated to match the original." StaticText`
+    t =    23.66s         Checking existence of `"Updated to match the original." StaticText`
+    t =    23.69s Find the Target Application 'kitchen.wecooked.ios'
+    t =    23.77s Added attachment named 'unit5-refreshed'
+    t =    23.77s Checking existence of `"The original changed, updating this version…" StaticText`
+    t =    23.80s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow22StaleUntouchedRefresh]' passed (24.198 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:05:49.314.
+	 Executed 1 test, with 0 failures (0 unexpected) in 24.198 (24.200) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:05:49.315.
+	 Executed 1 test, with 0 failures (0 unexpected) in 24.198 (24.201) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:05:49.316.
+	 Executed 1 test, with 0 failures (0 unexpected) in 24.198 (24.202) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-05-11--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow22StaleUntouchedRefresh passed
+== testRow23KeepMine
+hand-edit Shakshuka 6: done
+stale Shakshuka: done
+2026-09-29 15:06:07.962 xcodebuild[45383:2507629] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:06:07.962 xcodebuild[45383:2507629] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:06:36.633 xcodebuild[45383:2507629] [MT] IDETestOperationsObserverDebug: 43.078 elapsed -- Testing started completed.
+2026-09-29 15:06:36.633 xcodebuild[45383:2507629] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:06:36.633 xcodebuild[45383:2507629] [MT] IDETestOperationsObserverDebug: 43.078 sec, +43.078 sec -- end
+Failing tests:
+	Unit5Tests.testRow23KeepMine()
+
+** TEST EXECUTE FAILED **
+
+    t =    12.89s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    12.93s         Capturing element debug description
+    t =    13.90s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    13.90s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    13.94s         Capturing element debug description
+    t =    14.90s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    14.90s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    14.93s         Capturing element debug description
+    t =    15.90s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    15.90s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    15.93s         Capturing element debug description
+    t =    16.90s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    16.90s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    16.93s         Capturing element debug description
+    t =    17.99s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    17.99s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    18.01s         Capturing element debug description
+    t =    18.98s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    18.98s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    19.01s         Capturing element debug description
+    t =    19.89s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    19.90s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    19.92s         Capturing element debug description
+    t =    19.92s     Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    19.95s Collecting debug information to assist test failure triage
+    t =    19.95s     Requesting snapshot of accessibility hierarchy for app with pid 45625
+/Users/daniel/Projects/we-cooked/WeCookedUITests/Unit5Tests.swift:130: error: -[WeCookedUITests.Unit5Tests testRow23KeepMine] : XCTAssertTrue failed - Keep mine dismisses it
+    t =    20.18s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow23KeepMine]' failed (20.404 seconds).
+Test Suite 'Unit5Tests' failed at 2026-09-29 15:06:28.233.
+	 Executed 1 test, with 1 failure (0 unexpected) in 20.404 (20.407) seconds
+Test Suite 'WeCookedUITests.xctest' failed at 2026-09-29 15:06:28.233.
+	 Executed 1 test, with 1 failure (0 unexpected) in 20.404 (20.408) seconds
+Test Suite 'Selected tests' failed at 2026-09-29 15:06:28.233.
+	 Executed 1 test, with 1 failure (0 unexpected) in 20.404 (20.409) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-05-53--0400.xcresult
+
+Testing started
+== testRow23Recalculate
+stale Shakshuka: done
+2026-09-29 15:06:55.010 xcodebuild[45851:2512629] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:06:55.010 xcodebuild[45851:2512629] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:11:18.807 xcodebuild[45851:2512629] [MT] IDETestOperationsObserverDebug: 277.847 elapsed -- Testing started completed.
+2026-09-29 15:11:18.807 xcodebuild[45851:2512629] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:11:18.807 xcodebuild[45851:2512629] [MT] IDETestOperationsObserverDebug: 277.847 sec, +277.847 sec -- end
+Failing tests:
+	Unit5Tests.testRow23Recalculate()
+
+** TEST EXECUTE FAILED **
+
+    t =   253.01s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   253.06s         Find: Descendants matching type Button
+    t =   253.06s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   253.06s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   253.10s         Find: Descendants matching type Button
+    t =   253.10s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   253.85s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =   253.85s     Checking existence of `"6" Button`
+    t =   253.88s     Find the "6" Button
+    t =   253.91s     Capturing element debug description
+    t =   253.99s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   254.03s         Find: Descendants matching type Button
+    t =   254.03s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   254.04s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   254.08s         Find: Descendants matching type Button
+    t =   254.08s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   254.80s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =   254.80s     Checking existence of `"6" Button`
+    t =   254.83s     Find the "6" Button
+    t =   254.86s     Capturing element debug description
+    t =   254.94s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   254.98s         Find: Descendants matching type Button
+    t =   254.98s         Find: Elements matching predicate '"6" IN identifiers'
+    t =   254.98s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+    t =   255.02s         Find: Descendants matching type Button
+    t =   255.03s         Requesting snapshot of accessibility hierarchy for app with pid 46085
+/Users/daniel/Projects/we-cooked/WeCookedUITests/Unit5Tests.swift:147: error: -[WeCookedUITests.Unit5Tests testRow23Recalculate] : XCTAssertTrue failed - the recalculated 6 is back
+    t =   255.27s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow23Recalculate]' failed (255.502 seconds).
+Test Suite 'Unit5Tests' failed at 2026-09-29 15:11:10.378.
+	 Executed 1 test, with 1 failure (0 unexpected) in 255.502 (255.505) seconds
+Test Suite 'WeCookedUITests.xctest' failed at 2026-09-29 15:11:10.378.
+	 Executed 1 test, with 1 failure (0 unexpected) in 255.502 (255.505) seconds
+Test Suite 'Selected tests' failed at 2026-09-29 15:11:10.378.
+	 Executed 1 test, with 1 failure (0 unexpected) in 255.502 (255.506) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-06-40--0400.xcresult
+
+Testing started
+== testRow25ReconvertBannersAndEditorBanner
+reset Sunday ragù: done
+fail-reconvert Sunday ragù: done
+2026-09-29 15:11:37.192 xcodebuild[47286:2526044] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:11:37.192 xcodebuild[47286:2526044] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:12:26.773 xcodebuild[47286:2526044] [MT] IDETestOperationsObserverDebug: 63.495 elapsed -- Testing started completed.
+2026-09-29 15:12:26.774 xcodebuild[47286:2526044] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:12:26.774 xcodebuild[47286:2526044] [MT] IDETestOperationsObserverDebug: 63.495 sec, +63.495 sec -- end
+Failing tests:
+	Unit5Tests.testRow25ReconvertBannersAndEditorBanner()
+
+** TEST EXECUTE FAILED **
+
+    t =    33.87s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    33.90s         Capturing element debug description
+    t =    34.87s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    34.87s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    34.89s         Capturing element debug description
+    t =    35.86s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    35.86s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    35.89s         Capturing element debug description
+    t =    36.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    36.83s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    36.86s         Capturing element debug description
+    t =    37.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    37.83s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    37.86s         Capturing element debug description
+    t =    38.90s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    38.90s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    38.93s         Capturing element debug description
+    t =    39.87s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    39.87s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    39.90s         Capturing element debug description
+    t =    40.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    40.83s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    40.86s         Capturing element debug description
+    t =    40.86s     Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    40.89s Collecting debug information to assist test failure triage
+    t =    40.89s     Requesting snapshot of accessibility hierarchy for app with pid 47543
+/Users/daniel/Projects/we-cooked/WeCookedUITests/Unit5Tests.swift:174: error: -[WeCookedUITests.Unit5Tests testRow25ReconvertBannersAndEditorBanner] : XCTAssertTrue failed - retry requeues the job
+    t =    41.11s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow25ReconvertBannersAndEditorBanner]' failed (41.353 seconds).
+Test Suite 'Unit5Tests' failed at 2026-09-29 15:12:18.415.
+	 Executed 1 test, with 1 failure (0 unexpected) in 41.353 (41.356) seconds
+Test Suite 'WeCookedUITests.xctest' failed at 2026-09-29 15:12:18.415.
+	 Executed 1 test, with 1 failure (0 unexpected) in 41.353 (41.357) seconds
+Test Suite 'Selected tests' failed at 2026-09-29 15:12:18.415.
+	 Executed 1 test, with 1 failure (0 unexpected) in 41.353 (41.357) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-11-23--0400.xcresult
+
+Testing started
+Failed: testRow21FailedCalculationRetried testRow23KeepMine testRow23Recalculate testRow25ReconvertBannersAndEditorBanner
+exit 1
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+
+CopySwiftLibs /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest (in target 'WeCookedKitTests-product' from project 'WeCookedKit')
+    cd /Users/daniel/Projects/we-cooked/WeCookedKit
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/WeCookedKitTests --scan-folder /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/Frameworks --scan-folder /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/PlugIns --scan-folder /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/SystemExtensions --scan-folder /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/WeCookedKit.build/Debug-iphonesimulator/WeCookedKitTests-p.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+CodeSign /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest (in target 'WeCookedKitTests-product' from project 'WeCookedKit')
+    cd /Users/daniel/Projects/we-cooked/WeCookedKit
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedKitTests.xctest
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow23KeepMine
+hand-edit Shakshuka 6: done
+stale Shakshuka: done
+2026-09-29 15:15:44.035 xcodebuild[48915:2538008] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:15:44.035 xcodebuild[48915:2538008] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:15:55.773 xcodebuild[48915:2538008] [MT] IDETestOperationsObserverDebug: 26.062 elapsed -- Testing started completed.
+2026-09-29 15:15:55.773 xcodebuild[48915:2538008] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:15:55.773 xcodebuild[48915:2538008] [MT] IDETestOperationsObserverDebug: 26.062 sec, +26.062 sec -- end
+    t =     7.93s         Checking existence of `"Shakshuka" StaticText`
+    t =     7.97s Tap "6" Button
+    t =     7.97s     Wait for kitchen.wecooked.ios to idle
+    t =     7.97s     Find the "6" Button
+    t =     8.00s     Check for interrupting elements affecting "6" Button
+    t =     8.03s     Synthesize event
+    t =     8.32s     Wait for kitchen.wecooked.ios to idle
+    t =     8.33s Waiting 15.0s for "The original changed after you edited this version." StaticText to exist
+    t =     9.40s     Checking `Expect predicate `existsNoRetry == 1` for object "The original changed after you edited this version." StaticText`
+    t =     9.40s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =     9.42s Checking existence of `"Recalculate" Button`
+    t =     9.45s Checking existence of `"Keep mine" Button`
+    t =     9.48s Find the Target Application 'kitchen.wecooked.ios'
+    t =     9.56s Added attachment named 'unit5-stale-hand-edited'
+    t =     9.56s Tap "Keep mine" Button
+    t =     9.56s     Wait for kitchen.wecooked.ios to idle
+    t =     9.56s     Find the "Keep mine" Button
+    t =     9.59s     Check for interrupting elements affecting "Keep mine" Button
+    t =     9.62s     Synthesize event
+    t =     9.91s     Wait for kitchen.wecooked.ios to idle
+    t =     9.91s Waiting 10.0s for "The original changed after you edited this version." StaticText to not exist
+    t =    10.99s     Checking `Expect predicate `existsNoRetry == 0` for object "The original changed after you edited this version." StaticText`
+    t =    10.99s         Checking existence of `"The original changed after you edited this version." StaticText`
+    t =    11.02s Find the Target Application 'kitchen.wecooked.ios'
+    t =    11.10s Added attachment named 'unit5-kept-mine'
+    t =    11.10s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow23KeepMine]' passed (11.553 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:15:55.456.
+	 Executed 1 test, with 0 failures (0 unexpected) in 11.553 (11.556) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:15:55.464.
+	 Executed 1 test, with 0 failures (0 unexpected) in 11.553 (11.564) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:15:55.464.
+	 Executed 1 test, with 0 failures (0 unexpected) in 11.553 (11.565) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-15-29--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow23KeepMine passed
+exit 0
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    Target 'WeCookedKit-product' in project 'WeCookedKit'
+        ➜ Explicit dependency on target 'WeCookedKit' in project 'WeCookedKit'
+    Target 'WeCookedKit' in project 'WeCookedKit' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk /Users/daniel/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+    cd /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator27.0.sdk -o /Users/daniel/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator27.0-24A430-8dc58220667be655e1bcc261a7455254.sdkstatcache
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow21FailedCalculationRetried
+reset Shakshuka: done
+fail-scale Shakshuka 6: done
+2026-09-29 15:16:24.368 xcodebuild[49326:2542092] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:16:24.369 xcodebuild[49326:2542092] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:16:51.686 xcodebuild[49326:2542092] [MT] IDETestOperationsObserverDebug: 41.481 elapsed -- Testing started completed.
+2026-09-29 15:16:51.686 xcodebuild[49326:2542092] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:16:51.686 xcodebuild[49326:2542092] [MT] IDETestOperationsObserverDebug: 41.481 sec, +41.481 sec -- end
+    t =    19.79s     Capturing element debug description
+    t =    20.74s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    20.74s     Checking existence of `"6" Button`
+    t =    20.77s     Capturing element debug description
+    t =    21.74s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    21.74s     Checking existence of `"6" Button`
+    t =    21.76s     Capturing element debug description
+    t =    22.73s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    22.73s     Checking existence of `"6" Button`
+    t =    22.76s     Capturing element debug description
+    t =    23.72s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    23.73s     Checking existence of `"6" Button`
+    t =    23.75s     Capturing element debug description
+    t =    24.73s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    24.73s     Checking existence of `"6" Button`
+    t =    24.76s     Capturing element debug description
+    t =    25.73s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    25.73s     Checking existence of `"6" Button`
+    t =    25.75s     Capturing element debug description
+    t =    26.72s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    26.72s     Checking existence of `"6" Button`
+    t =    26.76s     Find the "6" Button
+    t =    26.79s Find the "Yield count" TextField
+    t =    26.82s Find the Target Application 'kitchen.wecooked.ios'
+    t =    26.89s Added attachment named 'unit5-calc-done'
+    t =    26.90s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow21FailedCalculationRetried]' passed (27.133 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:16:51.371.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.133 (27.135) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:16:51.372.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.133 (27.135) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:16:51.372.
+	 Executed 1 test, with 0 failures (0 unexpected) in 27.133 (27.136) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-16-10--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow21FailedCalculationRetried passed
+== testRow23Recalculate
+stale Shakshuka: done
+2026-09-29 15:17:09.955 xcodebuild[49756:2546747] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:17:09.955 xcodebuild[49756:2546747] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:17:42.140 xcodebuild[49756:2546747] [MT] IDETestOperationsObserverDebug: 46.613 elapsed -- Testing started completed.
+2026-09-29 15:17:42.141 xcodebuild[49756:2546747] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:17:42.141 xcodebuild[49756:2546747] [MT] IDETestOperationsObserverDebug: 46.613 sec, +46.613 sec -- end
+Failing tests:
+	Unit5Tests.testRow23Recalculate()
+
+** TEST EXECUTE FAILED **
+
+    t =    16.37s         Checking existence of `"Recalculate" Button`
+    t =    16.40s         Capturing element debug description
+    t =    17.39s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    17.39s         Checking existence of `"Recalculate" Button`
+    t =    17.42s         Capturing element debug description
+    t =    18.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    18.31s         Checking existence of `"Recalculate" Button`
+    t =    18.34s         Capturing element debug description
+    t =    19.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    19.32s         Checking existence of `"Recalculate" Button`
+    t =    19.35s         Capturing element debug description
+    t =    20.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    20.31s         Checking existence of `"Recalculate" Button`
+    t =    20.33s         Capturing element debug description
+    t =    21.30s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    21.31s         Checking existence of `"Recalculate" Button`
+    t =    21.33s         Capturing element debug description
+    t =    22.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    22.31s         Checking existence of `"Recalculate" Button`
+    t =    22.33s         Capturing element debug description
+    t =    23.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Recalculate" Button`
+    t =    23.31s         Checking existence of `"Recalculate" Button`
+    t =    23.34s         Capturing element debug description
+    t =    23.34s     Checking existence of `"Recalculate" Button`
+    t =    23.36s Collecting debug information to assist test failure triage
+    t =    23.36s     Requesting snapshot of accessibility hierarchy for app with pid 49997
+/Users/daniel/Projects/we-cooked/WeCookedUITests/Unit5Tests.swift:139: error: -[WeCookedUITests.Unit5Tests testRow23Recalculate] : XCTAssertTrue failed
+    t =    23.59s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow23Recalculate]' failed (23.834 seconds).
+Test Suite 'Unit5Tests' failed at 2026-09-29 15:17:33.658.
+	 Executed 1 test, with 1 failure (0 unexpected) in 23.834 (23.838) seconds
+Test Suite 'WeCookedUITests.xctest' failed at 2026-09-29 15:17:33.659.
+	 Executed 1 test, with 1 failure (0 unexpected) in 23.834 (23.838) seconds
+Test Suite 'Selected tests' failed at 2026-09-29 15:17:33.660.
+	 Executed 1 test, with 1 failure (0 unexpected) in 23.834 (23.840) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-16-55--0400.xcresult
+
+Testing started
+== testRow25ReconvertBannersAndEditorBanner
+reset Sunday ragù: done
+fail-reconvert Sunday ragù: done
+2026-09-29 15:18:00.997 xcodebuild[50240:2551732] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:18:00.997 xcodebuild[50240:2551732] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:18:31.497 xcodebuild[50240:2551732] [MT] IDETestOperationsObserverDebug: 44.903 elapsed -- Testing started completed.
+2026-09-29 15:18:31.497 xcodebuild[50240:2551732] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:18:31.497 xcodebuild[50240:2551732] [MT] IDETestOperationsObserverDebug: 44.903 sec, +44.903 sec -- end
+    t =    24.95s Find the Target Application 'kitchen.wecooked.ios'
+    t =    25.03s Added attachment named 'unit5-editor-reconvert-pending'
+    t =    25.03s Tap Button (Element at index 0)
+    t =    25.04s     Wait for kitchen.wecooked.ios to idle
+    t =    25.04s     Find the Button (Element at index 0)
+    t =    25.07s     Check for interrupting elements affecting "BackButton" Button
+    t =    25.10s     Synthesize event
+    t =    25.40s     Wait for kitchen.wecooked.ios to idle
+    t =    25.71s Waiting 5.0s for "Units, US" Button to exist
+    t =    26.79s     Checking `Expect predicate `existsNoRetry == 1` for object "Units, US" Button`
+    t =    26.79s         Checking existence of `"Units, US" Button`
+    t =    26.82s Find the "Units, US" Button
+    t =    26.85s Checking existence of `"Couldn't update from your edit." StaticText`
+    t =    26.88s Waiting 240.0s for "Not yet updated from your edit. Updating…" StaticText to not exist
+    t =    27.94s     Checking `Expect predicate `existsNoRetry == 0` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    27.94s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    27.97s         Capturing element debug description
+    t =    28.94s     Checking `Expect predicate `existsNoRetry == 0` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    28.94s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    28.97s         Capturing element debug description
+    t =    29.94s     Checking `Expect predicate `existsNoRetry == 0` for object "Not yet updated from your edit. Updating…" StaticText`
+    t =    29.94s         Checking existence of `"Not yet updated from your edit. Updating…" StaticText`
+    t =    29.97s Checking existence of `"Couldn't update from your edit." StaticText`
+    t =    30.00s Find the Target Application 'kitchen.wecooked.ios'
+    t =    30.07s Added attachment named 'unit5-reconvert-done'
+    t =    30.08s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow25ReconvertBannersAndEditorBanner]' passed (30.301 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:18:31.170.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.301 (30.304) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:18:31.170.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.301 (30.305) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:18:31.170.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.301 (30.306) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-17-46--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow25ReconvertBannersAndEditorBanner passed
+Failed: testRow23Recalculate
+exit 1
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app/PlugIns/WeCookedUITests.xctest
+/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app/PlugIns/WeCookedUITests.xctest: replacing existing signature
+
+CodeSign /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app (in target 'WeCookedUITests' from project 'WeCooked')
+    cd /Users/daniel/Projects/we-cooked
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app
+/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCookedUITests-Runner.app: replacing existing signature
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow23Recalculate
+hand-edit Shakshuka 6: done
+stale Shakshuka: done
+2026-09-29 15:19:22.002 xcodebuild[50826:2557620] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 15:19:22.002 xcodebuild[50826:2557620] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 15:19:54.293 xcodebuild[50826:2557620] [MT] IDETestOperationsObserverDebug: 46.886 elapsed -- Testing started completed.
+2026-09-29 15:19:54.294 xcodebuild[50826:2557620] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 15:19:54.294 xcodebuild[50826:2557620] [MT] IDETestOperationsObserverDebug: 46.886 sec, +46.886 sec -- end
+    t =    24.69s     Checking existence of `"6" Button`
+    t =    24.72s     Capturing element debug description
+    t =    25.69s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    25.69s     Checking existence of `"6" Button`
+    t =    25.72s     Capturing element debug description
+    t =    26.69s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    26.69s     Checking existence of `"6" Button`
+    t =    26.73s     Capturing element debug description
+    t =    27.68s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    27.68s     Checking existence of `"6" Button`
+    t =    27.71s     Capturing element debug description
+    t =    28.78s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    28.78s     Checking existence of `"6" Button`
+    t =    28.81s     Capturing element debug description
+    t =    29.77s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    29.77s     Checking existence of `"6" Button`
+    t =    29.80s     Capturing element debug description
+    t =    30.74s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    30.74s     Checking existence of `"6" Button`
+    t =    30.77s     Capturing element debug description
+    t =    31.73s Checking `Expect predicate `exists == 1 AND isSelected == 1` for object "6" Button`
+    t =    31.73s     Checking existence of `"6" Button`
+    t =    31.76s     Find the "6" Button
+    t =    31.79s Find the Target Application 'kitchen.wecooked.ios'
+    t =    31.87s Added attachment named 'unit5-recalculated'
+    t =    31.87s Tear Down
+Test Case '-[WeCookedUITests.Unit5Tests testRow23Recalculate]' passed (32.101 seconds).
+Test Suite 'Unit5Tests' passed at 2026-09-29 15:19:53.965.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.101 (32.103) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 15:19:53.966.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.101 (32.104) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 15:19:53.966.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.101 (32.104) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_15-19-07--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow23Recalculate passed
+exit 0

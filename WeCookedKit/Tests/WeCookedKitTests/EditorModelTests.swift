@@ -316,6 +316,34 @@ struct EditorModelTests {
 		#expect(env.device.editorDraft(.manual)?.title == "Toast", "a failed save keeps the autosave")
 	}
 
+	// MARK: Reconvert
+
+	@Test func reconvertReadsTheRecipeReplyAndIsNilWithoutARecipe() throws {
+		let env = try Self.env(FakeServer())
+		let failed = PendingWork(jobId: nil, status: .failed)
+		env.store.resource(.recipe(Self.recipe, variation: nil)).mutate { $0.recipe.reconvert = failed }
+		#expect(EditorModel(origin: .recipe(Self.recipe, nil), env: env).reconvert == failed)
+		#expect(EditorModel(origin: .manual, env: env).reconvert == nil)
+	}
+
+	@Test func retryingAReconvertPostsTheRetry() async throws {
+		let retry = "POST \(Self.recipePath)/retry-reconvert"
+		let server = FakeServer([retry: FakeServer.json(#"{"ok":true}"#), "GET \(Self.recipePath)": FakeServer.fixture("recipe-get")])
+		let model = EditorModel(origin: .recipe(Self.recipe, nil), env: try Self.env(server))
+		await model.retryReconvert()
+		#expect(server.requests.filter { !$0.contains("/jobs/") } == [retry, "GET \(Self.recipePath)"], "the retry, then the recipe itself refetched")
+		#expect(model.issues.isEmpty)
+	}
+
+	@Test func aRefusedReconvertRetryBecomesAnIssue() async throws {
+		let server = FakeServer([
+			"POST \(Self.recipePath)/retry-reconvert": (400, Data(#"{"error":"Nothing to retry."}"#.utf8))
+		])
+		let model = EditorModel(origin: .recipe(Self.recipe, nil), env: try Self.env(server))
+		await model.retryReconvert()
+		#expect(model.issues == [.server("Nothing to retry.")])
+	}
+
 	// MARK: Discard and delete
 
 	@Test func discardingADraftRemovesItsCard() async throws {

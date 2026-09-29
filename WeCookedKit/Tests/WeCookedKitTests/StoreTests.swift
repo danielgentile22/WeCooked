@@ -170,7 +170,7 @@ struct StoreWatcherTests {
 		#expect(store.waitStarts == 1, "reconcile is idempotent")
 		#expect(store.owners(of: job).count == 1)
 		gate.open.withLock { $0 = true }
-		await Self.settle { loads.count == 1 && store.activeJobs.isEmpty }
+		await Self.settle { loads.count == 1 && store.activeJobs.isEmpty && r.value?.calcJob == nil }
 		#expect(loads.count == 1, "the owner was revalidated once when the job ended")
 		#expect(r.value?.calcJob == nil)
 		#expect(store.activeJobs.isEmpty)

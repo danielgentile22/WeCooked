@@ -8,8 +8,9 @@ with its evidence.
 
 ## Where things stand
 
-Units 1 to 4 of the plan are done and verified. Unit 3 landed in the
-second session (2026-09-28, evening), unit 4 in the third (2026-09-29).
+Units 1 to 5 of the plan are done and verified. Unit 3 landed in the
+second session (2026-09-28, evening), unit 4 in the third and unit 5 in the
+fourth (both 2026-09-29).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -24,7 +25,7 @@ second session (2026-09-28, evening), unit 4 in the third (2026-09-29).
   wake lock. The Add tab captures pasted text, URLs and photos; the one
   editor reviews drafts, edits recipes and takes typed-in ones.
   `RecipeModel`, `CaptureModel` and `EditorModel` are implemented and
-  tested (96 package tests). The shopping and trash screens are still stubs.
+  tested (105 package tests). The shopping and trash screens are still stubs.
 - `WeCookedUITests` is an XCUITest target that drives the app on the
   simulator against a local seeded server and writes screenshots to
   `screenshots/`. It is the lever for ticking the Sim column: there is no
@@ -32,9 +33,14 @@ second session (2026-09-28, evening), unit 4 in the third (2026-09-29).
   shell. Shared helpers live in `PortUITest.swift` (launch, snap, reveal
   for the lazy Form, pickPhotos for the system picker). `Unit3Tests.swift`
   covers rows 5 to 7, 10 to 15, 17, 18, 24, 26, 27 and 29, `Unit4Tests.swift`
-  the editor and Add rows, and `Unit4DraftTests.swift` the draft rows. The
-  draft tests spend Claude calls, so they skip unless
-  `TEST_RUNNER_WC_CLAUDE=1` is set. Its first run caught four screen bugs the build never would
+  the editor and Add rows, `Unit4DraftTests.swift` the draft rows and
+  `Unit5Tests.swift` the variation rows. The draft and variation tests spend
+  Claude calls, so they skip unless `TEST_RUNNER_WC_CLAUDE=1` is set. The
+  variation tests each start from a server state that
+  `server/scripts/unit5-prep.mjs` forges in `local.db` (a failed or stuck
+  calculate, a stale or hand-edited variation, a failed reconvert), so
+  `WeCookedUITests/run-unit5.sh` (`make ios-ui-test-unit5`) runs them one at
+  a time with their prep; it spends up to 5 calls. Its first run caught four screen bugs the build never would
   (lines dropped by duplicate list identities, a stepper that wrapped at
   390 pt, the wrong empty-state copy, and the "as written" marker vanishing
   on the converted side).
@@ -49,8 +55,9 @@ second session (2026-09-28, evening), unit 4 in the third (2026-09-29).
 
 Checks a reviewer reruns, one command each, from the root `Makefile`:
 `make server-test`, `make kit-test`, `make ios-build`, `make ios-test`
-(package tests on the simulator, no server needed) and `make ios-ui-test`
-(needs `npm run dev` in `server/` plus the seed script). Logs of the last
+(package tests on the simulator, no server needed), `make ios-ui-test`
+(needs `npm run dev` in `server/` plus the seed script) and
+`make ios-ui-test-unit5` (the same server, and it spends Claude calls). Logs of the last
 runs are in `logs/`.
 
 ## Owner decisions taken
@@ -98,17 +105,27 @@ simulator with seeded data, then in the Phone column by the owner.
    `aServerRefusalBecomesAnIssueAndTheFormStaysOpen`); tick them on the
    phone. Not ported yet: the editor's reconvert banner ("Not yet updated
    from your edit. Updating…"), which needs the recipe's `reconvert`
-   exposed on `EditorModel`. Claude calls spent on verification so far: 1
-   of the 10 the owner allowed for units 4 and 5.
-5. **Variations.** Rows 16 and 19 to 25. The screen already renders every
-   banner and the confirmations, and `RecipeModel` has `commitStepper`,
-   `retryCalculation`, `retryRefresh`, `recalculate`, `keepMine`,
-   `deleteVariation` and `retryReconvert`, all unit-tested against a stub
-   server. What is left is running them against a real Claude-backed
-   server and adding `Unit5Tests` for the flows. Note `recalculate` lands as
-   the recipe's `calcJob`, not the variation's `refresh` (the server trashes
-   the variation and queues a new scale job), so the model switches to the
-   original first.
+   exposed on `EditorModel`.
+5. **Done.** Rows 16, 19 to 23, 25 and 28 ticked; the editor's reconvert
+   banner is ported (`EditorModel.reconvert` and `retryReconvert`). Two
+   gaps the earlier sessions had not seen: nothing switched the screen to
+   the new chip when a calculate ended, and nothing produced "Updated to
+   match the original." Both are now one rule in `RecipeModel.noticed`,
+   which compares each reply of the viewed variation with the last one
+   (`seen`), driven by an `Observations` loop at the end of `appear()`. Two
+   more things learned the hard way, both fixed: `Store.invalidate`
+   refetches only watched resources, so an action taken from the editor
+   (nothing watches the recipe there) or on a just-tapped chip has to
+   `revalidate()` its own resource; and the `.watching` modifier now follows
+   a resource swap, so a chip tap refetches the variation it lands on. A
+   server fact worth knowing: a finished scale job is filed under its
+   variation, so a failure from the last 15 minutes becomes the recipe's
+   `calcJob` again and its banner shows beside the fresh chip; the web page
+   does the same, and the app switches on the chip, not the job. Claude
+   calls spent on verification for units 4 and 5: 10 of the 10 the owner
+   allowed (unit 5 spent 9: five planned, three on reruns after the two
+   fixes above, one on an automatic refresh a mis-ordered rerun queued).
+   Ask the owner before any further Claude-spending run.
 6. **Shopping.** Rows 54 to 64. `ShoppingModel`, the tick outbox and the
    section layout are real and tested. Verify two-phone sync with two
    simulators against one local server.

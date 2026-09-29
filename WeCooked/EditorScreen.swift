@@ -355,6 +355,15 @@ private struct EditorFields: View {
 	private var ingredientsSection: some View {
 		Section {
 			unitsRow.id(Anchor.ingredients)
+			if isLoaded, let rc = model.reconvert, form.shownUnits != form.baseline?.sourceUnits {
+				if rc.status == .failed || rc.jobId == nil {
+					Banner(kind: .error, text: "Couldn't update from your edit.", actionTitle: "Tap to retry") {
+						Task { await model.retryReconvert() }
+					}
+				} else {
+					Banner(kind: .working, text: "Not yet updated from your edit. Updating…")
+				}
+			}
 			ForEach(form.shown.ingredients.indices, id: \.self) { g in
 				groupHeadingRow(g)
 				ForEach(form.shown.ingredients[g].items.indices.map { Line.ingredient(group: g, item: $0) }, id: \.self) {

@@ -223,8 +223,7 @@ public final class EditorModel {
 				saved = try await env.api.saveDraft(job, input)
 				env.store.draftSaved(job, recipe: saved)
 			case .recipe(let id, let v):
-				let original = env.store.resource(.recipe(id, variation: v)).value?.recipe.isOriginal ?? (v == nil)
-				_ = try await env.api.updateRecipe(id, input, variation: original ? nil : v)
+				_ = try await env.api.updateRecipe(id, input, variation: isOriginal(id, v) ? nil : v)
 				env.store.recipeSaved(id, input: input)
 				saved = id
 			case .manual:
@@ -236,6 +235,27 @@ public final class EditorModel {
 		} catch {
 			issues = [.server(APIError.wrapping(error).message)]
 			phase = before
+		}
+	}
+
+	/// The counterpart body's regeneration, read from the recipe reply the
+	/// editor was seeded from. Nil for drafts and new recipes.
+	public var reconvert: PendingWork? {
+		guard case .recipe(let id, let v) = origin else { return nil }
+		return env.store.resource(.recipe(id, variation: v)).value?.recipe.reconvert
+	}
+
+	/// "Tap to retry" on the failed banner. Refetches the recipe itself, since
+	/// nothing watches it while the editor is on top, and `reconvert` reads
+	/// the requeued job from that reply.
+	public func retryReconvert() async {
+		guard case .recipe(let id, let v) = origin else { return }
+		issues = []
+		do {
+			try await env.api.retryReconvert(id, variation: isOriginal(id, v) ? nil : v)
+			await env.store.resource(.recipe(id, variation: v)).revalidate()
+		} catch {
+			issues = [.server(APIError.wrapping(error).message)]
 		}
 	}
 
@@ -309,6 +329,12 @@ public final class EditorModel {
 		case .editing, .extractionFailed: true
 		case .extracting, .saving, .saved, .removed: false
 		}
+	}
+
+	/// The original is addressed without a variation id. A `.recipe(id, v)`
+	/// origin learns which it is from the reply; uncached, nil means original.
+	private func isOriginal(_ id: RecipeID, _ v: VariationID?) -> Bool {
+		env.store.resource(.recipe(id, variation: v)).value?.recipe.isOriginal ?? (v == nil)
 	}
 
 	private func remove(_ work: (AppEnvironment) async throws -> Void) async {
