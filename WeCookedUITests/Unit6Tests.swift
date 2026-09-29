@@ -8,7 +8,6 @@ import XCTest
 final class Unit6Tests: PortUITest {
 	override var unit: String { "unit6" }
 
-	private let server = URL(string: "http://localhost:5173/api/v1")!
 	private let apiError = "Claude is unavailable right now. Try again in a minute."
 	private let jobTimeout: TimeInterval = 240
 	private let forgedHeader = "2 of 10 ticked · ticks sync to both phones"
@@ -54,59 +53,6 @@ final class Unit6Tests: PortUITest {
 				XCTAssertLessThan(a.frame.minY, b.frame.minY, "\(above) above \(below)", file: file, line: line)
 			}
 		}
-	}
-
-	// MARK: Phone B
-
-	/// The other phone: this test process talking to the server directly.
-	@MainActor private struct Phone {
-		let base: URL
-		var token = ""
-
-		func call(_ method: String, _ path: String, _ body: [String: Any]? = nil) -> [String: Any] {
-			var request = URLRequest(url: base.appendingPathComponent(path))
-			request.httpMethod = method
-			if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-			if let body {
-				request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-				request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-			}
-			let reply = Reply()
-			let done = XCTestExpectation(description: "\(method) \(path)")
-			URLSession.shared.dataTask(with: request) { data, response, _ in
-				reply.status = (response as? HTTPURLResponse)?.statusCode ?? 0
-				reply.json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-				done.fulfill()
-			}.resume()
-			XCTAssertEqual(XCTWaiter().wait(for: [done], timeout: 10), .completed, "\(method) \(path) answered")
-			XCTAssertEqual(reply.status, 200, "\(method) \(path)")
-			return reply.json
-		}
-
-		var list: [String: Any] { call("GET", "shopping")["list"] as? [String: Any] ?? [:] }
-		var items: [[String: Any]] { list["items"] as? [[String: Any]] ?? [] }
-
-		func id(of text: String) -> String {
-			let id = items.first { $0["text_metric"] as? String == text }?["id"] as? String
-			XCTAssertNotNil(id, "server has \(text)")
-			return id ?? ""
-		}
-
-		func isTicked(_ id: String) -> Bool {
-			items.first { $0["id"] as? String == id }?["ticked"] as? Bool ?? false
-		}
-	}
-
-	private final class Reply: @unchecked Sendable {
-		var status = 0
-		var json: [String: Any] = [:]
-	}
-
-	private func phoneB() -> Phone {
-		var phone = Phone(base: server)
-		phone.token = phone.call("POST", "login", ["password": "wecooked"])["token"] as? String ?? ""
-		XCTAssertFalse(phone.token.isEmpty, "login token")
-		return phone
 	}
 
 	// MARK: Free
@@ -326,5 +272,20 @@ final class Unit6Tests: PortUITest {
 		retry.tap()
 		expect(el("shopping-build-banner").waitForExistence(timeout: 10), "retry shows the building banner", snapshot: "retry-building")
 		waitForList(snapshot: "retry-done")
+	}
+}
+
+private extension Phone {
+	var list: [String: Any] { call("GET", "shopping")["list"] as? [String: Any] ?? [:] }
+	var items: [[String: Any]] { list["items"] as? [[String: Any]] ?? [] }
+
+	func id(of text: String) -> String {
+		let id = items.first { $0["text_metric"] as? String == text }?["id"] as? String
+		XCTAssertNotNil(id, "server has \(text)")
+		return id ?? ""
+	}
+
+	func isTicked(_ id: String) -> Bool {
+		items.first { $0["id"] as? String == id }?["ticked"] as? Bool ?? false
 	}
 }

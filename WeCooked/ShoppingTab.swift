@@ -373,12 +373,3 @@ private extension WeCookedKit.Section {
 		}
 	}
 }
-
-private extension View {
-	/// A full-width list row with no cell chrome, for banners and headings.
-	func bare() -> some View {
-		listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-			.listRowBackground(Color.clear)
-			.listRowSeparator(.hidden)
-	}
-}

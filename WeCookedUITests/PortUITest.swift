@@ -74,4 +74,43 @@ class PortUITest: XCTestCase {
 		reveal(element).tap()
 		element.typeText(text)
 	}
+
+	/// The other phone: this test process talking to the server directly.
+	func phoneB() -> Phone {
+		var phone = Phone(base: URL(string: "http://localhost:5173/api/v1")!)
+		phone.token = phone.call("POST", "login", ["password": "wecooked"])["token"] as? String ?? ""
+		XCTAssertFalse(phone.token.isEmpty, "login token")
+		return phone
+	}
+}
+
+@MainActor
+struct Phone {
+	let base: URL
+	var token = ""
+
+	func call(_ method: String, _ path: String, _ body: [String: Any]? = nil) -> [String: Any] {
+		var request = URLRequest(url: base.appendingPathComponent(path))
+		request.httpMethod = method
+		if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+		if let body {
+			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+			request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+		}
+		let reply = Reply()
+		let done = XCTestExpectation(description: "\(method) \(path)")
+		URLSession.shared.dataTask(with: request) { data, response, _ in
+			reply.status = (response as? HTTPURLResponse)?.statusCode ?? 0
+			reply.json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+			done.fulfill()
+		}.resume()
+		XCTAssertEqual(XCTWaiter().wait(for: [done], timeout: 10), .completed, "\(method) \(path) answered")
+		XCTAssertEqual(reply.status, 200, "\(method) \(path)")
+		return reply.json
+	}
+}
+
+private final class Reply: @unchecked Sendable {
+	var status = 0
+	var json: [String: Any] = [:]
 }

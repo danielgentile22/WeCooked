@@ -264,16 +264,3 @@ private struct TagGroup<T: Hashable>: View {
 		}
 	}
 }
-
-struct TrashScreen: View {
-	@Environment(AppEnvironment.self) private var env
-	var body: some View {
-		Loaded(resource: env.store.resource(.trash)) { _ in
-			// D8: two labelled groups, Restore per row; a restore that displaced a
-			// variation shows a banner (ADR-025). On restore: env.store.restored().
-			NotBuiltYet()
-		}
-		.watching(env.store.resource(.trash))
-		.navigationTitle("Trash")
-	}
-}

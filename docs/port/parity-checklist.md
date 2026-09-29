@@ -71,9 +71,9 @@ column is ticked by the owner on a device.
 | 62 | Shopping | Add a manual line | x | |
 | 63 | Shopping | Done shopping asks twice, clears everything | x | |
 | 64 | Shopping | Empty state "Pick recipes to build a list" | x | |
-| 65 | Trash | Two groups, title, yield for variations, deleted date, Restore | | |
-| 66 | Trash | Restore variation that displaces shows the displaced banner | | |
-| 67 | Trash | Restore errors shown | | |
+| 65 | Trash | Two groups, title, yield for variations, deleted date, Restore | x | |
+| 66 | Trash | Restore variation that displaces shows the displaced banner | x | |
+| 67 | Trash | Restore errors shown | x | |
 | 68 | Shell | Three tabs, Recipes, Add, Shopping | | |
 | 69 | Shell | Light and dark follow the phone | | |
 | 70 | Shell | No meaning by colour alone, chips carry words, selected state has a checkmark | | |

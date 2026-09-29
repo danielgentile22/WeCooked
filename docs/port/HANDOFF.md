@@ -27,9 +27,9 @@ fourth and unit 6 in the fifth (all 2026-09-29).
   editor reviews drafts, edits recipes and takes typed-in ones.
   The Shopping tab lists the built list by section with optimistic ticks
   that sync between phones, pick mode, manual lines and Done shopping.
-  `RecipeModel`, `CaptureModel`, `EditorModel` and `ShoppingModel` are
-  implemented and tested (117 package tests). The trash screen is still a
-  stub.
+  Trash lists deleted recipes and variations with Restore per row.
+  `RecipeModel`, `CaptureModel`, `EditorModel`, `ShoppingModel` and
+  `TrashModel` are implemented and tested (121 package tests).
 - `WeCookedUITests` is an XCUITest target that drives the app on the
   simulator against a local seeded server and writes screenshots to
   `screenshots/`. It is the lever for ticking the Sim column: there is no
@@ -38,8 +38,8 @@ fourth and unit 6 in the fifth (all 2026-09-29).
   for the lazy Form, pickPhotos for the system picker). `Unit3Tests.swift`
   covers rows 5 to 7, 10 to 15, 17, 18, 24, 26, 27 and 29, `Unit4Tests.swift`
   the editor and Add rows, `Unit4DraftTests.swift` the draft rows and
-  `Unit5Tests.swift` the variation rows and `Unit6Tests.swift` the shopping
-  rows. The draft and variation tests spend
+  `Unit5Tests.swift` the variation rows, `Unit6Tests.swift` the shopping
+  rows and `Unit7Tests.swift` the trash rows. The draft and variation tests spend
   Claude calls, so they skip unless `TEST_RUNNER_WC_CLAUDE=1` is set. The
   variation tests each start from a server state that
   `server/scripts/unit5-prep.mjs` forges in `local.db` (a failed or stuck
@@ -64,7 +64,8 @@ Checks a reviewer reruns, one command each, from the root `Makefile`:
 (needs `npm run dev` in `server/` plus the seed script) and
 `make ios-ui-test-unit5` (the same server, and it spends Claude calls) and
 `make ios-ui-test-unit6` (the same server; free by default, `WC_CLAUDE=1`
-adds the three tests that spend up to four calls). Logs of the last runs are
+adds the three tests that spend up to four calls) and
+`make ios-ui-test-unit7` (the same server, free). Logs of the last runs are
 in `logs/`.
 
 ## Owner decisions taken
@@ -155,7 +156,22 @@ simulator with seeded data, then in the Phone column by the owner.
    there. The tab's confirmation button says "Clear list" as the web's does,
    so `Unit6Tests.confirm` needs no frame trick. `ShoppingLayout` now joins
    several source titles with ", " as the web does, not " · ".
-7. **Trash.** Rows 65 to 67.
+7. **Done.** Rows 65 to 67 ticked, no Claude calls spent. `TrashModel`
+   holds one `Notice` (restored, displaced or failed) as the web's `form`
+   does, and both restores refetch the model's own resource after
+   `Store.restored()`. The banner sits above the list in a top safe-area
+   inset rather than in it, because Restore is tapped on rows far down a
+   long Trash and the outcome must show where the tap happened; the first
+   UI run failed on exactly that. Row 67's reachable error ("The original
+   now uses this yield and cannot be displaced.") comes from a trashed
+   variation at the original's yield that `server/scripts/unit7-prep.mjs
+   forge-clash` forges under the fixed id `01UNIT7CLASH00000000000000`;
+   the other error ("Variation not found in Trash.") needs an id the
+   server no longer knows, so `TrashModelTests` proves it. `reset` puts
+   `local.db` back by rule (Lemony White Beans on Toast trashed, the
+   newest Shakshuka 6 live and the other three trashed, pancakes 13
+   trashed), and `run-unit7.sh` runs it on exit. The `Phone` helper that
+   talks to `/api/v1` from the test process now lives in `PortUITest`.
 8. **Polish and TestFlight.** Rows 68 to 70 plus: app icon (regenerate from
    the pot glyph in `server/scripts/make-icons.mjs`), dark mode pass,
    transitions and haptics, launch screen, first device build, TestFlight

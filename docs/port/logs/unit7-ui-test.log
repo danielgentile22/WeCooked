@@ -1,0 +1,283 @@
+xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+SIM='platform=iOS Simulator,name=iPhone 17e' WeCookedUITests/run-unit7.sh
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+
+CodeSign /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCooked.app (in target 'WeCooked' from project 'WeCooked')
+    cd /Users/daniel/Projects/we-cooked
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --entitlements /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/WeCooked.build/Debug-iphonesimulator/WeCooked.build/WeCooked.app.xcent --timestamp\=none --generate-entitlement-der /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCooked.app
+
+Validate /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCooked.app (in target 'WeCooked' from project 'WeCooked')
+    cd /Users/daniel/Projects/we-cooked
+    builtin-validationUtility /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Products/Debug-iphonesimulator/WeCooked.app -shallow-bundle -infoplist-subpath Info.plist
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+** TEST BUILD SUCCEEDED **
+
+== testRow65TwoGroupsAndRows
+Recipes
+  01M3Q55DPS5MC5HS2AX2S5ESQQ Lemony White Beans on Toast (2026-09-29T21:15:44.901Z)
+  01M3Q6G6Q6SE3S7SVZRJEA2PR8 UI test red lentil soup (2026-09-29T18:23:37.359Z)
+  01M3Q67Z1AGVQ8PVPE385J5ZP1 UI test photo salad (2026-09-29T18:19:09.378Z)
+  01M3Q5P628E0Z8VAXD5CE0T0RN UI test red lentil soup (2026-09-29T18:09:24.909Z)
+  01M3Q5G2HEAT79G9SZV3NVVSZH UI test photo salad (2026-09-29T18:06:06.155Z)
+  01M3Q4Y3NZ8DKGW4D5GFRD0BFQ UI test photo salad (2026-09-29T17:56:17.944Z)
+  01M3Q4CWQ475KKXBBCZCRN6E6Q UI test red lentil soup (2026-09-29T17:46:51.957Z)
+  01M3Q46ASCW73M8SDBGZG4SYAK UI test red lentil soup (2026-09-29T17:44:19.031Z)
+  01M3Q40NHBWWYM9BCHSA00ZPAP UI test red lentil soup (2026-09-29T17:40:36.376Z)
+Variations
+  01M3Q8M91220JW4GQF93KVWEMW Shakshuka · 6 servings (2026-09-29T21:16:44.046Z)
+  01M3Q9JAC19HZQ1GG6C3575GEF Shakshuka · 6 servings (2026-09-29T19:19:34.182Z)
+  01M3Q912GWWH0GS2RY1NYDYC4C Shakshuka · 6 servings (2026-09-29T19:16:09.467Z)
+  01M3Q8WMT8WWQKF656KZQE8PV0 Buttermilk pancakes · 13 pancakes (2026-09-29T19:05:04.858Z)
+reset: done
+2026-09-29 17:18:49.933 xcodebuild[97028:2967760] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 17:18:49.933 xcodebuild[97028:2967760] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 17:20:59.335 xcodebuild[97028:2967760] [MT] IDETestOperationsObserverDebug: 144.380 elapsed -- Testing started completed.
+2026-09-29 17:20:59.335 xcodebuild[97028:2967760] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 17:20:59.335 xcodebuild[97028:2967760] [MT] IDETestOperationsObserverDebug: 144.380 sec, +144.380 sec -- end
+    t =   127.02s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   127.12s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   127.22s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   127.32s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   127.42s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   127.52s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   127.62s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   127.72s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   127.82s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   127.93s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   128.05s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   128.16s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   128.26s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   128.37s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   128.47s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   128.57s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   128.67s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   128.78s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   128.87s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   128.98s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   129.07s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   129.18s Checking existence of `"trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText`
+    t =   129.27s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   129.38s Find the "trash-row-01M3Q55DPS5MC5HS2AX2S5ESQQ" StaticText
+    t =   129.48s Find the "trash-restore-01M3Q55DPS5MC5HS2AX2S5ESQQ" Any
+    t =   129.60s Tear Down
+Test Case '-[WeCookedUITests.Unit7Tests testRow65TwoGroupsAndRows]' passed (129.838 seconds).
+Test Suite 'Unit7Tests' passed at 2026-09-29 17:20:59.000.
+	 Executed 1 test, with 0 failures (0 unexpected) in 129.838 (129.840) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 17:20:59.000.
+	 Executed 1 test, with 0 failures (0 unexpected) in 129.838 (129.840) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 17:20:59.000.
+	 Executed 1 test, with 0 failures (0 unexpected) in 129.838 (129.841) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_17-18-34--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow65TwoGroupsAndRows passed
+== testRow66RestoreRecipeShowsRestored
+Recipes
+  01M3Q55DPS5MC5HS2AX2S5ESQQ Lemony White Beans on Toast (2026-09-29T21:15:44.901Z)
+  01M3Q6G6Q6SE3S7SVZRJEA2PR8 UI test red lentil soup (2026-09-29T18:23:37.359Z)
+  01M3Q67Z1AGVQ8PVPE385J5ZP1 UI test photo salad (2026-09-29T18:19:09.378Z)
+  01M3Q5P628E0Z8VAXD5CE0T0RN UI test red lentil soup (2026-09-29T18:09:24.909Z)
+  01M3Q5G2HEAT79G9SZV3NVVSZH UI test photo salad (2026-09-29T18:06:06.155Z)
+  01M3Q4Y3NZ8DKGW4D5GFRD0BFQ UI test photo salad (2026-09-29T17:56:17.944Z)
+  01M3Q4CWQ475KKXBBCZCRN6E6Q UI test red lentil soup (2026-09-29T17:46:51.957Z)
+  01M3Q46ASCW73M8SDBGZG4SYAK UI test red lentil soup (2026-09-29T17:44:19.031Z)
+  01M3Q40NHBWWYM9BCHSA00ZPAP UI test red lentil soup (2026-09-29T17:40:36.376Z)
+Variations
+  01M3Q8M91220JW4GQF93KVWEMW Shakshuka · 6 servings (2026-09-29T21:16:44.046Z)
+  01M3Q9JAC19HZQ1GG6C3575GEF Shakshuka · 6 servings (2026-09-29T19:19:34.182Z)
+  01M3Q912GWWH0GS2RY1NYDYC4C Shakshuka · 6 servings (2026-09-29T19:16:09.467Z)
+  01M3Q8WMT8WWQKF656KZQE8PV0 Buttermilk pancakes · 13 pancakes (2026-09-29T19:05:04.858Z)
+reset: done
+2026-09-29 17:21:17.592 xcodebuild[97888:2976264] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 17:21:17.592 xcodebuild[97888:2976264] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 17:21:43.883 xcodebuild[97888:2976264] [MT] IDETestOperationsObserverDebug: 40.399 elapsed -- Testing started completed.
+2026-09-29 17:21:43.883 xcodebuild[97888:2976264] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 17:21:43.883 xcodebuild[97888:2976264] [MT] IDETestOperationsObserverDebug: 40.399 sec, +40.399 sec -- end
+    t =    24.49s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    24.53s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    24.61s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    24.65s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    24.72s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    24.77s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    24.84s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    24.89s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    24.96s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.01s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.08s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.12s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.19s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.24s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.31s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.36s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.43s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.47s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.55s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.61s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.68s Checking existence of `"Lemony White Beans on Toast, Quick, Messy" Button`
+    t =    25.73s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.80s Find the "Lemony White Beans on Toast, Quick, Messy" Button
+    t =    25.88s Find the Target Application 'kitchen.wecooked.ios'
+    t =    25.96s Added attachment named 'unit7-browse-after-restore'
+    t =    25.97s Tear Down
+Test Case '-[WeCookedUITests.Unit7Tests testRow66RestoreRecipeShowsRestored]' passed (26.300 seconds).
+Test Suite 'Unit7Tests' passed at 2026-09-29 17:21:43.568.
+	 Executed 1 test, with 0 failures (0 unexpected) in 26.300 (26.303) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 17:21:43.569.
+	 Executed 1 test, with 0 failures (0 unexpected) in 26.300 (26.303) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 17:21:43.569.
+	 Executed 1 test, with 0 failures (0 unexpected) in 26.300 (26.304) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_17-21-03--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow66RestoreRecipeShowsRestored passed
+== testRow66RestoreVariationDisplaces
+Recipes
+  01M3Q55DPS5MC5HS2AX2S5ESQQ Lemony White Beans on Toast (2026-09-29T21:21:47.058Z)
+  01M3Q6G6Q6SE3S7SVZRJEA2PR8 UI test red lentil soup (2026-09-29T18:23:37.359Z)
+  01M3Q67Z1AGVQ8PVPE385J5ZP1 UI test photo salad (2026-09-29T18:19:09.378Z)
+  01M3Q5P628E0Z8VAXD5CE0T0RN UI test red lentil soup (2026-09-29T18:09:24.909Z)
+  01M3Q5G2HEAT79G9SZV3NVVSZH UI test photo salad (2026-09-29T18:06:06.155Z)
+  01M3Q4Y3NZ8DKGW4D5GFRD0BFQ UI test photo salad (2026-09-29T17:56:17.944Z)
+  01M3Q4CWQ475KKXBBCZCRN6E6Q UI test red lentil soup (2026-09-29T17:46:51.957Z)
+  01M3Q46ASCW73M8SDBGZG4SYAK UI test red lentil soup (2026-09-29T17:44:19.031Z)
+  01M3Q40NHBWWYM9BCHSA00ZPAP UI test red lentil soup (2026-09-29T17:40:36.376Z)
+Variations
+  01M3Q8M91220JW4GQF93KVWEMW Shakshuka · 6 servings (2026-09-29T21:16:44.046Z)
+  01M3Q9JAC19HZQ1GG6C3575GEF Shakshuka · 6 servings (2026-09-29T19:19:34.182Z)
+  01M3Q912GWWH0GS2RY1NYDYC4C Shakshuka · 6 servings (2026-09-29T19:16:09.467Z)
+  01M3Q8WMT8WWQKF656KZQE8PV0 Buttermilk pancakes · 13 pancakes (2026-09-29T19:05:04.858Z)
+reset: done
+2026-09-29 17:22:02.476 xcodebuild[98286:2980806] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 17:22:02.476 xcodebuild[98286:2980806] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 17:22:53.691 xcodebuild[98286:2980806] [MT] IDETestOperationsObserverDebug: 65.939 elapsed -- Testing started completed.
+2026-09-29 17:22:53.691 xcodebuild[98286:2980806] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 17:22:53.691 xcodebuild[98286:2980806] [MT] IDETestOperationsObserverDebug: 65.939 sec, +65.939 sec -- end
+    t =    46.20s Find the "trash-row-01M3Q912GWWH0GS2RY1NYDYC4C" StaticText
+    t =    46.38s Find the "trash-row-01M3Q912GWWH0GS2RY1NYDYC4C" StaticText
+    t =    46.55s Find the "trash-row-01M3Q912GWWH0GS2RY1NYDYC4C" StaticText
+    t =    46.68s Tap Button (Element at index 0)
+    t =    46.68s     Wait for kitchen.wecooked.ios to idle
+    t =    46.69s     Find the Button (Element at index 0)
+    t =    46.72s     Check for interrupting elements affecting "BackButton" Button
+    t =    46.75s     Synthesize event
+    t =    47.05s     Wait for kitchen.wecooked.ios to idle
+    t =    47.35s Waiting 5.0s for "Recipes" NavigationBar to exist
+    t =    48.37s     Checking `Expect predicate `existsNoRetry == 1` for object "Recipes" NavigationBar`
+    t =    48.37s         Checking existence of `"Recipes" NavigationBar`
+    t =    48.40s Tap Button (First Match)
+    t =    48.40s     Wait for kitchen.wecooked.ios to idle
+    t =    48.41s     Find the Button (First Match)
+    t =    48.46s     Check for interrupting elements affecting "Shakshuka, Quick, Tidy" Button
+    t =    48.49s     Synthesize event
+    t =    48.78s     Wait for kitchen.wecooked.ios to idle
+    t =    49.18s Waiting 10.0s for "Shakshuka" StaticText to exist
+    t =    50.19s     Checking `Expect predicate `existsNoRetry == 1` for object "Shakshuka" StaticText`
+    t =    50.19s         Checking existence of `"Shakshuka" StaticText`
+    t =    50.23s Waiting 10.0s for "6" Button to exist
+    t =    51.25s     Checking `Expect predicate `existsNoRetry == 1` for object "6" Button`
+    t =    51.25s         Checking existence of `"6" Button`
+    t =    51.28s Get number of matches for: Elements matching predicate 'label == "6"'
+    t =    51.32s Tear Down
+Test Case '-[WeCookedUITests.Unit7Tests testRow66RestoreVariationDisplaces]' passed (51.544 seconds).
+Test Suite 'Unit7Tests' passed at 2026-09-29 17:22:53.360.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.544 (51.548) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 17:22:53.360.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.544 (51.548) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 17:22:53.360.
+	 Executed 1 test, with 0 failures (0 unexpected) in 51.544 (51.550) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_17-21-47--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow66RestoreVariationDisplaces passed
+== testRow67RestoreErrorShown
+Recipes
+  01M3Q55DPS5MC5HS2AX2S5ESQQ Lemony White Beans on Toast (2026-09-29T21:21:47.058Z)
+  01M3Q6G6Q6SE3S7SVZRJEA2PR8 UI test red lentil soup (2026-09-29T18:23:37.359Z)
+  01M3Q67Z1AGVQ8PVPE385J5ZP1 UI test photo salad (2026-09-29T18:19:09.378Z)
+  01M3Q5P628E0Z8VAXD5CE0T0RN UI test red lentil soup (2026-09-29T18:09:24.909Z)
+  01M3Q5G2HEAT79G9SZV3NVVSZH UI test photo salad (2026-09-29T18:06:06.155Z)
+  01M3Q4Y3NZ8DKGW4D5GFRD0BFQ UI test photo salad (2026-09-29T17:56:17.944Z)
+  01M3Q4CWQ475KKXBBCZCRN6E6Q UI test red lentil soup (2026-09-29T17:46:51.957Z)
+  01M3Q46ASCW73M8SDBGZG4SYAK UI test red lentil soup (2026-09-29T17:44:19.031Z)
+  01M3Q40NHBWWYM9BCHSA00ZPAP UI test red lentil soup (2026-09-29T17:40:36.376Z)
+Variations
+  01M3Q8M91220JW4GQF93KVWEMW Shakshuka · 6 servings (2026-09-29T21:22:56.941Z)
+  01UNIT7CLASH00000000000000 Shakshuka · 2 servings (2026-09-29T21:22:56.941Z)
+  01M3Q9JAC19HZQ1GG6C3575GEF Shakshuka · 6 servings (2026-09-29T19:19:34.182Z)
+  01M3Q912GWWH0GS2RY1NYDYC4C Shakshuka · 6 servings (2026-09-29T19:16:09.467Z)
+  01M3Q8WMT8WWQKF656KZQE8PV0 Buttermilk pancakes · 13 pancakes (2026-09-29T19:05:04.858Z)
+forge-clash: done
+2026-09-29 17:23:12.049 xcodebuild[98897:2987215] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-09-29 17:23:12.049 xcodebuild[98897:2987215] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-29 17:23:42.536 xcodebuild[98897:2987215] [MT] IDETestOperationsObserverDebug: 44.965 elapsed -- Testing started completed.
+2026-09-29 17:23:42.536 xcodebuild[98897:2987215] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-29 17:23:42.536 xcodebuild[98897:2987215] [MT] IDETestOperationsObserverDebug: 44.965 sec, +44.965 sec -- end
+    t =    26.43s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    26.57s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    26.69s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    26.82s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    26.95s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    27.07s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    27.20s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    27.33s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    27.45s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    27.59s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    27.72s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    27.86s Checking existence of `"trash-restore-01UNIT7CLASH00000000000000" Button`
+    t =    27.98s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    28.11s Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    28.24s Tap "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    28.24s     Wait for kitchen.wecooked.ios to idle
+    t =    28.24s     Find the "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    28.37s     Check for interrupting elements affecting "trash-restore-01UNIT7CLASH00000000000000" Button
+    t =    28.43s     Synthesize event
+    t =    28.72s     Wait for kitchen.wecooked.ios to idle
+    t =    29.78s Checking `Expect predicate `label == "The original now uses this yield and cannot be displaced."` for object "trash-error" Any`
+    t =    29.79s     Find the "trash-error" Any
+    t =    29.84s Find the Target Application 'kitchen.wecooked.ios'
+    t =    29.93s Added attachment named 'unit7-restore-error'
+    t =    29.93s Checking existence of `"trash-row-01UNIT7CLASH00000000000000" Any`
+    t =    30.07s Tear Down
+Test Case '-[WeCookedUITests.Unit7Tests testRow67RestoreErrorShown]' passed (30.295 seconds).
+Test Suite 'Unit7Tests' passed at 2026-09-29 17:23:42.211.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.295 (30.300) seconds
+Test Suite 'WeCookedUITests.xctest' passed at 2026-09-29 17:23:42.212.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.295 (30.300) seconds
+Test Suite 'Selected tests' passed at 2026-09-29 17:23:42.212.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.295 (30.301) seconds
+
+Test session results, code coverage, and logs:
+	/Users/daniel/Library/Developer/Xcode/DerivedData/WeCooked-czxsjhchxtdmslburjigoaufdvdq/Logs/Test/Test-WeCooked-2026.09.29_17-22-57--0400.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
+== testRow67RestoreErrorShown passed
