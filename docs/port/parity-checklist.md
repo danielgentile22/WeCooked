@@ -77,7 +77,7 @@ column is ticked by the owner on a device.
 | 68 | Shell | Three tabs, Recipes, Add, Shopping | x | |
 | 69 | Shell | Light and dark follow the phone | x | |
 | 70 | Shell | No meaning by colour alone, chips carry words, selected state has a checkmark | x | |
-| 71 | Share | Share a recipe page from Safari: sheet shows the link, Capture queues a draft, the app opens it on next foreground | | |
+| 71 | Share | Share a recipe page from Safari: sheet shows the link, Capture queues a draft, the app opens it on next foreground | | x |
 | 72 | Share | Share a reel link with the caption pasted in the note field: draft keeps the reel as source and extracts from the caption | | |
 | 73 | Share | Share three screenshots: each shows upload progress, Capture enables when all are up, one draft | | |
 | 74 | Share | Share signed out: "Sign in to We Cooked first" with Close | | |
