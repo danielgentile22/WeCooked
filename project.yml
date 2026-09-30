@@ -103,9 +103,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: WeCooked
 
-  # Placeholder for the share-sheet unit. It builds, embeds and shares the
-  # Keychain group and app group with the app, so the token and units are
-  # already readable from it; it does nothing yet.
+  # The share sheet. It shares the Keychain group (the session token) and the
+  # app group (the pending draft link) with the app.
   WeCookedShare:
     type: app-extension
     platform: iOS

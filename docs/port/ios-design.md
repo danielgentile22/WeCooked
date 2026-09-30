@@ -71,7 +71,8 @@ variation:, contentVersion:)`, `env.device.saveEditorDraft(form, for:
 **Deep link.** `router.open(DeepLink(url: url)!)` from `onOpenURL`, a push
 payload, or the share extension's hand-off. The grammar is the web app's:
 `https://wecooked.kitchen/drafts/<id>` and `wecooked://drafts/<id>` are the
-same link, likewise `/recipes/<id>?v=`, `/add`, `/shopping`, `/trash` and `/`.
+same link, likewise `/recipes/<id>?v=`, `/add`, `/shopping`, `/trash` and `/`
+(rendered back as `/recipes`).
 
 ## Shape
 
@@ -237,8 +238,10 @@ the login field so a simulator run needs no typing.
 
 **Project.** `project.yml` defines `WeCooked` (iOS 26, Swift 6 complete
 checking, `kitchen.wecooked.ios`), the local `WeCookedKit` package,
-`WeCookedShare` (embedded, compiles, shares app group and Keychain group,
-`APPLICATION_EXTENSION_API_ONLY`, so the package stays UIKit-free), and a
+`WeCookedShare` (embedded, shares app group and Keychain group,
+`APPLICATION_EXTENSION_API_ONLY`, so the package stays UIKit-free; issue #39
+made it a real sheet that posts to `/captures` with its own `APIClient` and
+hands the draft to the app through `pendingLink`), and a
 `WeCooked` scheme whose test action runs the package's own test target.
 `Package.swift` lists `.macOS(.v26)` so `swift test` gives a seconds-long loop;
 the app is iOS only. Debug points at `http://localhost:5173/api/v1/`, Release

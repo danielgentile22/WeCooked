@@ -741,6 +741,30 @@ public struct RestoreReply: Codable, Hashable, Sendable {
 
 public struct TokenReply: Codable, Sendable { public let token: String }
 public struct JobReply: Codable, Sendable { public let jobId: JobID }
+
+/// The body of `POST /captures`. One primary input; `text` may ride along with
+/// a URL as the fallback the server extracts from when the page is unreadable.
+public enum CaptureRequest: Encodable, Sendable {
+	/// The server rejects more pages than this in one capture.
+	public static let maxImages = 10
+
+	case url(URL, text: String?)
+	case text(String)
+	case images([ImageID])
+
+	private enum CodingKeys: String, CodingKey { case url, text, imageIds }
+
+	public func encode(to encoder: any Encoder) throws {
+		var c = encoder.container(keyedBy: CodingKeys.self)
+		switch self {
+		case .url(let url, let text):
+			try c.encode(url, forKey: .url)
+			try c.encodeIfPresent(text, forKey: .text)
+		case .text(let text): try c.encode(text, forKey: .text)
+		case .images(let ids): try c.encode(ids, forKey: .imageIds)
+		}
+	}
+}
 public struct CreatedRecipe: Codable, Sendable { public let id: RecipeID }
 public struct UpdatedRecipe: Codable, Sendable {
 	public let id: RecipeID

@@ -135,7 +135,6 @@ extension APIClient {
 	private struct Fields: Encodable, Sendable {
 		var password: String?
 		var text: String?
-		var imageIds: [ImageID]?
 		var toCount: Double?
 		var ticked: Bool?
 		var variationId: VariationID?
@@ -189,11 +188,8 @@ extension APIClient {
 		let _: OK = try await send("DELETE", "variations/\(id)")
 	}
 
-	public func capture(text: String) async throws -> JobID {
-		let r: JobReply = try await send("POST", "captures", body: json(Fields(text: text))); return r.jobId
-	}
-	public func capture(imageIds: [ImageID]) async throws -> JobID {
-		let r: JobReply = try await send("POST", "captures", body: json(Fields(imageIds: imageIds))); return r.jobId
+	public func capture(_ request: CaptureRequest) async throws -> JobID {
+		let r: JobReply = try await send("POST", "captures", body: json(request)); return r.jobId
 	}
 	public func draft(_ id: JobID) async throws -> DraftLookup { try await send("GET", "drafts/\(id)") }
 	public func saveDraft(_ id: JobID, _ input: RecipeInput) async throws -> RecipeID {

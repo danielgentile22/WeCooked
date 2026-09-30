@@ -8,7 +8,7 @@ import type { ErrorCode } from '$lib/jobs';
 import { claudeCall } from './claude';
 import { deriveClaude } from './images';
 import { getObject } from './r2';
-import { JobError, type JobHandler } from './jobs';
+import { JobError, type JobHandler, type JobRow } from './jobs';
 
 // The extract call (SPEC 5.4): one prompt for all three capture paths, with
 // per-path user content.
@@ -303,15 +303,28 @@ export function stripHtml(html: string): string {
 const JSONLD_PREAMBLE =
 	'Authoritative structured data from the page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim: ';
 
-/** Handler for the extract_url job kind: input_json is { url }. */
-export const extractUrl: JobHandler = async (job, db) => {
-	const { url } = JSON.parse(job.input_json) as { url: string };
-	const html = await fetchPage(url);
-	const jsonLd = findRecipeJsonLd(html);
-	// Cap at 100k characters so a pathological page cannot blow the context.
-	let content = stripHtml(html).slice(0, 100_000);
-	if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
-	return extract(db, content);
+// Issue #39: a reel page blocks fetchers or strips to a login wall, but the
+// caption the cook pasted alongside the link still holds the recipe.
+const FALLBACK_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked', 'no_recipe_found'];
+
+/** Handler for the extract_url job kind: input_json is { url, text? }. */
+export const extractUrl = async (
+	job: JobRow,
+	db: Database,
+	fetchPageFn: (url: string) => Promise<string> = fetchPage
+): Promise<RecipeDraft> => {
+	const { url, text } = JSON.parse(job.input_json) as { url: string; text?: string };
+	try {
+		const html = await fetchPageFn(url);
+		const jsonLd = findRecipeJsonLd(html);
+		// Cap at 100k characters so a pathological page cannot blow the context.
+		let content = stripHtml(html).slice(0, 100_000);
+		if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
+		return await extract(db, content);
+	} catch (e) {
+		if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
+		return extract(db, text);
+	}
 };
 
 // SPEC 5.4 user content, photo path: image blocks in page order, then this

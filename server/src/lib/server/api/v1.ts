@@ -65,13 +65,21 @@ function captureJob(db: Database, id: string) {
 }
 
 async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
+	if ('image_ids' in b && 'url' in b) throw bad('Share one thing at a time: a link, text or photos.');
 	if ('image_ids' in b) {
 		// SPEC 7.1 photo path: images are already uploaded via POST /images?role=capture.
 		const ids = b.image_ids;
 		if (!Array.isArray(ids) || ids.length === 0 || ids.some((i) => typeof i !== 'string'))
 			throw bad('Add at least one photo first.');
-		if (ids.length > 8) throw bad('At most 8 pages per recipe.');
+		if (ids.length > 10) throw bad('At most 10 pages per recipe.');
 		return { job_id: createJob(db, 'extract_photos', { image_ids: ids }) };
+	}
+	if ('url' in b) {
+		// Issue #39 share sheet: the link is the source; text is a caption to fall back on.
+		const url = typeof b.url === 'string' ? asUrl(b.url.trim()) : null;
+		if (!url) throw bad('That is not a link. Share a web page instead.');
+		const text = String(b.text ?? '').trim();
+		return { job_id: createJob(db, 'extract_url', text ? { url, text } : { url }) };
 	}
 	const text = String(b.text ?? '').trim();
 	if (!text) throw bad('Paste some recipe text first.');

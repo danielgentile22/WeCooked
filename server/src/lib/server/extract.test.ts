@@ -5,6 +5,7 @@ import { asUrl, draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
 import {
 	assertPublicUrl,
 	extractPhotos,
+	extractUrl,
 	fetchPage as realFetchPage,
 	findRecipeJsonLd,
 	photoBlocks,
@@ -318,5 +319,47 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 			type: 'image',
 			source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') }
 		});
+	});
+});
+
+describe('extract_url fallback (issue #39)', () => {
+	const db = new Database(':memory:');
+	const caption = 'Caption: 2 eggs, fry them.';
+	const jobRow = (input: { url: string; text?: string }) =>
+		({ kind: 'extract_url', input_json: JSON.stringify(input) }) as JobRow;
+	const blocked = async (): Promise<string> => {
+		throw new JobError('fetch_blocked');
+	};
+	const sentContent = () =>
+		vi.mocked(claudeCall).mock.calls.map(([, req]) => req.messages[0].content);
+
+	it('extracts from the page when it is readable, ignoring the caption', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		const page = async () => '<p>Shakshuka from the page</p>';
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
+		expect(sentContent()).toEqual(['Shakshuka from the page']);
+	});
+
+	it('falls back to the text when the page is blocked', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, blocked);
+		expect(sentContent()).toEqual([caption]);
+	});
+
+	it('fails as before when the page is blocked and there is no text', async () => {
+		vi.mocked(claudeCall).mockReset();
+		await expect(
+			extractUrl(jobRow({ url: 'https://example.com/r' }), db, blocked)
+		).rejects.toMatchObject({ code: 'fetch_blocked' });
+		expect(claudeCall).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the text when the page yields no recipe', async () => {
+		const empty = draft();
+		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+		const page = async () => '<p>Log in to see this reel</p>';
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
+		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
 	});
 });

@@ -46,14 +46,15 @@ struct CaptureModelTests {
 		#expect(model.photos.isEmpty)
 	}
 
-	@Test func aNinthPhotoIsRefusedWithoutAnUpload() async {
+	@Test func anEleventhPhotoIsRefusedWithoutAnUpload() async {
 		let server = FakeServer([Self.uploadCapture: FakeServer.fixture("image-upload")])
 		let model = CaptureModel(env: RecipeModelTests.env(server))
-		for i in 0..<8 { await model.add(jpeg: Data([UInt8(i)])) }
-		await model.add(jpeg: Data([9]))
-		#expect(model.photos.count == 8)
-		#expect(model.error == "At most 8 pages per recipe.")
-		#expect(server.requests.count == 8)
+		let cap = CaptureModel.maxPhotos
+		for i in 0..<cap { await model.add(jpeg: Data([UInt8(i)])) }
+		await model.add(jpeg: Data([UInt8(cap)]))
+		#expect(model.photos.count == cap)
+		#expect(model.error == "At most \(cap) pages per recipe.")
+		#expect(server.requests.count == cap)
 	}
 
 	@Test func aFailedUploadShowsTheWebCopyAndCannotBeExtracted() async {

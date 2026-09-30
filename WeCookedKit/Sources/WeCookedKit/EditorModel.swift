@@ -18,7 +18,7 @@ public struct PendingPhoto: Identifiable, Sendable {
 
 @MainActor @Observable
 public final class CaptureModel {
-	public static let maxPhotos = 8
+	public static let maxPhotos = CaptureRequest.maxImages
 
 	public var text = ""
 	public private(set) var photos: [PendingPhoto] = []
@@ -35,7 +35,7 @@ public final class CaptureModel {
 		error = nil
 		let live = photos.filter { if case .failed = $0.state { false } else { true } }
 		guard live.count < Self.maxPhotos else {
-			error = "At most 8 pages per recipe."
+			error = "At most \(Self.maxPhotos) pages per recipe."
 			return
 		}
 		let photo = PendingPhoto(state: .uploading)
@@ -67,7 +67,7 @@ public final class CaptureModel {
 				error = "Paste some recipe text first."
 				return nil
 			}
-			request = { try await $0.capture(text: trimmed) }
+			request = { try await $0.capture(.text(trimmed)) }
 		} else {
 			var ids: [ImageID] = []
 			for p in photos {
@@ -81,7 +81,7 @@ public final class CaptureModel {
 				error = "Add at least one photo first."
 				return nil
 			}
-			request = { [ids] in try await $0.capture(imageIds: ids) }
+			request = { [ids] in try await $0.capture(.images(ids)) }
 		}
 		isSubmitting = true
 		defer { isSubmitting = false }
@@ -360,7 +360,7 @@ public final class EditorModel {
 		case .draft(let d):
 			warnings = d.warnings
 			damageReasoning = d.damageReasoning
-			let seed = { EditorForm(seed: d.initial ?? DraftSeed(images: []), sourceText: d.sourceText, units: self.env.device.units) }
+			let seed = { EditorForm(seed: d.initial ?? DraftSeed(images: []), units: self.env.device.units) }
 			switch d.status {
 			case .done:
 				adopt(seed(), key: .draft(job))

@@ -14,6 +14,7 @@ struct FixtureDecodingTests {
 	/// fixture name -> the type that must decode it.
 	static let table: [String: any (Codable & Sendable).Type] = [
 		"captures": JobReply.self,
+		"captures-url": JobReply.self,
 		"draft-get-failed": DraftLookup.self,
 		"draft-get-ready": DraftLookup.self,
 		"draft-get-saved": DraftLookup.self,

@@ -89,6 +89,9 @@ public enum DeepLink: Hashable, Sendable {
 	case trash
 
 	public static let scheme = "wecooked"
+	/// App-group defaults key where the share extension leaves a `url` string
+	/// for the app to open on its next foreground.
+	public static let pendingLinkKey = "pendingLink"
 
 	public init?(url: URL) {
 		guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
@@ -135,7 +138,7 @@ public enum DeepLink: Hashable, Sendable {
 	public var url: URL {
 		let path: String
 		switch self {
-		case .recipes: path = ""
+		case .recipes: path = "recipes"
 		case .recipe(let id, let v): path = "recipes/\(id)" + (v.map { "?v=\($0)" } ?? "")
 		case .draft(let id): path = "drafts/\(id)"
 		case .add: path = "add"

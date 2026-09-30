@@ -371,8 +371,12 @@ describe('/api/v1', () => {
 		await fails('POST', '/captures', 400, 'Paste some recipe text first.', { body: { text: '  ' } });
 		await fails('POST', '/captures', 400, 'Add at least one photo first.', { body: { image_ids: [] } });
 		await fails('POST', '/captures', 400, 'Add at least one photo first.', { body: { image_ids: [1] } });
-		await fails('POST', '/captures', 400, 'At most 8 pages per recipe.', {
-			body: { image_ids: Array.from({ length: 9 }, (_, i) => `p${i}`) }
+		await fails('POST', '/captures', 400, 'At most 10 pages per recipe.', {
+			body: { image_ids: Array.from({ length: 11 }, (_, i) => `p${i}`) }
+		});
+		await fails('POST', '/captures', 400, 'That is not a link. Share a web page instead.', { body: { url: 'not a link' } });
+		await fails('POST', '/captures', 400, 'Share one thing at a time: a link, text or photos.', {
+			body: { url: 'https://example.com', image_ids: ['p'] }
 		});
 		tick();
 		const url = await ok('POST', '/captures', { body: { text: 'www.example.com/soup' } });
@@ -488,6 +492,18 @@ describe('/api/v1', () => {
 		});
 		expect((await ok('GET', '/trash')).trash.recipes).toHaveLength(0);
 		expect((await ok('GET', '/recipes')).recipes.map((r: { id: string }) => r.id)).toContain(omelette);
+	});
+
+	// Last so its job id and draft card shift no earlier fixture the Kit pins.
+	it('POST /captures: shared link with caption (issue #39)', async () => {
+		const shared = fixture(
+			'captures-url',
+			await ok('POST', '/captures', { body: { url: 'https://www.example.com/reel', text: 'Caption: 2 eggs...' } })
+		);
+		expect(job(shared.job_id)).toMatchObject({
+			kind: 'extract_url',
+			input_json: '{"url":"https://www.example.com/reel","text":"Caption: 2 eggs..."}'
+		});
 	});
 
 	it('records an error body', async () => {

@@ -253,11 +253,15 @@ feature, each labelled `ready-for-agent`: #39 share sheet capture, #40
 Wegmans export, #41 recipe generation, #42 shopping widget and push. The
 issues are the spec; the bullets below are the original wording.
 
-- **Share sheet capture.** The extension target exists with the app group
-  and Keychain group. It should accept a URL, text or images, post to
-  `/captures` itself, and hand off to the app through the app group. For
-  Instagram reels the page blocks fetchers, so carry the caption text with
-  the URL, and offer the screenshot path as the fallback.
+- **Share sheet capture.** Built on 2026-09-30 (issue #39): the extension
+  accepts a URL, text or up to ten images, posts to `/captures` itself with
+  its own `APIClient`, and hands the draft to the app through `pendingLink`.
+  A reel link plus its pasted caption goes up as `{url, text}` and the
+  server extracts from the caption when the page cannot be read. Rows 71
+  to 75 on the parity checklist are the owner's device checks; only a
+  device proves the extension's Keychain read. The TestFlight test notes
+  still say the extension does nothing and need rewriting on the next
+  upload.
 - **Wegmans export.** Start with sharing the list as plain text into the
   Wegmans app, then investigate a URL scheme or list import.
 - **Recipe generation.** A `generate` job kind on the server from a

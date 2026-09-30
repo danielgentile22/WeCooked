@@ -22,7 +22,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /variations/:id/recalculate | | `{job_id}` | 400 |
 | POST | /variations/:id/keep-mine | | `{ok:true}` | |
 | DELETE | /variations/:id | | `{ok:true}` (to Trash) | 400 |
-| POST | /captures | `{text}` or `{image_ids}` | `{job_id}` | 400 |
+| POST | /captures | `{text}`, `{url, text?}` or `{image_ids}` | `{job_id}` | 400 |
 | GET | /drafts/:id | | `DraftView`, or `{recipe_id}` once saved | 404 |
 | POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400, 404 |
 | POST | /drafts/:id/discard | | `{ok:true}` | 400 while extracting, 404 |

@@ -58,15 +58,13 @@ final class Router {
 		if recipesPath.last != saved { recipesPath.append(saved) }
 	}
 
-	static let pendingLinkKey = "pendingLink"
-
 	/// Extension hand-off: the extension writes `pendingLink` (a URL string) in
 	/// the app-group defaults; consumed once.
 	func consumePendingLink(from env: AppEnvironment) {
 		guard let group = env.config.appGroup, let defaults = UserDefaults(suiteName: group),
-			let raw = defaults.string(forKey: Self.pendingLinkKey)
+			let raw = defaults.string(forKey: DeepLink.pendingLinkKey)
 		else { return }
-		defaults.removeObject(forKey: Self.pendingLinkKey)
+		defaults.removeObject(forKey: DeepLink.pendingLinkKey)
 		if let url = URL(string: raw), let link = DeepLink(url: url) { open(link) }
 	}
 }

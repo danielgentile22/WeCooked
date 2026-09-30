@@ -38,7 +38,7 @@ column is ticked by the owner on a device.
 | 29 | Recipe | Edit opens the editor for the viewed variation | x | |
 | 30 | Add | Paste box: URL creates an extract_url job, text an extract_paste job | x | |
 | 31 | Add | Empty paste shows "Paste some recipe text first." | x | |
-| 32 | Add | Photos upload on pick, thumbnails with remove, at most 8 | x | |
+| 32 | Add | Photos upload on pick, thumbnails with remove, at most 10 | x | |
 | 33 | Add | Upload failure copy shown | | |
 | 34 | Add | "Type it in myself" opens the empty editor | x | |
 | 35 | Draft | Queued or running shows progress and polls | x | |
@@ -77,3 +77,8 @@ column is ticked by the owner on a device.
 | 68 | Shell | Three tabs, Recipes, Add, Shopping | x | |
 | 69 | Shell | Light and dark follow the phone | x | |
 | 70 | Shell | No meaning by colour alone, chips carry words, selected state has a checkmark | x | |
+| 71 | Share | Share a recipe page from Safari: sheet shows the link, Capture queues a draft, the app opens it on next foreground | | |
+| 72 | Share | Share a reel link with the caption pasted in the note field: draft keeps the reel as source and extracts from the caption | | |
+| 73 | Share | Share three screenshots: each shows upload progress, Capture enables when all are up, one draft | | |
+| 74 | Share | Share signed out: "Sign in to We Cooked first" with Close | | |
+| 75 | Share | Share in airplane mode: "Could not reach We Cooked. Try again." with Close, no draft left behind | | |

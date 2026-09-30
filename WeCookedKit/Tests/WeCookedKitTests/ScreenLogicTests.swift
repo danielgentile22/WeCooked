@@ -170,9 +170,15 @@ struct DeepLinkTests {
 	}
 	@Test func pathAndUrlRoundTrip() {
 		#expect(DeepLink(path: "/drafts/01ABC") == .draft("01ABC"))
-		let link = DeepLink.recipe("r1", variation: "v9")
-		#expect(DeepLink(url: link.url) == link)
-		#expect(DeepLink(url: DeepLink.draft("d").url) == .draft("d"))
+		let every: [DeepLink] = [
+			.recipes, .recipe("r1", variation: nil), .recipe("r1", variation: "v9"),
+			.draft("d"), .add, .shopping, .trash,
+		]
+		for link in every {
+			#expect(link.url.scheme == DeepLink.scheme)
+			#expect(DeepLink(url: link.url) == link)
+		}
+		#expect(DeepLink.draft("01ABC").url.absoluteString == "wecooked://drafts/01ABC")
 	}
 	@Test func pushPayloadUsesTheSameParser() {
 		#expect(DeepLink(pushPayload: ["link": "wecooked://drafts/01ABC"]) == .draft("01ABC"))

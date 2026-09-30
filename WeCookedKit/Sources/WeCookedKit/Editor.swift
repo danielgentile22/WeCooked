@@ -125,7 +125,7 @@ public struct EditorForm: Codable, Hashable, Sendable {
 	/// Review form for an extracted draft. A failed capture has no bodies, so
 	/// its form is blank plus the link and photos; a done one carries the
 	/// counterpart, which makes it a "loaded" form (`editing=true` on the web).
-	public init(seed: DraftSeed, sourceText: String?, units: UnitSystem) {
+	public init(seed: DraftSeed, units: UnitSystem) {
 		if let ingredients = seed.ingredients, let steps = seed.steps {
 			let src = seed.sourceUnits ?? .metric
 			let body = BodyText(ingredients: ingredients, steps: steps)
@@ -145,7 +145,7 @@ public struct EditorForm: Codable, Hashable, Sendable {
 		yieldUnit = seed.yieldUnit ?? "servings"
 		prepMinutes = seed.prepMinutes
 		cookMinutes = seed.cookMinutes
-		self.sourceText = seed.sourceText ?? sourceText
+		sourceText = seed.sourceText
 		sourceUrl = seed.sourceUrl
 		notes = seed.notes
 		mealTypes = seed.mealTypes ?? []
