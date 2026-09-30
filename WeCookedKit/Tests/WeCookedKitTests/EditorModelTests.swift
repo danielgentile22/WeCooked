@@ -362,26 +362,34 @@ struct EditorModelTests {
 
 	@Test func tryAgainStartsAFreshGenerationFromTheSameDescription() async throws {
 		let again = FakeServer.json(#"{"job_id":"01TEST00000000000000000031"}"#)
-		let server = FakeServer(["POST /api/v1/generations": again])
+		let server = FakeServer([
+			"POST /api/v1/generations": again,
+			"POST \(Self.generationPath)/discard": FakeServer.json(#"{"ok":true}"#),
+		])
 		let env = try Self.env(server)
 		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.choosing))
 		let model = EditorModel(origin: .draft(Self.generation), env: env)
 		#expect(await model.tryAgain() == "01TEST00000000000000000031")
-		#expect(server.requests.filter { !$0.contains("/jobs/") } == ["POST /api/v1/generations"])
+		#expect(
+			server.requests.filter { !$0.contains("/jobs/") }
+				== ["POST /api/v1/generations", "POST \(Self.generationPath)/discard"],
+			"the old set is discarded once the new one is under way")
 		let card = env.store.resource(.recipes()).value?.drafts.first
 		#expect(card?.id == "01TEST00000000000000000031")
 		#expect(card?.title == GenerationJSON.description)
 		#expect(EditorModel(origin: .manual, env: env).isGeneration == false)
 	}
 
-	@Test func aRunningGenerationIsToldFromItsBrowseCard() throws {
+	@Test func isGenerationFromTheDraftLookup() throws {
 		let env = try Self.env(FakeServer())
-		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.generating))
 		let model = EditorModel(origin: .draft(Self.generation), env: env)
+		#expect(!model.isGeneration, "nothing loaded yet")
+		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.generating))
 		#expect(model.phase == .extracting)
-		#expect(!model.isGeneration, "no card yet, so it reads as a capture")
-		env.store.generationStarted(Self.generation, description: GenerationJSON.description)
 		#expect(model.isGeneration)
+		env.store.resource(.draft(Self.ready)).replace(try Self.lookup("draft-get-ready"))
+		#expect(EditorModel(origin: .draft(Self.ready), env: env).isGeneration == false)
+		env.store.generationStarted(Self.generation, description: GenerationJSON.description)
 		#expect(env.store.resource(.recipes()).value?.drafts.first?.status == .generating)
 		env.store.generationStarted(Self.generation, description: GenerationJSON.description)
 		#expect(env.store.resource(.recipes()).value?.drafts.filter { $0.id == Self.generation }.count == 1)

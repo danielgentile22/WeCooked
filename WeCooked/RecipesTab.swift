@@ -127,7 +127,7 @@ struct DraftRow: View {
 					Label(card.status.line, systemImage: card.status.symbol)
 						.font(.subheadline)
 						.foregroundStyle(.secondary)
-						.symbolEffect(.rotate, isActive: card.status == .extracting || card.status == .generating)
+						.symbolEffect(.rotate, isActive: card.status.isWorking)
 				}
 			}
 			.padding(.vertical, 6)

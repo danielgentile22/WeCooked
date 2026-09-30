@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { createRecipe } from './recipes';
 import { DRAFT_KINDS, isDraftKind, type JobRow } from './jobs';
+import { CANDIDATE_COUNT } from './generate';
 import { presignGet } from './r2';
 import {
 	draftToInput,
@@ -24,18 +25,21 @@ export type DraftCard = {
 
 type DraftSource = Pick<JobRow, 'kind' | 'status' | 'input_json' | 'result_json'>;
 
+const generateInput = (job: Pick<JobRow, 'input_json'>) =>
+	JSON.parse(job.input_json) as GenerateInput;
+
 /** A done generate job whose candidates still wait for a pick. */
 const isChoosing = (job: DraftSource) =>
 	job.kind === 'generate' &&
 	job.status === 'done' &&
-	(JSON.parse(job.input_json) as GenerateInput).picked === null;
+	generateInput(job).picked === null;
 
 /** The recipe a draft job holds: a capture's extraction, or a generation's
  *  picked candidate. Null while running, failed, or choosing. */
 export function draftOf(job: DraftSource): RecipeDraft | null {
 	if (!job.result_json) return null;
 	if (job.kind !== 'generate') return JSON.parse(job.result_json) as RecipeDraft;
-	const { picked } = JSON.parse(job.input_json) as GenerateInput;
+	const { picked } = generateInput(job);
 	return picked === null
 		? null
 		: (JSON.parse(job.result_json) as GenerateResult).candidates[picked];
@@ -50,7 +54,7 @@ function cardStatus(job: DraftSource): DraftCard['status'] {
 function cardTitle(job: DraftSource): string {
 	const title = draftOf(job)?.title;
 	if (title) return title;
-	if (job.kind === 'generate') return (JSON.parse(job.input_json) as GenerateInput).description;
+	if (job.kind === 'generate') return generateInput(job).description;
 	const input = JSON.parse(job.input_json) as CaptureInput;
 	return input.text?.trim().split('\n')[0]?.slice(0, 80) || input.url || 'Draft';
 }
@@ -83,6 +87,7 @@ export type DraftImage = { id: string; url: string };
 
 export type DraftView = {
 	id: string;
+	kind: 'capture' | 'generate';
 	status: JobRow['status'];
 	error_text: string | null;
 	source_text: string | null;
@@ -129,7 +134,7 @@ const candidate = (d: RecipeDraft): Candidate => ({
  *  data like any draft, seeded from the picked candidate with the description
  *  as its source text. */
 function generationView(job: JobRow): DraftView | GenerationView {
-	const { description, yield_count } = JSON.parse(job.input_json) as GenerateInput;
+	const { description, yield_count } = generateInput(job);
 	if (isChoosing(job))
 		return {
 			id: job.id,
@@ -141,6 +146,7 @@ function generationView(job: JobRow): DraftView | GenerationView {
 	const draft = draftOf(job);
 	return {
 		id: job.id,
+		kind: 'generate',
 		status: job.status,
 		error_text: job.error_text,
 		source_text: description,
@@ -174,6 +180,7 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
 		.map((id) => ({ id, url: presignGet(byId.get(id)!) }));
 	return {
 		id: job.id,
+		kind: 'capture',
 		status: job.status,
 		error_text: job.error_text,
 		source_text: input.text ?? null,
@@ -206,7 +213,11 @@ export function saveDraft(db: Database, job: JobRow, payload: RecipeInput): stri
  */
 export function discardDraft(db: Database, job: JobRow): void {
 	if (job.status === 'queued' || job.status === 'running')
-		throw new Error('Still extracting; wait for it to finish.');
+		throw new Error(
+			job.kind === 'generate'
+				? 'Still generating; wait for it to finish.'
+				: 'Still extracting; wait for it to finish.'
+		);
 	const imageIds = (JSON.parse(job.input_json) as CaptureInput).image_ids ?? [];
 	db.transaction(() => {
 		const soft = db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`);
@@ -231,9 +242,9 @@ export function retryDraft(db: Database, job: JobRow): void {
  */
 export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 	if (job.status !== 'done') throw new Error('Still generating; wait for it to finish.');
-	if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > 2)
+	if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= CANDIDATE_COUNT)
 		throw new Error('Pick one of the three.');
-	const input = JSON.parse(job.input_json) as GenerateInput;
+	const input = generateInput(job);
 	if (input.picked === index) return;
 	if (input.picked !== null) throw new Error('Already picked.');
 	db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(

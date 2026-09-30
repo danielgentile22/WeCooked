@@ -122,7 +122,7 @@ extension RecipeResponse: WatchesJobs {
 extension BrowseResponse: WatchesJobs {
 	/// Extracting and generating drafts; a draft is addressed by its job.
 	public var watchedJobs: [JobID] {
-		drafts.filter { $0.status == .extracting || $0.status == .generating }.map(\.id)
+		drafts.filter(\.status.isWorking).map(\.id)
 	}
 }
 

@@ -362,16 +362,13 @@ public final class EditorModel {
 		}
 	}
 
-	/// A `.draft` origin that is a generation, told from the browse card the
-	/// Store holds for it (a running generation's `DraftView` is shaped like a
-	/// running text capture's, so the card is the only tell) or from the deck.
+	/// A `.draft` origin that is a generation: the deck, or a draft lookup
+	/// whose kind says so (running, failed, or picked).
 	public var isGeneration: Bool {
 		guard case .draft(let job) = origin else { return false }
 		if case .choosing = phase { return true }
-		switch env.store.draftCard(job)?.status {
-		case .generating, .choosing: return true
-		case .extracting, .ready, .failed, .unknown, nil: return false
-		}
+		guard case .draft(let d) = env.store.resource(.draft(job)).value else { return false }
+		return d.kind == .generate
 	}
 
 	/// "Pick this one" on a deck card. The row is now a draft seeded from that
@@ -389,14 +386,17 @@ public final class EditorModel {
 		}
 	}
 
-	/// "Try again" on the deck: a fresh generation from the same description.
-	/// Returns the new job; the screen replaces its route with it.
+	/// "Try again" on the deck: a fresh generation from the same description,
+	/// replacing this one. Returns the new job; the screen replaces its route.
 	public func tryAgain() async -> JobID? {
-		guard case .choosing(let g) = phase else { return nil }
+		guard case .draft(let old) = origin, case .choosing(let g) = phase else { return nil }
 		issues = []
 		do {
 			let job = try await env.api.generate(GenerateRequest(description: g.description, yieldCount: g.yieldCount))
 			env.store.generationStarted(job, description: g.description)
+			// The new set is already on its way, so a failed discard only
+			// leaves the old card on the list for the user to discard.
+			if (try? await env.api.discardDraft(old)) != nil { env.store.draftDiscarded(old) }
 			return job
 		} catch {
 			issues = [.server(APIError.wrapping(error).message)]

@@ -54,6 +54,7 @@ enum GenerationJSON {
 	static let generating = """
 		{
 		  "id": "01TEST00000000000000000030",
+		  "kind": "generate",
 		  "status": "running",
 		  "error_text": null,
 		  "source_text": "the chicken thighs and half a cabbage, under 40 minutes",
@@ -67,6 +68,7 @@ enum GenerationJSON {
 	static let picked = """
 		{
 		  "id": "01TEST00000000000000000030",
+		  "kind": "generate",
 		  "status": "done",
 		  "error_text": null,
 		  "source_text": "the chicken thighs and half a cabbage, under 40 minutes",

@@ -70,6 +70,7 @@
     "yield_count": 2,
     "yield_unit": "servings"
   },
+  "kind": "generate",
   "source_text": "the chicken thighs and half a cabbage, under 40 minutes",
   "status": "done",
   "warnings": []

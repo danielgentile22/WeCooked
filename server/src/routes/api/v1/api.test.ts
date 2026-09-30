@@ -563,7 +563,7 @@ describe('/api/v1', () => {
 		await fails('POST', `/drafts/${running.job_id}/pick`, 400, 'Still generating; wait for it to finish.', {
 			body: { index: 0 }
 		});
-		await fails('POST', `/drafts/${running.job_id}/discard`, 400, 'Still extracting; wait for it to finish.');
+		await fails('POST', `/drafts/${running.job_id}/discard`, 400, 'Still generating; wait for it to finish.');
 
 		tick();
 		const { job_id } = await ok('POST', '/generations', { body: { description, yield_count: 2 } });

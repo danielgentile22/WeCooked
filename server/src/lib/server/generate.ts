@@ -33,6 +33,8 @@ const GENERATE_SCHEMA = {
 	required: ['candidates']
 };
 
+export const CANDIDATE_COUNT = 3;
+
 /** Handler for the generate job kind: input_json is GenerateInput. */
 export const generate: JobHandler = async (job, db) => {
 	const { description, yield_count } = JSON.parse(job.input_json) as GenerateInput;
@@ -42,7 +44,7 @@ export const generate: JobHandler = async (job, db) => {
 		schema: GENERATE_SCHEMA
 	});
 	const { candidates } = result;
-	if (candidates.length !== 3 || !candidates.every(hasRecipe))
+	if (candidates.length !== CANDIDATE_COUNT || !candidates.every(hasRecipe))
 		throw new JobError(
 			'api_error',
 			`Expected three recipes, got ${candidates.length} with ${candidates.filter(hasRecipe).length} usable.`

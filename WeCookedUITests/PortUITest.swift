@@ -35,8 +35,15 @@ class PortUITest: XCTestCase {
 		return value == field.placeholderValue ? "" : value
 	}
 
+	/// A tap during the tab bar's launch animation can be lost, so the tap
+	/// repeats until the tab reports itself selected.
 	func tab(_ name: String) {
-		app.tabBars.buttons[name].tap()
+		let button = app.tabBars.buttons[name]
+		for _ in 0..<3 where !button.isSelected {
+			button.tap()
+			_ = button.wait(for: \.isSelected, toEqual: true, timeout: 3)
+		}
+		XCTAssertTrue(button.isSelected, "on the \(name) tab")
 	}
 
 	func rows(_ title: String) -> XCUIElementQuery {

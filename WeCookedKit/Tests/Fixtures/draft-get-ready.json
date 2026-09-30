@@ -51,6 +51,7 @@
     "yield_count": 8,
     "yield_unit": "slices"
   },
+  "kind": "capture",
   "source_text": null,
   "status": "done",
   "warnings": [

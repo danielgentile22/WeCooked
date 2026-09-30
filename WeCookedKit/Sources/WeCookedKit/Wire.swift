@@ -261,6 +261,35 @@ public enum DraftCardStatus: WireEnum {
 		case .unknown(let s): s
 		}
 	}
+
+	/// Work is still running server-side, so the card is watched and spins.
+	public var isWorking: Bool {
+		switch self {
+		case .extracting, .generating: true
+		case .choosing, .ready, .failed, .unknown: false
+		}
+	}
+}
+
+/// Where a draft came from: a capture, or a generation's picked candidate.
+public enum DraftKind: WireEnum {
+	case capture, generate
+	case unknown(String)
+
+	public init(wire: String) {
+		switch wire {
+		case "capture": self = .capture
+		case "generate": self = .generate
+		default: self = .unknown(wire)
+		}
+	}
+	public var wire: String {
+		switch self {
+		case .capture: "capture"
+		case .generate: "generate"
+		case .unknown(let s): s
+		}
+	}
 }
 
 /// Status of a pending piece of background work attached to a recipe or the
@@ -608,6 +637,7 @@ public struct DraftSeed: Codable, Hashable, Sendable {
 
 public struct DraftView: Codable, Hashable, Sendable {
 	public let id: JobID
+	public var kind: DraftKind
 	public var status: JobStatus
 	public var errorText: String?
 	public var sourceText: String?

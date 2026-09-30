@@ -6,6 +6,7 @@
     "images": [],
     "source_url": "https://www.example.com/soup"
   },
+  "kind": "capture",
   "source_text": null,
   "status": "failed",
   "warnings": []

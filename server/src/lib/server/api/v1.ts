@@ -106,7 +106,7 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 
 // Issue #41: the cook sets the yield up front, so quantities come out right
 // without a rescale.
-function generation(db: Database, b: Fields): { job_id: string } {
+function startGeneration(db: Database, b: Fields): { job_id: string } {
 	const description = typeof b.description === 'string' ? b.description.trim() : '';
 	if (!description || description.length > 1000) throw bad('Describe what you want to cook.');
 	const count = b.yield_count;
@@ -264,7 +264,7 @@ export const routes: readonly Route[] = [
 	{
 		method: 'POST',
 		path: '/generations',
-		run: async (db, req) => generation(db, await body(req))
+		run: async (db, req) => startGeneration(db, await body(req))
 	},
 	{
 		method: 'POST',

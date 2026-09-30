@@ -454,14 +454,6 @@ extension Store {
 		invalidate(.recipes)
 	}
 
-	/// The browse card for a draft job, from any loaded browse page.
-	func draftCard(_ job: JobID) -> DraftCard? {
-		for case let r as Resource<BrowseResponse> in distinctResources {
-			if let card = r.value?.drafts.first(where: { $0.id == job }) { return card }
-		}
-		return nil
-	}
-
 	public func variationChanged(recipe: RecipeID) { invalidate(.recipe(recipe), .trash) }
 	public func restored() { invalidate(.trash, .recipes) }
 }
