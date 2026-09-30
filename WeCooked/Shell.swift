@@ -15,6 +15,7 @@ enum Route: Hashable {
 	case edit(RecipeID, VariationID?)
 	case draft(JobID)
 	case newRecipe
+	case generate
 	case trash
 }
 
@@ -114,6 +115,8 @@ struct Tabs: View {
 			EditorScreen(model: EditorModel(origin: .draft(job), env: env))
 		case .newRecipe:
 			EditorScreen(model: EditorModel(origin: .manual, env: env))
+		case .generate:
+			GenerateScreen(model: GenerateModel(env: env))
 		case .trash:
 			TrashScreen()
 		}

@@ -127,7 +127,7 @@ struct DraftRow: View {
 					Label(card.status.line, systemImage: card.status.symbol)
 						.font(.subheadline)
 						.foregroundStyle(.secondary)
-						.symbolEffect(.rotate, isActive: card.status == .extracting)
+						.symbolEffect(.rotate, isActive: card.status == .extracting || card.status == .generating)
 				}
 			}
 			.padding(.vertical, 6)
@@ -140,6 +140,8 @@ extension DraftCardStatus {
 	var line: String {
 		switch self {
 		case .extracting: "Extracting…"
+		case .generating: "Generating…"
+		case .choosing: "Choose a recipe"
 		case .ready: "Ready to review"
 		case .failed: "Failed: tap to fix"
 		case .unknown(let s): s.capitalized
@@ -147,7 +149,8 @@ extension DraftCardStatus {
 	}
 	var symbol: String {
 		switch self {
-		case .extracting: "arrow.triangle.2.circlepath"
+		case .extracting, .generating: "arrow.triangle.2.circlepath"
+		case .choosing: "rectangle.on.rectangle.angled"
 		case .ready: "checkmark.circle"
 		case .failed: "exclamationmark.triangle"
 		case .unknown: "questionmark.circle"

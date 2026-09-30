@@ -55,6 +55,10 @@ struct AddTab: View {
 					Label("Type it in myself", systemImage: "keyboard")
 				}
 				.accessibilityIdentifier("add.typeIt")
+				NavigationLink(value: Route.generate) {
+					Label("Describe what you want", systemImage: "wand.and.stars")
+				}
+				.accessibilityIdentifier("add.generate")
 			}
 		}
 		.navigationTitle("Add a recipe")

@@ -6,7 +6,7 @@ SIM ?= platform=iOS Simulator,name=$(SIM_NAME)
 PROJECT = WeCooked.xcodeproj
 SCHEME = WeCooked
 
-.PHONY: page-probe ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 ios-ui-test-unit6 ios-ui-test-unit7 ios-ui-test-unit8 ios-archive ios-export ios-upload kit-test server-test
+.PHONY: page-probe ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 ios-ui-test-unit6 ios-ui-test-unit7 ios-ui-test-unit8 ios-ui-test-unit9 ios-archive ios-export ios-upload kit-test server-test
 
 ios-generate:
 	xcodegen generate
@@ -39,6 +39,10 @@ ios-ui-test-unit6: ios-generate
 # Free; each test runs after unit7-prep.mjs forges its trash state.
 ios-ui-test-unit7: ios-generate
 	SIM='$(SIM)' WeCookedUITests/run-unit7.sh
+
+# Free; each test runs after unit9-prep.mjs seeds a choosing generation.
+ios-ui-test-unit9: ios-generate
+	SIM='$(SIM)' WeCookedUITests/run-unit9.sh
 
 # Free and needs no prep. Runs twice, the simulator switched to light and then
 # to dark, because iOS apps follow the phone and ignore launch arguments for it.

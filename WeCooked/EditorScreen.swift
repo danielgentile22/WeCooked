@@ -11,17 +11,18 @@ struct EditorScreen: View {
 
 	var body: some View {
 		Group {
-			if model.phase == .extracting {
+			switch model.phase {
+			case .extracting:
 				VStack(spacing: 16) {
-					Banner(
-						kind: .working,
-						text: "Extracting… You can leave this page; the draft card on Recipes will be ready to review.")
+					Banner(kind: .working, text: workingText)
 					ProgressView()
 				}
 				.padding()
 				.frame(maxHeight: .infinity, alignment: .top)
 				.accessibilityIdentifier("editor.extracting")
-			} else {
+			case .choosing(let generation):
+				DeckView(generation: generation, model: model)
+			default:
 				EditorFields(model: model)
 			}
 		}
@@ -40,11 +41,18 @@ struct EditorScreen: View {
 		}
 	}
 
+	private var workingText: String {
+		model.isGeneration
+			? "Generating… You can leave this page; the card on Recipes will be ready to choose from."
+			: "Extracting… You can leave this page; the draft card on Recipes will be ready to review."
+	}
+
 	private var title: String {
+		if case .choosing = model.phase { return "Choose a recipe" }
 		switch model.origin {
-		case .draft: "Review draft"
-		case .recipe: "Edit recipe"
-		case .manual: "New recipe"
+		case .draft: return "Review draft"
+		case .recipe: return "Edit recipe"
+		case .manual: return "New recipe"
 		}
 	}
 
@@ -165,7 +173,7 @@ private struct EditorFields: View {
 						.id(Anchor.top)
 				}
 				if let pasted = pastedText {
-					DisclosureGroup("Pasted text") {
+					DisclosureGroup(model.isGeneration ? "Description" : "Pasted text") {
 						Text(pasted)
 							.font(.footnote.monospaced())
 							.textSelection(.enabled)
