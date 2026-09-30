@@ -43,6 +43,9 @@ import WeCookedKit
 
 	private(set) var phase: Phase = .loading
 	var note = ""
+	/// The shared page, rendering from the moment the sheet opens so Capture
+	/// waits on as little of it as possible.
+	@ObservationIgnored private var page: Task<String?, Never>?
 
 	private let client: APIClient
 	private let hasToken: Bool
@@ -71,7 +74,9 @@ import WeCookedKit
 			return
 		}
 		switch await SharedInput.read(context?.inputItems as? [NSExtensionItem] ?? []) {
-		case .link(let url): phase = .ready(.link(url))
+		case .link(let url):
+			page = Task { await PageFetcher.html(of: url) }
+			phase = .ready(.link(url))
 		case .text(let text): phase = .ready(.text(text))
 		case .images(let images): await upload(images)
 		case nil: phase = .failed("Nothing here to capture. Share a link, text or screenshots.")
@@ -81,18 +86,20 @@ import WeCookedKit
 	func capture() async {
 		guard canCapture, case .ready(let content) = phase else { return }
 		let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+		phase = .sending(content)
 		let request: CaptureRequest =
 			switch content {
-			case .link(let url): .url(url, text: trimmed.isEmpty ? nil : trimmed)
+			case .link(let url): .url(url, html: await page?.value, text: trimmed.isEmpty ? nil : trimmed)
 			case .text(let text): .text(trimmed.isEmpty ? text : text + "\n\n" + trimmed)
 			case .images(let pages):
 				.images(pages.compactMap(\.state.imageID))
 			}
-		phase = .sending(content)
 		do {
 			let job = try await client.capture(request)
 			UserDefaults(suiteName: appGroup)?.set(DeepLink.draft(job).url.absoluteString, forKey: DeepLink.pendingLinkKey)
 			context?.completeRequest(returningItems: nil)
+		} catch APIError.rejected(let message) where !message.isEmpty {
+			phase = .failed(message)
 		} catch {
 			phase = .failed(Self.unreachable)
 		}

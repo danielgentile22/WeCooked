@@ -6,7 +6,8 @@ import PackageDescription
 //
 // macOS is listed only so `swift test` runs the pure suites in seconds. The app
 // and the share extension are iOS-only; nothing in the package touches UIKit,
-// which keeps it legal inside an app extension.
+// which keeps it legal inside an app extension. WebKit (PageFetcher) is fine:
+// WKWebView is allowed in app extensions and compiles on macOS too.
 let package = Package(
 	name: "WeCookedKit",
 	platforms: [.iOS(.v26), .macOS(.v26)],

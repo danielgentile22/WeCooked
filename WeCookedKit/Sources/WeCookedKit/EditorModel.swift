@@ -54,12 +54,15 @@ public final class CaptureModel {
 		photos.removeAll { $0.id == photo }
 	}
 
-	/// Text (URL or recipe text; the server decides which) or photos, never
-	/// both: any photo on the strip means the photos are sent and the text is
-	/// not. Returns the draft to open. The caller pushes `Route.draft(job)`,
-	/// where `EditorModel` waits on the job.
+	/// Text or photos, never both: any photo on the strip means the photos are
+	/// sent and the text is not. A lone link goes up with the rendered page
+	/// (see `PageFetcher`); anything else is recipe text. Returns the draft to
+	/// open. The caller pushes `Route.draft(job)`, where `EditorModel` waits on
+	/// the job.
 	public func extract() async -> JobID? {
 		error = nil
+		isSubmitting = true
+		defer { isSubmitting = false }
 		let request: @Sendable (APIClient) async throws -> JobID
 		if photos.isEmpty {
 			let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,7 +70,12 @@ public final class CaptureModel {
 				error = "Paste some recipe text first."
 				return nil
 			}
-			request = { try await $0.capture(.text(trimmed)) }
+			if let url = CaptureRequest.link(in: trimmed) {
+				let html = await PageFetcher.html(of: url)
+				request = { try await $0.capture(.url(url, html: html, text: nil)) }
+			} else {
+				request = { try await $0.capture(.text(trimmed)) }
+			}
 		} else {
 			var ids: [ImageID] = []
 			for p in photos {
@@ -83,8 +91,6 @@ public final class CaptureModel {
 			}
 			request = { [ids] in try await $0.capture(.images(ids)) }
 		}
-		isSubmitting = true
-		defer { isSubmitting = false }
 		do {
 			let job = try await request(env.api)
 			text = ""

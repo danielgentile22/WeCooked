@@ -742,23 +742,34 @@ public struct RestoreReply: Codable, Hashable, Sendable {
 public struct TokenReply: Codable, Sendable { public let token: String }
 public struct JobReply: Codable, Sendable { public let jobId: JobID }
 
-/// The body of `POST /captures`. One primary input; `text` may ride along with
-/// a URL as the fallback the server extracts from when the page is unreadable.
+/// The body of `POST /captures`. One primary input. With a URL, `html` is the
+/// page as the phone rendered it (sites that 403 a bare server fetch still
+/// serve Mobile Safari) and `text` is the caption or note; the server falls
+/// back to its own fetch, then to `text`, when either is missing.
 public enum CaptureRequest: Encodable, Sendable {
 	/// The server rejects more pages than this in one capture.
 	public static let maxImages = 10
 
-	case url(URL, text: String?)
+	case url(URL, html: String?, text: String?)
 	case text(String)
 	case images([ImageID])
 
-	private enum CodingKeys: String, CodingKey { case url, text, imageIds }
+	/// The server's own text-or-link rule (`asUrl` in server/src/lib/extract.ts):
+	/// a lone `http(s)://` link, or a bare `www.` one upgraded to https.
+	public static func link(in text: String) -> URL? {
+		if text.wholeMatch(of: /https?:\/\/\S+/) != nil { return URL(string: text) }
+		if text.wholeMatch(of: /www\.\S+/) != nil { return URL(string: "https://" + text) }
+		return nil
+	}
+
+	private enum CodingKeys: String, CodingKey { case url, html, text, imageIds }
 
 	public func encode(to encoder: any Encoder) throws {
 		var c = encoder.container(keyedBy: CodingKeys.self)
 		switch self {
-		case .url(let url, let text):
+		case .url(let url, let html, let text):
 			try c.encode(url, forKey: .url)
+			try c.encodeIfPresent(html, forKey: .html)
 			try c.encodeIfPresent(text, forKey: .text)
 		case .text(let text): try c.encode(text, forKey: .text)
 		case .images(let ids): try c.encode(ids, forKey: .imageIds)
