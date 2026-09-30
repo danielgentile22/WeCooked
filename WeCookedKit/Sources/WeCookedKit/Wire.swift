@@ -238,12 +238,14 @@ public enum ErrorCode: WireEnum {
 
 /// Status of a draft row on the browse list.
 public enum DraftCardStatus: WireEnum {
-	case extracting, ready, failed
+	case extracting, generating, choosing, ready, failed
 	case unknown(String)
 
 	public init(wire: String) {
 		switch wire {
 		case "extracting": self = .extracting
+		case "generating": self = .generating
+		case "choosing": self = .choosing
 		case "ready": self = .ready
 		case "failed": self = .failed
 		default: self = .unknown(wire)
@@ -252,6 +254,8 @@ public enum DraftCardStatus: WireEnum {
 	public var wire: String {
 		switch self {
 		case .extracting: "extracting"
+		case .generating: "generating"
+		case .choosing: "choosing"
 		case .ready: "ready"
 		case .failed: "failed"
 		case .unknown(let s): s
@@ -514,6 +518,11 @@ public struct DraftCard: Codable, Hashable, Sendable, Identifiable {
 	public let id: JobID
 	public var status: DraftCardStatus
 	public var title: String
+	public init(id: JobID, status: DraftCardStatus, title: String) {
+		self.id = id
+		self.status = status
+		self.title = title
+	}
 }
 
 public struct BrowseResponse: Codable, Hashable, Sendable {
@@ -607,16 +616,64 @@ public struct DraftView: Codable, Hashable, Sendable {
 	public var damageReasoning: String?
 }
 
-/// `GET /drafts/:id`: a draft, or the recipe it became once saved.
+/// One machine-proposed recipe inside a generation, as the deck compares them.
+/// `ingredients` is the flattened as-written body.
+public struct Candidate: Codable, Hashable, Sendable {
+	public var title: String
+	public var prepMinutes: Int?
+	public var cookMinutes: Int?
+	public var effort: Effort
+	public var damage: Damage
+	public var cuisine: Cuisine?
+	public var protein: Protein?
+	public var ingredients: [String]
+
+	public init(
+		title: String, prepMinutes: Int?, cookMinutes: Int?, effort: Effort, damage: Damage,
+		cuisine: Cuisine?, protein: Protein?, ingredients: [String]
+	) {
+		self.title = title
+		self.prepMinutes = prepMinutes
+		self.cookMinutes = cookMinutes
+		self.effort = effort
+		self.damage = damage
+		self.cuisine = cuisine
+		self.protein = protein
+		self.ingredients = ingredients
+	}
+}
+
+/// `GET /drafts/:id` for a finished, unpicked generation: exactly three candidates.
+public struct GenerationView: Codable, Hashable, Sendable {
+	public let id: JobID
+	public var status: JobStatus
+	public var description: String
+	public var yieldCount: Int
+	public var candidates: [Candidate]
+
+	public init(id: JobID, status: JobStatus, description: String, yieldCount: Int, candidates: [Candidate]) {
+		self.id = id
+		self.status = status
+		self.description = description
+		self.yieldCount = yieldCount
+		self.candidates = candidates
+	}
+}
+
+/// `GET /drafts/:id`: a draft, a generation awaiting its pick, or the recipe
+/// it became once saved. Told apart by key presence, in this order.
 public enum DraftLookup: Codable, Hashable, Sendable {
 	case draft(DraftView)
+	case choosing(GenerationView)
 	case saved(RecipeID)
 
-	private enum Keys: String, CodingKey { case recipeId }
+	private enum Keys: String, CodingKey { case recipeId, candidates }
 	public init(from decoder: any Decoder) throws {
 		let c = try decoder.container(keyedBy: Keys.self)
 		if let id = try c.decodeIfPresent(RecipeID.self, forKey: .recipeId) {
 			self = .saved(id)
+		} else if c.contains(.candidates) {
+			self = .choosing(try GenerationView(from: decoder))
 		} else {
 			self = .draft(try DraftView(from: decoder))
 		}
@@ -624,6 +681,7 @@ public enum DraftLookup: Codable, Hashable, Sendable {
 	public func encode(to encoder: any Encoder) throws {
 		switch self {
 		case .draft(let d): try d.encode(to: encoder)
+		case .choosing(let g): try g.encode(to: encoder)
 		case .saved(let id):
 			var c = encoder.container(keyedBy: Keys.self)
 			try c.encode(id, forKey: .recipeId)
@@ -774,6 +832,15 @@ public enum CaptureRequest: Encodable, Sendable {
 		case .text(let text): try c.encode(text, forKey: .text)
 		case .images(let ids): try c.encode(ids, forKey: .imageIds)
 		}
+	}
+}
+/// Body of `POST /generations`.
+public struct GenerateRequest: Codable, Hashable, Sendable {
+	public var description: String
+	public var yieldCount: Int
+	public init(description: String, yieldCount: Int) {
+		self.description = description
+		self.yieldCount = yieldCount
 	}
 }
 public struct CreatedRecipe: Codable, Sendable { public let id: RecipeID }

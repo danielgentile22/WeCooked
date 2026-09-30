@@ -120,13 +120,18 @@ extension RecipeResponse: WatchesJobs {
 }
 
 extension BrowseResponse: WatchesJobs {
-	/// Extracting drafts; a draft is addressed by its capture job.
-	public var watchedJobs: [JobID] { drafts.filter { $0.status == .extracting }.map(\.id) }
+	/// Extracting and generating drafts; a draft is addressed by its job.
+	public var watchedJobs: [JobID] {
+		drafts.filter { $0.status == .extracting || $0.status == .generating }.map(\.id)
+	}
 }
 
 extension DraftLookup: WatchesJobs {
 	public var watchedJobs: [JobID] {
-		if case .draft(let d) = self, !d.status.isFinished { [d.id] } else { [] }
+		switch self {
+		case .draft(let d) where !d.status.isFinished: [d.id]
+		case .draft, .choosing, .saved: []
+		}
 	}
 }
 

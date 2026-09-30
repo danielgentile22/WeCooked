@@ -104,6 +104,56 @@ public final class CaptureModel {
 	}
 }
 
+/// The Generate path on the Add tab: a description and a yield count become
+/// one `generate` job. Same shape as `CaptureModel.extract`: validate, post,
+/// hand the job to the caller, who pushes `Route.draft(job)`.
+@MainActor @Observable
+public final class GenerateModel {
+	public static let yieldRange = 1...100
+
+	public var description = ""
+	public private(set) var yieldCount = 4
+	public private(set) var error: String?
+	public private(set) var isSubmitting = false
+	@ObservationIgnored private let env: AppEnvironment
+
+	public init(env: AppEnvironment) { self.env = env }
+
+	/// Minus and plus. Clamped, never starts work (ADR-012).
+	public func step(_ delta: Int) {
+		yieldCount = min(max(yieldCount + delta, Self.yieldRange.lowerBound), Self.yieldRange.upperBound)
+	}
+
+	/// The typed field. A whole number in range is taken; anything else leaves
+	/// the count as it was, so a half-typed field cannot send a bad yield.
+	public func set(yield text: String) {
+		guard let n = Int(text.trimmingCharacters(in: .whitespaces)), Self.yieldRange.contains(n) else { return }
+		yieldCount = n
+	}
+
+	/// Returns the job to open. The card goes onto the cached browse list at
+	/// once (`Store.generationStarted`), which is also how the editor knows the
+	/// running job is a generation.
+	public func start() async -> JobID? {
+		error = nil
+		isSubmitting = true
+		defer { isSubmitting = false }
+		let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			error = "Describe what you want to cook."
+			return nil
+		}
+		do {
+			let job = try await env.api.generate(GenerateRequest(description: trimmed, yieldCount: yieldCount))
+			env.store.generationStarted(job, description: trimmed)
+			return job
+		} catch {
+			self.error = APIError.wrapping(error).message
+			return nil
+		}
+	}
+}
+
 @MainActor @Observable
 public final class EditorModel {
 	public enum Origin: Hashable, Sendable {
@@ -117,6 +167,8 @@ public final class EditorModel {
 		case extracting
 		/// Draft failed: error banner with retry; the form beneath is blank plus link and photos.
 		case extractionFailed(String)
+		/// A generation finished and nothing is picked yet: the deck shows, no form.
+		case choosing(GenerationView)
 		case editing
 		case saving
 		case saved(RecipeID)
@@ -310,6 +362,48 @@ public final class EditorModel {
 		}
 	}
 
+	/// A `.draft` origin that is a generation, told from the browse card the
+	/// Store holds for it (a running generation's `DraftView` is shaped like a
+	/// running text capture's, so the card is the only tell) or from the deck.
+	public var isGeneration: Bool {
+		guard case .draft(let job) = origin else { return false }
+		if case .choosing = phase { return true }
+		switch env.store.draftCard(job)?.status {
+		case .generating, .choosing: return true
+		case .extracting, .ready, .failed, .unknown, nil: return false
+		}
+	}
+
+	/// "Pick this one" on a deck card. The row is now a draft seeded from that
+	/// candidate; the refetched lookup moves the same screen to `.editing`.
+	public func pick(_ index: Int) async {
+		guard case .draft(let job) = origin, case .choosing = phase else { return }
+		issues = []
+		do {
+			try await env.api.pick(job, index: index)
+			let resource = env.store.resource(.draft(job))
+			await resource.revalidate()
+			if let lookup = resource.value { apply(lookup, job: job) }
+		} catch {
+			issues = [.server(APIError.wrapping(error).message)]
+		}
+	}
+
+	/// "Try again" on the deck: a fresh generation from the same description.
+	/// Returns the new job; the screen replaces its route with it.
+	public func tryAgain() async -> JobID? {
+		guard case .choosing(let g) = phase else { return nil }
+		issues = []
+		do {
+			let job = try await env.api.generate(GenerateRequest(description: g.description, yieldCount: g.yieldCount))
+			env.store.generationStarted(job, description: g.description)
+			return job
+		} catch {
+			issues = [.server(APIError.wrapping(error).message)]
+			return nil
+		}
+	}
+
 	/// The second tap of Discard. The server refuses while still extracting.
 	public func discardDraft() async {
 		guard case .draft(let job) = origin else { return }
@@ -333,7 +427,7 @@ public final class EditorModel {
 	private var isEditable: Bool {
 		switch phase {
 		case .editing, .extractionFailed: true
-		case .extracting, .saving, .saved, .removed: false
+		case .extracting, .choosing, .saving, .saved, .removed: false
 		}
 	}
 
@@ -357,12 +451,14 @@ public final class EditorModel {
 	private func apply(_ lookup: DraftLookup, job: JobID) {
 		switch phase {
 		case .saving, .saved, .removed: return
-		case .extracting, .extractionFailed, .editing: break
+		case .extracting, .extractionFailed, .choosing, .editing: break
 		}
 		switch lookup {
 		case .saved(let id):
 			env.device.discardEditorDraft(.draft(job))
 			phase = .saved(id)
+		case .choosing(let g):
+			phase = .choosing(g)
 		case .draft(let d):
 			warnings = d.warnings
 			damageReasoning = d.damageReasoning

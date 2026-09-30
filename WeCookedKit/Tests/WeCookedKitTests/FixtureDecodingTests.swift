@@ -18,8 +18,12 @@ struct FixtureDecodingTests {
 		"draft-get-failed": DraftLookup.self,
 		"draft-get-ready": DraftLookup.self,
 		"draft-get-saved": DraftLookup.self,
+		"draft-get-choosing": DraftLookup.self,
+		"draft-get-generating": DraftLookup.self,
+		"draft-get-picked": DraftLookup.self,
 		"draft-save": SavedDraft.self,
 		"error": ErrorBody.self,
+		"generations": JobReply.self,
 		"image-upload": UploadedImage.self,
 		"job-get-queued": JobPoll.self,
 		"job-get": JobPoll.self,
@@ -32,6 +36,7 @@ struct FixtureDecodingTests {
 		"recipe-get": RecipeResponse.self,
 		"recipe-update": UpdatedRecipe.self,
 		"recipes-list": BrowseResponse.self,
+		"recipes-list-generation": BrowseResponse.self,
 		"session": OK.self,
 		"shopping-build": JobReply.self,
 		"shopping-get-empty": ShoppingResponse.self,
@@ -90,6 +95,33 @@ struct FixtureDecodingTests {
 		guard case .draft(let view) = failed else { Issue.record("expected .draft"); return }
 		#expect(view.status == .failed)
 		#expect(view.initial?.ingredients == nil)
+	}
+
+	@Test func draftLookupTellsChoosing() throws {
+		let d = Wire.makeDecoder()
+		let choosing = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-choosing"))
+		guard case .choosing(let g) = choosing else { Issue.record("expected .choosing"); return }
+		#expect(g.id == "01TEST00000000000000000039")
+		#expect(g.yieldCount == 2)
+		#expect(g.candidates.map(\.title) == [
+			"Chicken and cabbage stir-fry with ginger",
+			"Roast chicken thighs with caraway cabbage wedges",
+			"Chicken katsu with shredded cabbage",
+		])
+		#expect(g.candidates.map(\.damage) == [.tidy, .messy, .carnage])
+		let generating = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-generating"))
+		guard case .draft(let running) = generating else { Issue.record("expected .draft"); return }
+		#expect(running.status == .running)
+		#expect(running.initial == nil)
+		let picked = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-picked"))
+		guard case .draft(let done) = picked else { Issue.record("expected .draft"); return }
+		#expect(done.status == .done)
+		#expect(done.initial?.title == "Roast chicken thighs with caraway cabbage wedges")
+		#expect(done.initial?.sourceUrl == nil)
+		let list = try d.decode(BrowseResponse.self, from: Fixtures.data("recipes-list-generation"))
+		#expect(list.drafts.map(\.status).prefix(2) == [.choosing, .generating])
+		#expect(list.watchedJobs.contains(list.drafts[1].id))
+		#expect(!list.watchedJobs.contains(list.drafts[0].id))
 	}
 
 	@Test func unknownEnumValuesSurviveDecodingAndReencoding() throws {

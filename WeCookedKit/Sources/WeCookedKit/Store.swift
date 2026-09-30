@@ -443,6 +443,25 @@ extension Store {
 		}
 	}
 
+	/// `POST /generations` answered with a job: put its card on every cached
+	/// browse page so it shows in the first frame and the wait starts now, as
+	/// `calculationStarted` does for a scale.
+	public func generationStarted(_ job: JobID, description: String) {
+		patch(BrowseResponse.self, in: .recipes) { list in
+			guard !list.drafts.contains(where: { $0.id == job }) else { return }
+			list.drafts.insert(DraftCard(id: job, status: .generating, title: description), at: 0)
+		}
+		invalidate(.recipes)
+	}
+
+	/// The browse card for a draft job, from any loaded browse page.
+	func draftCard(_ job: JobID) -> DraftCard? {
+		for case let r as Resource<BrowseResponse> in distinctResources {
+			if let card = r.value?.drafts.first(where: { $0.id == job }) { return card }
+		}
+		return nil
+	}
+
 	public func variationChanged(recipe: RecipeID) { invalidate(.recipe(recipe), .trash) }
 	public func restored() { invalidate(.trash, .recipes) }
 }

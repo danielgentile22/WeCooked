@@ -70,6 +70,71 @@ struct CaptureModelTests {
 }
 
 @MainActor
+struct GenerateModelTests {
+	static let generations = "POST /api/v1/generations"
+	static let reply = FakeServer.json(#"{"job_id":"01TEST00000000000000000030"}"#)
+
+	static func env(_ server: FakeServer) throws -> AppEnvironment {
+		let env = RecipeModelTests.env(server)
+		env.store.resource(.recipes()).replace(try EditorModelTests.browse())
+		return env
+	}
+
+	@Test func anEmptyDescriptionShowsTheServerCopyAndSendsNothing() async throws {
+		let server = FakeServer()
+		let model = GenerateModel(env: try Self.env(server))
+		model.description = " \n"
+		#expect(await model.start() == nil)
+		#expect(model.error == "Describe what you want to cook.")
+		#expect(server.requests.isEmpty)
+	}
+
+	@Test func theYieldStepsWithinOneToAHundred() throws {
+		let model = GenerateModel(env: try Self.env(FakeServer()))
+		#expect(model.yieldCount == 4)
+		model.step(-10)
+		#expect(model.yieldCount == 1)
+		model.step(-1)
+		#expect(model.yieldCount == 1)
+		model.step(200)
+		#expect(model.yieldCount == 100)
+		model.step(1)
+		#expect(model.yieldCount == 100)
+		model.set(yield: " 6 ")
+		#expect(model.yieldCount == 6)
+		model.set(yield: "0")
+		model.set(yield: "2.5")
+		model.set(yield: "")
+		#expect(model.yieldCount == 6)
+	}
+
+	@Test func startPostsTheGenerationAndPutsItsCardOnTheList() async throws {
+		let server = FakeServer([Self.generations: Self.reply])
+		let env = try Self.env(server)
+		let model = GenerateModel(env: env)
+		model.description = "  the chicken thighs and half a cabbage  "
+		model.step(-2)
+		#expect(await model.start() == GenerationJSON.job)
+		#expect(server.requests.filter { !$0.contains("/jobs/") } == [Self.generations])
+		#expect(model.error == nil)
+		#expect(!model.isSubmitting)
+		let card = env.store.resource(.recipes()).value?.drafts.first
+		#expect(card?.id == GenerationJSON.job)
+		#expect(card?.status == .generating)
+		#expect(card?.title == "the chicken thighs and half a cabbage")
+		#expect(env.store.activeJobs.contains(GenerationJSON.job))
+	}
+
+	@Test func aRefusedGenerationShowsTheServerText() async throws {
+		let server = FakeServer([Self.generations: (400, Data(#"{"error":"Yield must be a whole number from 1 to 100."}"#.utf8))])
+		let model = GenerateModel(env: try Self.env(server))
+		model.description = "soup"
+		#expect(await model.start() == nil)
+		#expect(model.error == "Yield must be a whole number from 1 to 100.")
+	}
+}
+
+@MainActor
 struct EditorModelTests {
 	static let recipe: RecipeID = "01TEST00000000000000000003"
 	static let original: VariationID = "01TEST00000000000000000004"
@@ -243,6 +308,83 @@ struct EditorModelTests {
 		await model.retryExtraction()
 		#expect(server.requests.contains("POST /api/v1/drafts/\(Self.failed)/retry"))
 		#expect(env.device.editorDraft(.draft(Self.failed)) == nil)
+	}
+
+	// MARK: Generation
+
+	static let generation = GenerationJSON.job
+	static let generationPath = "/api/v1/drafts/01TEST00000000000000000030"
+
+	static func generationLookup(_ json: String) throws -> DraftLookup {
+		try Wire.makeDecoder().decode(DraftLookup.self, from: GenerationJSON.data(json))
+	}
+
+	@Test func aChoosingLookupShowsTheDeck() async throws {
+		let server = FakeServer(["GET \(Self.generationPath)": FakeServer.json(GenerationJSON.choosing)])
+		let model = EditorModel(origin: .draft(Self.generation), env: try Self.env(server))
+		#expect(model.phase == .extracting)
+		await Self.appear(model) { model.phase != .extracting }
+		guard case .choosing(let g) = model.phase else { Issue.record("expected .choosing"); return }
+		#expect(g.candidates.count == 3)
+		#expect(model.isGeneration)
+		#expect(model.form == .blank(units: .metric), "no form is adopted while choosing")
+	}
+
+	@Test func pickingACandidateMovesToTheReviewFormSeededFromIt() async throws {
+		let server = FakeServer([
+			"GET \(Self.generationPath)": FakeServer.json(GenerationJSON.picked),
+			"POST \(Self.generationPath)/pick": FakeServer.json(#"{"ok":true}"#),
+		])
+		let env = try Self.env(server)
+		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.choosing))
+		let model = EditorModel(origin: .draft(Self.generation), env: env)
+		guard case .choosing = model.phase else { Issue.record("expected .choosing from the cache"); return }
+		await model.pick(1)
+		#expect(server.requests.filter { !$0.contains("/jobs/") } == ["POST \(Self.generationPath)/pick", "GET \(Self.generationPath)"])
+		#expect(model.phase == .editing)
+		#expect(model.form.title == "Braised chicken with cabbage and mustard")
+		#expect(model.form.sourceText == GenerationJSON.description)
+		#expect(model.damageReasoning == "A pan and a lid.")
+		#expect(model.issues.isEmpty)
+	}
+
+	@Test func aRefusedPickBecomesAnIssueAndTheDeckStays() async throws {
+		let server = FakeServer([
+			"POST \(Self.generationPath)/pick": (400, Data(#"{"error":"Already picked."}"#.utf8))
+		])
+		let env = try Self.env(server)
+		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.choosing))
+		let model = EditorModel(origin: .draft(Self.generation), env: env)
+		await model.pick(2)
+		#expect(model.issues == [.server("Already picked.")])
+		guard case .choosing = model.phase else { Issue.record("expected .choosing"); return }
+	}
+
+	@Test func tryAgainStartsAFreshGenerationFromTheSameDescription() async throws {
+		let again = FakeServer.json(#"{"job_id":"01TEST00000000000000000031"}"#)
+		let server = FakeServer(["POST /api/v1/generations": again])
+		let env = try Self.env(server)
+		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.choosing))
+		let model = EditorModel(origin: .draft(Self.generation), env: env)
+		#expect(await model.tryAgain() == "01TEST00000000000000000031")
+		#expect(server.requests.filter { !$0.contains("/jobs/") } == ["POST /api/v1/generations"])
+		let card = env.store.resource(.recipes()).value?.drafts.first
+		#expect(card?.id == "01TEST00000000000000000031")
+		#expect(card?.title == GenerationJSON.description)
+		#expect(EditorModel(origin: .manual, env: env).isGeneration == false)
+	}
+
+	@Test func aRunningGenerationIsToldFromItsBrowseCard() throws {
+		let env = try Self.env(FakeServer())
+		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.generating))
+		let model = EditorModel(origin: .draft(Self.generation), env: env)
+		#expect(model.phase == .extracting)
+		#expect(!model.isGeneration, "no card yet, so it reads as a capture")
+		env.store.generationStarted(Self.generation, description: GenerationJSON.description)
+		#expect(model.isGeneration)
+		#expect(env.store.resource(.recipes()).value?.drafts.first?.status == .generating)
+		env.store.generationStarted(Self.generation, description: GenerationJSON.description)
+		#expect(env.store.resource(.recipes()).value?.drafts.filter { $0.id == Self.generation }.count == 1)
 	}
 
 	@Test func aSavedDraftGoesStraightToItsRecipe() throws {

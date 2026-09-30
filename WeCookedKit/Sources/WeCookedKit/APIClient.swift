@@ -139,6 +139,7 @@ extension APIClient {
 		var ticked: Bool?
 		var variationId: VariationID?
 		var picks: [BuildPick]?
+		var index: Int?
 	}
 	private struct Payload: Encodable { var payload: RecipeInput; var variationId: VariationID? }
 
@@ -200,6 +201,14 @@ extension APIClient {
 	}
 	public func retryDraft(_ id: JobID) async throws {
 		let _: OK = try await send("POST", "drafts/\(id)/retry")
+	}
+
+	public func generate(_ request: GenerateRequest) async throws -> JobID {
+		let r: JobReply = try await send("POST", "generations", body: json(request)); return r.jobId
+	}
+	/// Picking the same index twice is fine; a different one is refused.
+	public func pick(_ job: JobID, index: Int) async throws {
+		let _: OK = try await send("POST", "drafts/\(job)/pick", body: json(Fields(index: index)))
 	}
 
 	public func shopping() async throws -> ShoppingResponse { try await send("GET", "shopping") }
