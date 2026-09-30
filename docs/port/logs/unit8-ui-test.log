@@ -1,0 +1,28 @@
+xcodegen generate
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/daniel/Projects/we-cooked/WeCooked.xcodeproj
+xcrun simctl bootstatus 'iPhone 17e' -b >/dev/null
+xcrun simctl ui 'iPhone 17e' appearance light
+set -o pipefail; TEST_RUNNER_WC_SCREENSHOT_DIR=/Users/daniel/Projects/we-cooked/docs/port/screenshots xcodebuild test -project WeCooked.xcodeproj -scheme WeCooked -destination 'platform=iOS Simulator,name=iPhone 17e' -only-testing:WeCookedUITests/Unit8Tests -skip-testing:WeCookedUITests/Unit8Tests/testRow69Dark 2>&1 | grep -E "Test Case|error:|XCTAssert|Executed|\*\* TEST" | tail -60
+Test Case '-[WeCookedUITests.Unit8Tests testRow68ThreeTabs]' started.
+Test Case '-[WeCookedUITests.Unit8Tests testRow68ThreeTabs]' passed (5.990 seconds).
+Test Case '-[WeCookedUITests.Unit8Tests testRow69Light]' started.
+Test Case '-[WeCookedUITests.Unit8Tests testRow69Light]' passed (40.204 seconds).
+Test Case '-[WeCookedUITests.Unit8Tests testRow70ChipsAndTicksCarryWords]' started.
+Test Case '-[WeCookedUITests.Unit8Tests testRow70ChipsAndTicksCarryWords]' passed (14.529 seconds).
+	 Executed 3 tests, with 0 failures (0 unexpected) in 60.722 (60.726) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 60.722 (60.728) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 60.722 (60.729) seconds
+** TEST SUCCEEDED **
+xcrun simctl ui 'iPhone 17e' appearance dark
+set -o pipefail; TEST_RUNNER_WC_APPEARANCE=dark TEST_RUNNER_WC_SCREENSHOT_DIR=/Users/daniel/Projects/we-cooked/docs/port/screenshots xcodebuild test -project WeCooked.xcodeproj -scheme WeCooked -destination 'platform=iOS Simulator,name=iPhone 17e' -only-testing:WeCookedUITests/Unit8Tests/testRow69Dark 2>&1 | grep -E "Test Case|error:|XCTAssert|Executed|\*\* TEST" | tail -60; \
+		status=$?; xcrun simctl ui 'iPhone 17e' appearance light; exit $status
+Test Case '-[WeCookedUITests.Unit8Tests testRow69Dark]' started.
+Test Case '-[WeCookedUITests.Unit8Tests testRow69Dark]' passed (41.518 seconds).
+	 Executed 1 test, with 0 failures (0 unexpected) in 41.518 (41.519) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 41.518 (41.520) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 41.518 (41.520) seconds
+** TEST SUCCEEDED **
+exit 0

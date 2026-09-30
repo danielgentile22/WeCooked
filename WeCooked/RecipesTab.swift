@@ -68,7 +68,7 @@ struct RecipesTab: View {
 				Label("Add your first recipe", systemImage: "book.closed")
 			} actions: {
 				Button("Add a recipe") { router.tab = .add }
-					.buttonStyle(.borderedProminent)
+					.prominentButton()
 			}
 		} else {
 			ContentUnavailableView("No recipes match.", systemImage: "magnifyingglass")

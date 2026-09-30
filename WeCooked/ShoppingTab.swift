@@ -23,7 +23,12 @@ private struct ShoppingScreen: View {
 	var body: some View {
 		Loaded(resource: model.resource) { _ in
 			List {
-				if let header { Text(header).font(.subheadline).foregroundStyle(.secondary).bare().accessibilityIdentifier("shopping-header") }
+				if let header {
+					Text(header).font(.subheadline).foregroundStyle(.secondary)
+						.contentTransition(.numericText())
+						.animation(.default, value: header)
+						.bare().accessibilityIdentifier("shopping-header")
+				}
 				banners
 				switch model.phase {
 				case .building: building
@@ -87,7 +92,7 @@ private struct ShoppingScreen: View {
 		VStack(spacing: 16) {
 			Text("Pick recipes to build a list.").foregroundStyle(.secondary)
 			Button("Add recipes", systemImage: "list.bullet.rectangle") { router.sheet = .pickRecipes }
-				.buttonStyle(.borderedProminent)
+				.prominentButton()
 				.accessibilityIdentifier("shopping-pick")
 		}
 		.frame(maxWidth: .infinity)
@@ -158,10 +163,12 @@ private struct ShoppingScreen: View {
 private struct ItemRow: View {
 	let row: ShoppingRow
 	let model: ShoppingModel
+	@State private var taps = 0
 
 	var body: some View {
 		Button {
 			model.setTicked(row.id, !row.ticked)
+			taps += 1
 		} label: {
 			HStack(spacing: 12) {
 				Image(systemName: row.ticked ? "checkmark.circle.fill" : "circle")
@@ -181,6 +188,10 @@ private struct ItemRow: View {
 			.contentShape(.rect)
 		}
 		.buttonStyle(.plain)
+		.sensoryFeedback(trigger: taps) {
+			let p = model.progress
+			return p.total > 0 && p.ticked == p.total ? .success : .impact(weight: .light)
+		}
 		.accessibilityIdentifier("item-\(row.primary)")
 		.accessibilityValue(row.ticked ? "ticked" : "unticked")
 	}
@@ -326,7 +337,7 @@ private struct PickRecipesForm: View {
 				} label: {
 					Text(buildLabel(picks.count)).frame(maxWidth: .infinity)
 				}
-				.buttonStyle(.borderedProminent)
+				.prominentButton()
 				.controlSize(.large)
 				.disabled(picks.isEmpty || submitting)
 				.accessibilityIdentifier("pick-build")

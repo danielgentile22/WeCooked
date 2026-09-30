@@ -65,6 +65,7 @@ struct Chip: View {
 		}
 		.lineLimit(1)
 		.modifier(ChipShape(style: style, isSelected: isSelected))
+		.sensoryFeedback(.selection, trigger: isSelected)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(title)
 		.accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -106,6 +107,23 @@ extension Color {
 	static let onAccent = Color(UIColor { traits in
 		traits.userInterfaceStyle == .dark ? UIColor(red: 0x2a / 255, green: 0x1a / 255, blue: 0, alpha: 1) : .white
 	})
+}
+
+extension View {
+	/// D4: the accent-filled button. The system draws its label white and its
+	/// icon in the tint, which vanishes on the fill and fails contrast on the
+	/// dark-mode accent, so the label takes `onAccent` while enabled.
+	func prominentButton() -> some View { modifier(ProminentButton()) }
+}
+
+private struct ProminentButton: ViewModifier {
+	@Environment(\.isEnabled) private var isEnabled
+
+	func body(content: Content) -> some View {
+		content
+			.buttonStyle(.borderedProminent)
+			.foregroundStyle(isEnabled ? AnyShapeStyle(Color.onAccent) : AnyShapeStyle(.secondary))
+	}
 }
 
 /// D17. The one tile every coverless recipe shows: neutral surface, the pot

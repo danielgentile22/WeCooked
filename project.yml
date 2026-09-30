@@ -59,14 +59,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: kitchen.wecooked.ios
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # No icon until unit 8; xcodegen would otherwise ask for one named AppIcon.
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
     info:
       path: WeCooked/Info.plist
       properties:
         CFBundleDisplayName: We Cooked
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchGlyph
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
         WCBaseURL: $(WC_BASE_URL)

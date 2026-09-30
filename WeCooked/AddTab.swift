@@ -71,7 +71,7 @@ struct AddTab: View {
 			Label(model.isSubmitting ? "Starting…" : title, systemImage: "sparkles")
 				.frame(maxWidth: .infinity)
 		}
-		.buttonStyle(.borderedProminent)
+		.prominentButton()
 		.controlSize(.large)
 		.disabled(model.isSubmitting)
 		.accessibilityIdentifier(identifier)

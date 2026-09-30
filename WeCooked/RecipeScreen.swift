@@ -211,6 +211,8 @@ struct CookingBody: View {
 				.buttonStyle(.plain)
 			}
 		}
+		.animation(.default, value: detail.variations.map(\.id))
+		.animation(.default, value: detail.variationId)
 	}
 
 	// MARK: Stepper
@@ -231,7 +233,7 @@ struct CookingBody: View {
 		// the stepper, and the button wrapped one letter per line.
 		return VStack(alignment: .leading, spacing: 10) {
 			HStack(spacing: 10) {
-				Button { model.stepper.step(-1) } label: { Image(systemName: "minus") }
+				Button { withAnimation { model.stepper.step(-1) } } label: { Image(systemName: "minus") }
 					.accessibilityLabel("Fewer \(unit)")
 				TextField("Yield", text: $model.stepper.text)
 					.keyboardType(.decimalPad)
@@ -241,12 +243,12 @@ struct CookingBody: View {
 					.padding(.vertical, 8)
 					.background(.fill.tertiary, in: .rect(cornerRadius: 10))
 					.accessibilityLabel("Yield count")
-				Button { model.stepper.step(1) } label: { Image(systemName: "plus") }
+				Button { withAnimation { model.stepper.step(1) } } label: { Image(systemName: "plus") }
 					.accessibilityLabel("More \(unit)")
 				Text(unit).foregroundStyle(.secondary).lineLimit(1)
 			}
 			Button(label) { Task { await model.commitStepper() } }
-				.buttonStyle(.borderedProminent)
+				.prominentButton()
 				.disabled(disabled)
 		}
 		.buttonStyle(.bordered)
@@ -387,9 +389,13 @@ private struct StrikableLine: View {
 	let number: Int?
 	let isStruck: Bool
 	let action: () -> Void
+	@State private var taps = 0
 
 	var body: some View {
-		Button(action: action) {
+		Button {
+			action()
+			taps += 1
+		} label: {
 			HStack(alignment: .firstTextBaseline, spacing: 8) {
 				if let number {
 					Text("\(number).").bold().foregroundStyle(.tint)
@@ -405,6 +411,7 @@ private struct StrikableLine: View {
 			.contentShape(.rect)
 		}
 		.buttonStyle(.plain)
+		.sensoryFeedback(.impact(weight: .light), trigger: taps)
 		.accessibilityAddTraits(isStruck ? .isSelected : [])
 		.accessibilityValue(isStruck ? "struck" : "")
 	}

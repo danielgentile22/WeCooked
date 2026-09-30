@@ -1,6 +1,6 @@
 # iOS port handoff
 
-State as of 2026-09-28, end of the first session. Read this before picking
+State as of 2026-09-29, end of the seventh session. Read this before picking
 the work up. The plan is `PLAN.md`, the spec for behaviour is
 `web-inventory.md`, the acceptance list is `parity-checklist.md`, the app's
 design is `ios-design.md`, and `decisions.tsv` is the trail of every choice
@@ -8,10 +8,13 @@ with its evidence.
 
 ## Where things stand
 
-Units 1 to 6 of the plan are done and verified, except the three shopping
-flows that spend Claude calls (see unit 6 below). Unit 3 landed in the
+Units 1 to 7 of the plan are done and verified, except the three shopping
+flows that spend Claude calls (see unit 6 below). Unit 8's simulator half
+(icon, launch screen, haptics, the dark pass, rows 68 to 70) is done; its
+device half waits on the owner (see unit 8 below). Unit 3 landed in the
 second session (2026-09-28, evening), unit 4 in the third, unit 5 in the
-fourth and unit 6 in the fifth (all 2026-09-29).
+fourth, unit 6 in the fifth, unit 7 in the sixth and unit 8's simulator half
+in the seventh (all 2026-09-29).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -65,8 +68,9 @@ Checks a reviewer reruns, one command each, from the root `Makefile`:
 `make ios-ui-test-unit5` (the same server, and it spends Claude calls) and
 `make ios-ui-test-unit6` (the same server; free by default, `WC_CLAUDE=1`
 adds the three tests that spend up to four calls) and
-`make ios-ui-test-unit7` (the same server, free). Logs of the last runs are
-in `logs/`.
+`make ios-ui-test-unit7` (the same server, free) and `make ios-ui-test-unit8`
+(the same server, free; it switches the simulator to dark for the second
+half and back). Logs of the last runs are in `logs/`.
 
 ## Owner decisions taken
 
@@ -83,7 +87,8 @@ in `logs/`.
 
 ## Still needed from the owner
 
-- **Apple Team ID**, for device builds and TestFlight. Two ways to find it:
+- **Apple Team ID**, for device builds and TestFlight. This is the only
+  thing between the repo and a first device build. Two ways to find it:
   open <https://developer.apple.com/account>, then Membership details, and
   copy the 10-character Team ID. Or run `xcodegen generate`, open
   `WeCooked.xcodeproj`, select the WeCooked target, Signing & Capabilities,
@@ -172,11 +177,35 @@ simulator with seeded data, then in the Phone column by the owner.
    newest Shakshuka 6 live and the other three trashed, pancakes 13
    trashed), and `run-unit7.sh` runs it on exit. The `Phone` helper that
    talks to `/api/v1` from the test process now lives in `PortUITest`.
-8. **Polish and TestFlight.** Rows 68 to 70 plus: app icon (regenerate from
-   the pot glyph in `server/scripts/make-icons.mjs`), dark mode pass,
-   transitions and haptics, launch screen, first device build, TestFlight
-   to both phones. The Keychain access group is exercised only on a device,
-   so the token store is unproven until then.
+8. **Simulator half done, device half blocked on the Team ID.** Rows 68 to
+   70 ticked in the Sim column, no Claude calls spent. `make-icons.mjs` now
+   also writes the iOS icon (light, dark and tinted, one glyph) and the
+   launch glyph into `Assets.xcassets`; the launch screen is that glyph on
+   the web's background colours. Haptics are `sensoryFeedback` modifiers on
+   the tapped view keyed to a view-local tap counter, so a tick synced from
+   the other phone never buzzes: light impact per tick and strike, success
+   when a tick completes the list, selection on any chip. The shopping
+   header rolls its numbers and the variation chips row animates when a chip
+   appears or the selection moves. Nothing else moves; the design doc's tone
+   is restraint. The dark pass read fourteen screenshots and found one
+   defect: accent-filled buttons drew their `Label` icon in the tint on the
+   fill, so `prominentButton()` in `Components.swift` sets the D4 on-fill
+   colour and the four such buttons use it. Two things learned: the app
+   ignores `-AppleInterfaceStyle Dark` as a launch argument, so
+   `ios-ui-test-unit8` switches the simulator with `simctl ui appearance`
+   and the dark test skips unless the Makefile says the switch happened; and
+   the simulator's home screen keeps light icons in dark mode, so the dark
+   icon is proven by `assetutil` on the built `Assets.car`, not a
+   screenshot. Haptics do not play on the simulator; the owner feels them on
+   the phone. Still to do, all needing the Team ID in `Config/Local.xcconfig`:
+   first device build (the first real run of the shared Keychain group,
+   expect `errSecMissingEntitlement` if the access group prefix is wrong),
+   `blast-radius` before any signing or entitlement change since both
+   targets share the groups, the App Store Connect record, a TestFlight
+   upload confirmed with the owner first, and a decision on whether the
+   inert share extension ships in the archive. A Debug device build also
+   needs `WC_BASE_URL` in `Local.xcconfig` pointing at the Mac's LAN
+   address, or a Release build against production.
 
 `make ios-test` runs the whole `WeCooked` scheme minus the UI tests. To
 grow the UI suite for a unit, add `UnitNTests.swift` next to `Unit3Tests`

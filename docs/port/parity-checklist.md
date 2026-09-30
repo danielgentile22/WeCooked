@@ -74,6 +74,6 @@ column is ticked by the owner on a device.
 | 65 | Trash | Two groups, title, yield for variations, deleted date, Restore | x | |
 | 66 | Trash | Restore variation that displaces shows the displaced banner | x | |
 | 67 | Trash | Restore errors shown | x | |
-| 68 | Shell | Three tabs, Recipes, Add, Shopping | | |
-| 69 | Shell | Light and dark follow the phone | | |
-| 70 | Shell | No meaning by colour alone, chips carry words, selected state has a checkmark | | |
+| 68 | Shell | Three tabs, Recipes, Add, Shopping | x | |
+| 69 | Shell | Light and dark follow the phone | x | |
+| 70 | Shell | No meaning by colour alone, chips carry words, selected state has a checkmark | x | |

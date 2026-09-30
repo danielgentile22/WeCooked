@@ -39,7 +39,7 @@ struct LoginScreen: View {
 				}
 				.frame(maxWidth: .infinity)
 			}
-			.buttonStyle(.borderedProminent)
+			.prominentButton()
 			.controlSize(.large)
 			.disabled(!canSubmit)
 		}
