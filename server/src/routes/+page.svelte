@@ -13,7 +13,7 @@
 	const watched = new Set<string>();
 	$effect(() => {
 		for (const d of data.drafts) {
-			if (d.status !== 'extracting' || watched.has(d.id)) continue;
+			if ((d.status !== 'extracting' && d.status !== 'generating') || watched.has(d.id)) continue;
 			watched.add(d.id);
 			pollJob(d.id)
 				.then(() => invalidateAll())
@@ -128,12 +128,14 @@
 		<ul class="list">
 			{#each data.drafts as d (d.id)}
 				<li>
-					{#if d.status === 'extracting'}
+					{#if d.status === 'extracting' || d.status === 'generating'}
 						<span class="draftrow">
 							<span class="thumb tile" aria-hidden="true"><LoaderCircle class="spin" /></span>
 							<span class="drafttext">
 								<span class="title">{d.title}</span>
-								<span class="status">Extracting…</span>
+								<span class="status">
+									{d.status === 'generating' ? 'Generating…' : 'Extracting…'}
+								</span>
 							</span>
 						</span>
 					{:else}
@@ -144,7 +146,11 @@
 							<span class="drafttext">
 								<span class="title">{d.title}</span>
 								<span class="status">
-									{d.status === 'failed' ? 'Failed: tap to fix' : 'Ready to review'}
+									{d.status === 'failed'
+										? 'Failed: tap to fix'
+										: d.status === 'choosing'
+											? 'Waiting for a pick on the phone'
+											: 'Ready to review'}
 								</span>
 							</span>
 						</a>

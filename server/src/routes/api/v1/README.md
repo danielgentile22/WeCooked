@@ -23,10 +23,12 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /variations/:id/keep-mine | | `{ok:true}` | |
 | DELETE | /variations/:id | | `{ok:true}` (to Trash) | 400 |
 | POST | /captures | `{text}`, `{url, html?, text?}` or `{image_ids}` | `{job_id}` | 400 |
-| GET | /drafts/:id | | `DraftView`, or `{recipe_id}` once saved | 404 |
-| POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400, 404 |
+| POST | /generations | `{description, yield_count}` | `{job_id}` | 400 empty or over 1000 characters, 400 yield not a whole number from 1 to 100 |
+| GET | /drafts/:id | | `DraftView`, `GenerationView` while a generation waits for a pick, or `{recipe_id}` once saved | 404 |
+| POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400 (also before a generation's pick), 404 |
 | POST | /drafts/:id/discard | | `{ok:true}` | 400 while extracting, 404 |
 | POST | /drafts/:id/retry | | `{ok:true}` (requeues a failed draft) | 404 |
+| POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | GET | /shopping | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}` | |
 | POST | /shopping/build | `{picks: {recipe_id, yield_count}[]}` | `{job_id}` | 400 |
 | POST | /shopping/retry | | `{job_id}` | |

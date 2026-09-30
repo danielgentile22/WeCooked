@@ -1,0 +1,71 @@
+{
+  "candidates": [
+    {
+      "cook_minutes": 12,
+      "cuisine": "chinese",
+      "damage": "tidy",
+      "effort": "quick",
+      "ingredients": [
+        "4 boneless chicken thighs (about 450 g), sliced into strips",
+        "1/2 small cabbage (about 400 g), cored and shredded",
+        "2 tbsp neutral oil",
+        "3 cloves garlic, sliced",
+        "3 cm piece ginger, cut into matchsticks",
+        "2 tbsp soy sauce",
+        "1 tbsp Shaoxing wine or dry sherry",
+        "1 tsp sugar",
+        "1 tsp rice vinegar",
+        "2 spring onions, sliced"
+      ],
+      "prep_minutes": 10,
+      "protein": "chicken",
+      "title": "Chicken and cabbage stir-fry with ginger"
+    },
+    {
+      "cook_minutes": 28,
+      "cuisine": "central-european",
+      "damage": "messy",
+      "effort": "weeknight",
+      "ingredients": [
+        "4 bone-in, skin-on chicken thighs (about 600 g)",
+        "1/2 cabbage (about 500 g), cut into 4 wedges through the core",
+        "3 tbsp olive oil",
+        "1 tsp caraway seeds",
+        "1 tsp sweet paprika",
+        "2 cloves garlic, grated",
+        "1 tbsp wholegrain mustard",
+        "1 tbsp cider vinegar",
+        "1 tsp salt",
+        "Black pepper"
+      ],
+      "prep_minutes": 10,
+      "protein": "chicken",
+      "title": "Roast chicken thighs with caraway cabbage wedges"
+    },
+    {
+      "cook_minutes": 15,
+      "cuisine": "japanese",
+      "damage": "carnage",
+      "effort": "weeknight",
+      "ingredients": [
+        "4 boneless, skinless chicken thighs (about 450 g), opened out flat",
+        "40 g plain flour",
+        "1 egg, beaten",
+        "60 g panko breadcrumbs",
+        "150 ml neutral oil, for shallow frying",
+        "1/2 tsp salt",
+        "1/4 cabbage (about 250 g), very finely shredded",
+        "1 tsp rice vinegar",
+        "3 tbsp tonkatsu sauce",
+        "1 lemon, cut into wedges"
+      ],
+      "prep_minutes": 15,
+      "protein": "chicken",
+      "title": "Chicken katsu with shredded cabbage"
+    }
+  ],
+  "description": "the chicken thighs and half a cabbage, under 40 minutes",
+  "id": "01TEST00000000000000000039",
+  "status": "done",
+  "yield_count": 2
+}

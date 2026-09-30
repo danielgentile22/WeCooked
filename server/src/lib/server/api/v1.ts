@@ -14,7 +14,15 @@ import {
 } from '../recipes';
 import { keepMine, recalcVariation, requestScale, retryScale } from '../scale';
 import { createJob, getJobPoll } from '../jobs';
-import { discardDraft, draftView, getDraftJob, retryDraft, saveDraft } from '../drafts';
+import {
+	discardDraft,
+	draftView,
+	getDraftJob,
+	getGenerationJob,
+	pickCandidate,
+	retryDraft,
+	saveDraft
+} from '../drafts';
 import {
 	SECTION_ORDER,
 	addManual,
@@ -26,7 +34,7 @@ import {
 } from '../shopping';
 import { saveImage } from '../images';
 import { pageContent } from '../extract';
-import { asUrl } from '$lib/extract';
+import { asUrl, type GenerateInput } from '$lib/extract';
 import { ERROR_COPY } from '$lib/jobs';
 import { CUISINES, DAMAGES, EFFORTS, MEAL_TYPES, PROTEINS, type RecipeInput } from '$lib/tags';
 import type { Database } from 'better-sqlite3';
@@ -94,6 +102,18 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 	return {
 		job_id: url ? createJob(db, 'extract_url', { url }) : createJob(db, 'extract_paste', { text })
 	};
+}
+
+// Issue #41: the cook sets the yield up front, so quantities come out right
+// without a rescale.
+function generation(db: Database, b: Fields): { job_id: string } {
+	const description = typeof b.description === 'string' ? b.description.trim() : '';
+	if (!description || description.length > 1000) throw bad('Describe what you want to cook.');
+	const count = b.yield_count;
+	if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 100)
+		throw bad('Yield must be a whole number from 1 to 100.');
+	const input: GenerateInput = { description, yield_count: count, picked: null };
+	return { job_id: createJob(db, 'generate', input) };
 }
 
 function picks(v: unknown): { recipe_id: string; yield_count: unknown }[] {
@@ -238,6 +258,22 @@ export const routes: readonly Route[] = [
 		run: (db, req) => {
 			const job = draftJob(db, req.params.id);
 			guard(() => discardDraft(db, job));
+			return OK;
+		}
+	},
+	{
+		method: 'POST',
+		path: '/generations',
+		run: async (db, req) => generation(db, await body(req))
+	},
+	{
+		method: 'POST',
+		path: '/drafts/:id/pick',
+		run: async (db, req) => {
+			const job = getGenerationJob(db, req.params.id);
+			if (!job) throw new ApiError(404, 'No such generation.');
+			const { index } = await body(req);
+			guard(() => pickCandidate(db, job, index));
 			return OK;
 		}
 	},

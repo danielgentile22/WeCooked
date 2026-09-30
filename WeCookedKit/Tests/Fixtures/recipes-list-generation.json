@@ -1,0 +1,67 @@
+{
+  "drafts": [
+    {
+      "id": "01TEST00000000000000000039",
+      "status": "choosing",
+      "title": "the chicken thighs and half a cabbage, under 40 minutes"
+    },
+    {
+      "id": "01TEST00000000000000000038",
+      "status": "generating",
+      "title": "the chicken thighs and half a cabbage, under 40 minutes"
+    },
+    {
+      "id": "01TEST00000000000000000033",
+      "status": "extracting",
+      "title": "Caption: 2 eggs..."
+    },
+    {
+      "id": "01TEST00000000000000000034",
+      "status": "extracting",
+      "title": "https://www.example.com/r"
+    },
+    {
+      "id": "01TEST00000000000000000035",
+      "status": "extracting",
+      "title": "My note"
+    },
+    {
+      "id": "01TEST00000000000000000036",
+      "status": "extracting",
+      "title": "https://www.example.com/r"
+    },
+    {
+      "id": "01TEST00000000000000000037",
+      "status": "extracting",
+      "title": "https://www.example.com/r"
+    },
+    {
+      "id": "01TEST00000000000000000018",
+      "status": "extracting",
+      "title": "https://www.example.com/soup"
+    }
+  ],
+  "recipes": [
+    {
+      "cover_url": null,
+      "damage": "tidy",
+      "effort": "project",
+      "id": "01TEST00000000000000000022",
+      "title": "Lemon drizzle cake"
+    },
+    {
+      "cover_url": null,
+      "damage": "messy",
+      "effort": "quick",
+      "id": "01TEST00000000000000000007",
+      "title": "Quick omelette"
+    },
+    {
+      "cover_url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000002/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a1bc04a1c0cc88573d6e17285970da21ab91886e8ae0b9e5a91dce4fc8b0e8b9",
+      "damage": "messy",
+      "effort": "weeknight",
+      "id": "01TEST00000000000000000003",
+      "title": "Chickpea stew"
+    }
+  ]
+}

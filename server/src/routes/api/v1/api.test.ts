@@ -16,7 +16,8 @@ import { claudeCall } from '$lib/server/claude';
 import { scale } from '$lib/server/scale';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import type { JobRow } from '$lib/server/jobs';
-import type { RecipeDraft } from '$lib/extract';
+import type { GenerateResult, RecipeDraft } from '$lib/extract';
+import candidates from '../../../../fixtures/candidates.json';
 import type { RecipeInput } from '$lib/tags';
 
 // Integration tests for every /api/v1 route, through the same dispatch the
@@ -538,5 +539,91 @@ describe('/api/v1', () => {
 
 	it('records an error body', async () => {
 		fixture('error', (await call('GET', '/recipes/missing')).body);
+	});
+
+	// Last so its job ids shift no earlier fixture the Kit pins.
+	it('generations: create, generating, choosing, pick, save, discard (issue #41)', async () => {
+		const description = 'the chicken thighs and half a cabbage, under 40 minutes';
+		const result = candidates as GenerateResult;
+		for (const d of [' ', 'x'.repeat(1001), 42])
+			await fails('POST', '/generations', 400, 'Describe what you want to cook.', {
+				body: { description: d, yield_count: 2 }
+			});
+		for (const y of [0, 101, 2.5, '2', undefined])
+			await fails('POST', '/generations', 400, 'Yield must be a whole number from 1 to 100.', {
+				body: { description, yield_count: y }
+			});
+
+		tick();
+		const running = fixture('generations', await ok('POST', '/generations', { body: { description, yield_count: 2 } }));
+		expect(JSON.parse(job(running.job_id)!.input_json)).toEqual({ description, yield_count: 2, picked: null });
+		db.prepare(`UPDATE job SET status = 'running' WHERE id = ?`).run(running.job_id);
+		const generating = fixture('draft-get-generating', await ok('GET', `/drafts/${running.job_id}`));
+		expect(generating).toMatchObject({ status: 'running', initial: null, source_text: description });
+		await fails('POST', `/drafts/${running.job_id}/pick`, 400, 'Still generating; wait for it to finish.', {
+			body: { index: 0 }
+		});
+		await fails('POST', `/drafts/${running.job_id}/discard`, 400, 'Still extracting; wait for it to finish.');
+
+		tick();
+		const { job_id } = await ok('POST', '/generations', { body: { description, yield_count: 2 } });
+		finishJob(job_id, result);
+		const browse = fixture('recipes-list-generation', await ok('GET', '/recipes'));
+		expect(browse.drafts.slice(0, 2)).toEqual([
+			{ id: job_id, status: 'choosing', title: description },
+			{ id: running.job_id, status: 'generating', title: description }
+		]);
+
+		const choosing = fixture('draft-get-choosing', await ok('GET', `/drafts/${job_id}`));
+		expect(choosing).toMatchObject({ id: job_id, status: 'done', description, yield_count: 2 });
+		expect(choosing.candidates).toHaveLength(3);
+		expect(choosing.candidates[0]).toEqual({
+			title: result.candidates[0].title,
+			prep_minutes: 10,
+			cook_minutes: 12,
+			effort: 'quick',
+			damage: 'tidy',
+			cuisine: 'chinese',
+			protein: 'chicken',
+			ingredients: result.candidates[0].body.metric.ingredients[0].items
+		});
+		await fails('POST', `/drafts/${job_id}/save`, 400, 'Pick a recipe first.', { body: input() });
+
+		const capture = (await ok('GET', '/recipes')).drafts.find((d: { status: string }) => d.status === 'extracting');
+		await fails('POST', `/drafts/${capture.id}/pick`, 404, 'No such generation.', { body: { index: 0 } });
+		await fails('POST', '/drafts/missing/pick', 404, 'No such generation.', { body: { index: 0 } });
+		await fails('POST', `/drafts/${job_id}/pick`, 400, 'Pick one of the three.', { body: { index: 3 } });
+		expect(await ok('POST', `/drafts/${job_id}/pick`, { body: { index: 1 } })).toEqual({ ok: true });
+		expect(await ok('POST', `/drafts/${job_id}/pick`, { body: { index: 1 } })).toEqual({ ok: true });
+		await fails('POST', `/drafts/${job_id}/pick`, 400, 'Already picked.', { body: { index: 0 } });
+
+		const picked = fixture('draft-get-picked', await ok('GET', `/drafts/${job_id}`));
+		expect(picked).toMatchObject({ status: 'done', source_text: description, warnings: [] });
+		expect(picked.initial).toMatchObject({
+			title: result.candidates[1].title,
+			source_text: description,
+			source_url: null,
+			images: []
+		});
+		expect((await ok('GET', '/recipes')).drafts[0]).toEqual({
+			id: job_id,
+			status: 'ready',
+			title: result.candidates[1].title
+		});
+
+		const { images, ...seed } = picked.initial;
+		tick();
+		const saved = await ok('POST', `/drafts/${job_id}/save`, {
+			body: { ...input(), ...seed, image_ids: images, cover_image_id: null }
+		});
+		expect((await ok('GET', `/recipes/${saved.recipe_id}`)).recipe).toMatchObject({
+			title: result.candidates[1].title,
+			source_text: description,
+			source_url: null
+		});
+
+		finishJob(running.job_id, result);
+		expect(await ok('POST', `/drafts/${running.job_id}/discard`)).toEqual({ ok: true });
+		expect(job(running.job_id)).toBeUndefined();
 	});
 });
