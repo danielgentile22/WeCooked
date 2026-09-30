@@ -273,9 +273,18 @@ issues are the spec; the bullets below are the original wording.
   upload.
 - **Wegmans export.** Start with sharing the list as plain text into the
   Wegmans app, then investigate a URL scheme or list import.
-- **Recipe generation.** A `generate` job kind on the server from a
-  description, returning several candidate drafts, shown as swipeable cards
-  comparing damage, effort, prep and cook time, protein and cuisine.
+- **Recipe generation.** Built on 2026-09-30 (issue #41, ADR-042): a
+  `generate` job kind holds the description, yield and three candidates in
+  one row; a pick records the index on that row and it reads as a draft
+  from then on. The Add tab's "Describe what you want" screen starts it,
+  browse shows one card ("Generating…", then "Choose a recipe"), and the
+  draft screen shows a deck (`DeckView`, a page-style `TabView`) until the
+  pick, when the same `EditorModel` moves to the form. Migration 002
+  rebuilt the `job` table for the kind, so a dev server must be restarted
+  after pulling it, and the runner's handler map only loads on restart too.
+  `make ios-ui-test-unit9` proves the deck and the pick from a generation
+  that `server/scripts/unit9-prep.mjs` forges (no Claude call); the prompt
+  itself is unproven until the owner spends one call from the phone.
 - **Widgets and push.** A shopping list widget, and an APNs push when a
   capture is ready to review, which also gives the share extension its way
   back into the app.

@@ -5,7 +5,9 @@ weighed and why the loser lost. A second pass on 2026-07-29, before any code,
 resolved contradictions and gaps found in a pre-build review; those are
 ADR-024 to ADR-032, and the ADRs they amend carry a dated note. A third pass
 on 2026-07-30, after the four prototypes were settled, closed the questions
-the prototypes and the first review left open; those are ADR-033 to ADR-040. Referenced from [SPEC.md](./SPEC.md) as
+the prototypes and the first review left open; those are ADR-033 to ADR-040.
+ADR-041 and ADR-042 came with the iOS port's first two features after parity
+(2026-09-30). Referenced from [SPEC.md](./SPEC.md) as
 `ADR-nn`. Evidence for the technical claims is in
 [research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
 
@@ -1398,6 +1400,62 @@ stands, now also for 402 and 429.
 **Consequence.** The server deploys before any app build that depends on a
 contract change. The first share failed against a server that did not yet
 know `text`; this one adds `html`.
+
+---
+
+## ADR-042: A generation is one job row for its whole life
+
+**Question.** Issue #41 adds recipes from a description: one Claude call
+returns three candidates, the cook picks one, and the pick opens the review
+form. Where do the candidates live, and what happens to the row on a pick?
+
+**Options.**
+
+- **A. One row.** A `generate` job holds `{description, yield_count, picked}`
+  as input and `{candidates}` as result. A pick writes `picked` on the same
+  row; the row then reads as an ordinary draft seeded from
+  `candidates[picked]`. The job id is the card key, the deep link and the
+  review form's id throughout.
+- **B. A pick spawns a draft.** The generation row keeps the candidates and a
+  pick creates a new capture-like row with the chosen candidate as its
+  result.
+- **C. A pick overwrites the result** with the chosen candidate and drops the
+  other two.
+
+**Decision: A.**
+
+**Why.** Every reader of a draft already keys on the job id (browse card,
+`/drafts/:id`, the editor autosave, the share extension's pending link), so
+B would hand the phone a second id mid-flow and leave a row behind that is
+neither draft nor recipe. C makes "is this row choosing or a draft" a
+question about the shape of `result_json`; `picked` is one field with one
+meaning. The unpicked candidates stay in the row but nothing shows them:
+the glossary's "gone" is about the cook's view.
+
+**Shape.** `DRAFT_KINDS` (the three capture kinds plus `generate`) replaces
+`CAPTURE_KINDS` as the one gate for "this job is a draft". One helper,
+`draftOf(job)`, is the only reader of `result_json`, so the card title, the
+review form seed and the save path never learn about candidates. Before a
+pick, `GET /drafts/:id` answers a `GenerationView` (description, yield and
+three trimmed candidates) instead of a `DraftView`; the Kit tells the two
+apart by the `candidates` key the way it already tells a saved draft by
+`recipe_id`. A pick out of range is a 400, a pick on a non-generation job
+is a 404, the same pick twice is a no-op, and save on an unpicked row is
+refused.
+
+**Prompt.** The extraction system prompt says "transcribe faithfully, do not
+add ingredients", which is the opposite of generation. The tag vocabulary,
+damage rubric, yield rule and conversion rules moved into a shared
+`RECIPE_RULES` block that both system prompts end with; the extraction text
+is unchanged. Generation asks for exactly three recipes, distinct in
+technique, cuisine or protein, each at the requested yield, written in
+metric and converted to US. The count is checked in the handler, not the
+schema, because the structured-output schema is not relied on for array
+lengths. One call per generation, so the daily cap counts it like a capture.
+
+**Consequence.** Migration 002 rebuilds the `job` table for the new kind, the
+first migration since the schema. The web shows a generation card but sends
+the cook to the phone to choose (web support is out of scope for #41).
 
 ---
 

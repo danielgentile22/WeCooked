@@ -320,7 +320,7 @@ CREATE TABLE job (
   id           TEXT PRIMARY KEY,
   kind         TEXT NOT NULL CHECK (kind IN (
                  'extract_url','extract_paste','extract_photos',
-                 'scale','reconvert','shopping_merge')),
+                 'scale','reconvert','shopping_merge','generate')),  -- generate: migration 002
   status       TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
   recipe_id    TEXT REFERENCES recipe(id) ON DELETE CASCADE,
   variation_id TEXT REFERENCES variation(id) ON DELETE CASCADE,
@@ -433,7 +433,7 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 
 **Batch API is off.** It trades latency for cost, and a human is waiting.
 
-### 5.2 The four call kinds
+### 5.2 The five call kinds
 
 | Kind | Input | Output | Approx cost |
 |---|---|---|---|
@@ -441,6 +441,7 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 | `scale` | source body + target yield | `BodyPair` + scaling note | ~$0.06 |
 | `reconvert` | one edited body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
+| `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
 
 ### 5.3 Shared output shapes
 
@@ -737,6 +738,14 @@ form, not a swipe gesture). Discard hard-deletes the job row and soft-deletes
 its capture images: a job row is machine output, not human work, so the
 no-silent-destruction principle does not apply to it (ADR-035). Running jobs
 cannot be cancelled; they finish in seconds and can then be discarded.
+
+A **generation** (issue #41, ADR-042) is a fourth draft kind. Its job row
+holds the description and yield count as input and three candidate
+`RecipeDraft`s as result. Browse shows it as one card ("generating", then
+"choose a recipe"). Picking a candidate records the index on the same row,
+which then reads as a ready draft seeded from that candidate; the review
+form and Save are the ones above. The saved recipe records the description
+as its `source_text` and has no `source_url`.
 
 ---
 

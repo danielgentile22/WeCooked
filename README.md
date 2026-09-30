@@ -24,6 +24,10 @@ anyone curious about how it is built.
   photograph cookbook pages (up to 8 at once). Claude extracts it into a
   structured draft, and a person confirms it before it is saved. Typing one
   in by hand works too.
+- **Generate a recipe:** describe what is in the fridge, how long you have
+  and how much mess you can take, and Claude proposes three recipes to
+  compare and pick from. The pick goes through the same review form as a
+  capture (iOS app only for now).
 - **Variations:** scale a recipe to a different yield and keep the result as
   its own variation next to the original.
 - **US and metric:** every recipe is stored in both, with a toggle
