@@ -23,6 +23,16 @@ typing. All capture paths terminate in the review form.
 in its job row. Appears on the browse list as a card until saved or
 discarded.
 
+**Generation.** Asking for recipes from a description instead of from a
+source. Not a capture: nothing is extracted. One generation produces several
+candidates and shows as one card on the browse list until a candidate is
+picked.
+
+**Candidate.** One machine-proposed recipe inside a generation. Not a draft
+and not in the book; picking a candidate turns it into a draft, which then
+goes through the review form like any other, and the other candidates are
+gone.
+
 **Discard.** Throwing away a draft. Distinct from **Delete**: deleting a
 recipe or variation is soft and goes to Trash, because it destroys human
 work; discarding a draft is hard, because a draft is machine output.

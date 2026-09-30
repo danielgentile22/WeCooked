@@ -340,7 +340,9 @@ embedded share extension.
 - `refresh` and `reconvert` job ids are read from replies. A fresh id for the
   same work restarts the wait, which is correct but means two polls in flight
   for one job for one cycle.
-- The share extension's hand-off (`pendingLink` in app-group defaults) has a
-  race if the app is already foreground.
+- The share extension's hand-off (`pendingLink` in app-group defaults) was
+  flagged as racing if the app is already foreground. Resolved 2026-09-30:
+  on a phone, sharing from another app backgrounds We Cooked, so the key is
+  always read on the next foreground. No code needed.
 - Server `deleted_at` decodes as ISO 8601 with milliseconds; if the format
   loses fractional seconds the decoder throws.

@@ -248,6 +248,11 @@ was not confirmed this session.
 
 ## After parity
 
+Specced on 2026-09-30 after a grilling session; one GitHub issue per
+feature, each labelled `ready-for-agent`: #39 share sheet capture, #40
+Wegmans export, #41 recipe generation, #42 shopping widget and push. The
+issues are the spec; the bullets below are the original wording.
+
 - **Share sheet capture.** The extension target exists with the app group
   and Keychain group. It should accept a URL, text or images, post to
   `/captures` itself, and hand off to the app through the app group. For
