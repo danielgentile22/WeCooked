@@ -226,6 +226,11 @@ was not confirmed this session.
 `make ios-export` are its two halves. Bump `CURRENT_PROJECT_VERSION` in
 `project.yml` before each upload; build 1 shipped on 2026-09-30.
 
+Deploy the server (`fly deploy` in `server/`) before any app build that
+depends on a contract change, and confirm the machine is on the new
+release before the upload. Build 2's first share failed for exactly this
+reason: the app sent `{url, text}` to a server that did not know `text`.
+
 - The archive authenticates with the App Store Connect API key named in
   `server/.env` (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`; the `.p8`
   lives in `~/.appstoreconnect/private_keys/`, owner-only). The key has
@@ -257,7 +262,11 @@ issues are the spec; the bullets below are the original wording.
   accepts a URL, text or up to ten images, posts to `/captures` itself with
   its own `APIClient`, and hands the draft to the app through `pendingLink`.
   A reel link plus its pasted caption goes up as `{url, text}` and the
-  server extracts from the caption when the page cannot be read. Rows 71
+  server extracts from the caption when the page cannot be read. Issue #43
+  (same day) moved the page fetch onto the phone: `PageFetcher` in Kit
+  renders the link in an offscreen WKWebView and the request carries the
+  DOM as `html`; the server reduces it at ingest (`pageContent`) and only
+  fetches itself when `html` is missing (ADR-041). Rows 71
   to 75 on the parity checklist are the owner's device checks; only a
   device proves the extension's Keychain read. The TestFlight test notes
   still say the extension does nothing and need rewriting on the next

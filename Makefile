@@ -6,7 +6,7 @@ SIM ?= platform=iOS Simulator,name=$(SIM_NAME)
 PROJECT = WeCooked.xcodeproj
 SCHEME = WeCooked
 
-.PHONY: ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 ios-ui-test-unit6 ios-ui-test-unit7 ios-ui-test-unit8 ios-archive ios-export ios-upload kit-test server-test
+.PHONY: page-probe ios-generate ios-build ios-test ios-ui-test ios-ui-test-unit5 ios-ui-test-unit6 ios-ui-test-unit7 ios-ui-test-unit8 ios-archive ios-export ios-upload kit-test server-test
 
 ios-generate:
 	xcodegen generate
@@ -85,3 +85,9 @@ kit-test:
 
 server-test:
 	cd server && npm test
+
+# The proof behind ADR-041: what a real WebKit at home gets from a recipe page.
+# Pass URLs; prints status, JSON-LD Recipe, og:description and text length.
+page-probe:
+	mkdir -p build && swiftc -O scripts/page-probe.swift -o build/page-probe
+	build/page-probe $(URLS)

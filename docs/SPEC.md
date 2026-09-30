@@ -755,18 +755,28 @@ recipe editor, and everything funnels into it.
 
 **URL path.**
 
-1. Server fetches the URL. Timeout 10 s, `User-Agent` set to a normal desktop
-   browser string, follow up to 5 redirects.
-2. On 403 or 401, fail immediately with `fetch_blocked`. Do not retry, do not
-   escalate to a headless browser (ADR-010). Four major sites (Serious Eats,
-   AllRecipes, Food Network, 101 Cookbooks) block server-side fetches today and
-   this will get worse, not better.
-3. Parse `<script type="application/ld+json">` for a `Recipe` object (including
+1. The phone renders the page first (ADR-041). The share sheet and the Add tab
+   load the URL in an offscreen WKWebView and post the rendered HTML alongside
+   the link as `{url, html}`. A real WebKit on a residential address is what
+   the big publishers let through; the server's own fetcher is not.
+2. The server reduces the rendered HTML at ingest: readable text, the page's
+   `og:description` (an Instagram reel keeps its whole caption there and
+   nothing in the body), and the schema.org Recipe JSON-LD as authoritative
+   input. The job row stores the reduced content, never the raw page.
+3. Without `html` (the web app, or a phone that could not render the page),
+   the server fetches the URL itself: timeout 10 s, `User-Agent` set to a
+   normal desktop browser string, follow up to 5 redirects, trailing
+   punctuation Google appends to redirect targets stripped.
+4. On 401, 402, 403 or 429 from that fetch, fail immediately with
+   `fetch_blocked`. Do not retry, do not escalate to a headless browser
+   (ADR-010).
+5. Parse `<script type="application/ld+json">` for a `Recipe` object (including
    inside `@graph` arrays). If found, pass it as authoritative input.
-4. Strip the HTML to readable text before sending: a modern recipe blog is
+6. Strip the HTML to readable text before sending: a modern recipe blog is
    300 kB of HTML around 2 kB of recipe, and stripping cuts input tokens by an
    order of magnitude and stops the model latching onto the wrong content.
-5. Run `extract`.
+7. Run `extract`. When the page yields nothing and the capture carried a
+   caption (`text`), extract from the caption with the link as the source.
 
 **Paste path.** The same input box accepts a URL or a block of text. If it
 parses as a URL, take the URL path; otherwise treat it as recipe text. This is

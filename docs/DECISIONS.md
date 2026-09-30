@@ -1358,6 +1358,49 @@ listed four failure modes silent.
 
 ---
 
+## ADR-041: The phone renders the page; the server fetch is the fallback
+
+**Question.** ADR-010 chose a paste path over a scraper arms race. On
+2026-09-30 the first real share from the phone failed: Serious Eats answers
+402 to the server's fetcher, and curl from a home connection with Safari
+headers gets a 403 challenge page. Dotdash Meredith owns Serious Eats,
+Allrecipes, Simply Recipes, Food & Wine, EatingWell and The Spruce Eats, so
+the paste path would be the normal path for most links shared. What now?
+
+**Options.**
+
+- **A. Render on the phone.** The share sheet and the Add tab load the link
+  in an offscreen WKWebView and post the rendered DOM with the link. The
+  server reduces it at ingest and keeps its own fetch only as a fallback.
+- **B. A server fetcher that passes as a browser** (TLS fingerprint, headers)
+  or a paid fetch proxy.
+- **C. Stay on ADR-010: paste the text.**
+
+**Decision: A.**
+
+**Why.** A throwaway WKWebView on a Mac at home settled it in an afternoon:
+Serious Eats and Allrecipes return 200 with Recipe JSON-LD, a Pinterest pin
+carries JSON-LD, and an Instagram reel exposes its full caption in
+`og:description` with no login. Curl from the same address gets the 403
+challenge, so it is the browser engine and its residential address together
+that pass, and the phone has both for free. B is the arms race ADR-010
+refused, now with a bill. C makes the cook do the work on most links.
+
+**Shape.** The wire contract grows one optional field, `{url, html?, text?}`.
+The server parses the page at the boundary (`pageContent`) and stores only
+the reduced content in the job row, so retry works and rows stay small.
+Rendered pages run 0.8 to 2 MB; the phone caps at 4 MB and blocks images,
+media and fonts in the web view for the extension's memory limit. The
+phone's fetch has a timeout; on failure it posts the bare link and the
+server tries its own fetch as before. ADR-010's copy for a blocked fetch
+stands, now also for 402 and 429.
+
+**Consequence.** The server deploys before any app build that depends on a
+contract change. The first share failed against a server that did not yet
+know `text`; this one adds `html`.
+
+---
+
 ## Decisions deferred to prototypes
 
 The owner asked that UI decisions be settled with prototypes rather than prose.
