@@ -4,6 +4,7 @@ import { bearerToken, gate } from '$lib/server/gate';
 import db from '$lib/server/db'; // opens the database and runs migrations at boot
 import { recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
 import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
+import { generate } from '$lib/server/generate';
 import { reconvert } from '$lib/server/reconvert';
 import { scale } from '$lib/server/scale';
 import { shoppingMerge } from '$lib/server/shopping';
@@ -12,6 +13,7 @@ const handlers: Handlers = {
 	extract_paste: extractPaste,
 	extract_url: extractUrl,
 	extract_photos: extractPhotos,
+	generate,
 	reconvert,
 	scale,
 	shopping_merge: shoppingMerge

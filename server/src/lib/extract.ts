@@ -18,6 +18,10 @@ import type {
  *  reduced content of the HTML the phone rendered for url (issue #43). */
 export type CaptureInput = { text?: string; url?: string; page?: string; image_ids?: string[] };
 
+/** A generate job's input_json (issue #41). picked stays null until the cook
+ *  picks a candidate; it is what turns the generation into a draft. */
+export type GenerateInput = { description: string; yield_count: number; picked: number | null };
+
 /**
  * SPEC 7.1 text-or-URL detection: a lone link takes the URL path, anything
  * else is recipe text. Returns the fetchable URL, or null for prose. Bare
@@ -53,6 +57,9 @@ export type RecipeDraft = {
 	damage_reasoning: string;
 	extraction_warnings: string[];
 };
+
+/** A done generate job's result_json: exactly three candidates. */
+export type GenerateResult = { candidates: RecipeDraft[] };
 
 /** True when the draft's source body actually contains ingredient lines. */
 export function hasRecipe(d: RecipeDraft): boolean {

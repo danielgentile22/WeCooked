@@ -1,0 +1,230 @@
+{
+  "candidates": [
+    {
+      "title": "Chicken and cabbage stir-fry with ginger",
+      "yield_count": 2,
+      "yield_unit": "servings",
+      "prep_minutes": 10,
+      "cook_minutes": 12,
+      "source_text": null,
+      "body": {
+        "source_units": "metric",
+        "metric": {
+          "ingredients": [
+            {
+              "heading": null,
+              "items": [
+                "4 boneless chicken thighs (about 450 g), sliced into strips",
+                "1/2 small cabbage (about 400 g), cored and shredded",
+                "2 tbsp neutral oil",
+                "3 cloves garlic, sliced",
+                "3 cm piece ginger, cut into matchsticks",
+                "2 tbsp soy sauce",
+                "1 tbsp Shaoxing wine or dry sherry",
+                "1 tsp sugar",
+                "1 tsp rice vinegar",
+                "2 spring onions, sliced"
+              ]
+            }
+          ],
+          "steps": [
+            "Heat 1 tbsp of the oil in a wok over a high heat until it shimmers. Add the chicken in one layer and leave it for 2 minutes to brown, then stir-fry for 3 to 4 minutes until cooked through. Tip onto a plate.",
+            "Add the remaining oil, the garlic and ginger and stir-fry for 30 seconds.",
+            "Add the cabbage and stir-fry for 3 to 4 minutes until it wilts at the edges but still has some crunch.",
+            "Return the chicken, add the soy sauce, wine, sugar and vinegar straight into the wok and toss for 1 minute until glossy.",
+            "Scatter over the spring onions and serve."
+          ]
+        },
+        "us": {
+          "ingredients": [
+            {
+              "heading": null,
+              "items": [
+                "4 boneless chicken thighs (about 1 lb), sliced into strips",
+                "1/2 small cabbage (about 14 oz), cored and shredded",
+                "2 tbsp neutral oil",
+                "3 cloves garlic, sliced",
+                "1 inch piece ginger, cut into matchsticks",
+                "2 tbsp soy sauce",
+                "1 tbsp Shaoxing wine or dry sherry",
+                "1 tsp sugar",
+                "1 tsp rice vinegar",
+                "2 scallions, sliced"
+              ]
+            }
+          ],
+          "steps": [
+            "Heat 1 tbsp of the oil in a wok over a high heat until it shimmers. Add the chicken in one layer and leave it for 2 minutes to brown, then stir-fry for 3 to 4 minutes until cooked through. Tip onto a plate.",
+            "Add the remaining oil, the garlic and ginger and stir-fry for 30 seconds.",
+            "Add the cabbage and stir-fry for 3 to 4 minutes until it wilts at the edges but still has some crunch.",
+            "Return the chicken, add the soy sauce, wine, sugar and vinegar straight into the wok and toss for 1 minute until glossy.",
+            "Scatter over the scallions and serve."
+          ]
+        }
+      },
+      "tags": {
+        "meal_type": ["dinner"],
+        "cuisine": "chinese",
+        "protein": "chicken",
+        "effort": "quick",
+        "damage": "tidy"
+      },
+      "damage_reasoning": "1 wok + board and knife 1 = 2 points. The plate the chicken rests on is reused for serving. 2 points, tidy.",
+      "extraction_warnings": []
+    },
+    {
+      "title": "Roast chicken thighs with caraway cabbage wedges",
+      "yield_count": 2,
+      "yield_unit": "servings",
+      "prep_minutes": 10,
+      "cook_minutes": 28,
+      "source_text": null,
+      "body": {
+        "source_units": "metric",
+        "metric": {
+          "ingredients": [
+            {
+              "heading": null,
+              "items": [
+                "4 bone-in, skin-on chicken thighs (about 600 g)",
+                "1/2 cabbage (about 500 g), cut into 4 wedges through the core",
+                "3 tbsp olive oil",
+                "1 tsp caraway seeds",
+                "1 tsp sweet paprika",
+                "2 cloves garlic, grated",
+                "1 tbsp wholegrain mustard",
+                "1 tbsp cider vinegar",
+                "1 tsp salt",
+                "Black pepper"
+              ]
+            }
+          ],
+          "steps": [
+            "Heat the oven to 220°C and put a large baking tray in to heat.",
+            "In a mixing bowl, toss the chicken with 1 tbsp oil, the paprika, garlic, half the salt and some pepper.",
+            "Brush the cabbage wedges with the remaining oil and season with the caraway and the rest of the salt.",
+            "Arrange the chicken skin side up and the cabbage cut side down on the hot tray. Roast for 25 to 28 minutes, turning the cabbage once, until the skin is crisp and the chicken reaches 75°C inside.",
+            "Whisk the mustard and vinegar into the tray juices and spoon over the cabbage to serve."
+          ]
+        },
+        "us": {
+          "ingredients": [
+            {
+              "heading": null,
+              "items": [
+                "4 bone-in, skin-on chicken thighs (about 1 1/4 lb)",
+                "1/2 cabbage (about 1 lb), cut into 4 wedges through the core",
+                "3 tbsp olive oil",
+                "1 tsp caraway seeds",
+                "1 tsp sweet paprika",
+                "2 cloves garlic, grated",
+                "1 tbsp wholegrain mustard",
+                "1 tbsp cider vinegar",
+                "1 tsp salt",
+                "Black pepper"
+              ]
+            }
+          ],
+          "steps": [
+            "Heat the oven to 425°F and put a large baking tray in to heat.",
+            "In a mixing bowl, toss the chicken with 1 tbsp oil, the paprika, garlic, half the salt and some pepper.",
+            "Brush the cabbage wedges with the remaining oil and season with the caraway and the rest of the salt.",
+            "Arrange the chicken skin side up and the cabbage cut side down on the hot tray. Roast for 25 to 28 minutes, turning the cabbage once, until the skin is crisp and the chicken reaches 165°F inside.",
+            "Whisk the mustard and vinegar into the tray juices and spoon over the cabbage to serve."
+          ]
+        }
+      },
+      "tags": {
+        "meal_type": ["dinner"],
+        "cuisine": "central-european",
+        "protein": "chicken",
+        "effort": "weeknight",
+        "damage": "messy"
+      },
+      "damage_reasoning": "1 baking tray + 1 mixing bowl + board and knife 1 = 3 points, messy.",
+      "extraction_warnings": []
+    },
+    {
+      "title": "Chicken katsu with shredded cabbage",
+      "yield_count": 2,
+      "yield_unit": "servings",
+      "prep_minutes": 15,
+      "cook_minutes": 15,
+      "source_text": null,
+      "body": {
+        "source_units": "metric",
+        "metric": {
+          "ingredients": [
+            {
+              "heading": "For the chicken",
+              "items": [
+                "4 boneless, skinless chicken thighs (about 450 g), opened out flat",
+                "40 g plain flour",
+                "1 egg, beaten",
+                "60 g panko breadcrumbs",
+                "150 ml neutral oil, for shallow frying",
+                "1/2 tsp salt"
+              ]
+            },
+            {
+              "heading": "To serve",
+              "items": [
+                "1/4 cabbage (about 250 g), very finely shredded",
+                "1 tsp rice vinegar",
+                "3 tbsp tonkatsu sauce",
+                "1 lemon, cut into wedges"
+              ]
+            }
+          ],
+          "steps": [
+            "Season the chicken with the salt. Set out three shallow bowls with the flour, the egg and the panko.",
+            "Dredge each thigh in flour, then egg, then panko, pressing the crumbs on firmly.",
+            "Heat the oil in a large frying pan over a medium-high heat to 170°C, or until a crumb sizzles at once.",
+            "Fry the chicken for 5 to 6 minutes a side until deep golden and cooked through. Drain on kitchen paper and rest for 2 minutes.",
+            "Toss the cabbage with the vinegar. Slice the katsu and serve with the cabbage, tonkatsu sauce and lemon."
+          ]
+        },
+        "us": {
+          "ingredients": [
+            {
+              "heading": "For the chicken",
+              "items": [
+                "4 boneless, skinless chicken thighs (about 1 lb), opened out flat",
+                "1/3 cup all-purpose flour",
+                "1 egg, beaten",
+                "1 cup panko breadcrumbs",
+                "2/3 cup neutral oil, for shallow frying",
+                "1/2 tsp salt"
+              ]
+            },
+            {
+              "heading": "To serve",
+              "items": [
+                "1/4 cabbage (about 9 oz), very finely shredded",
+                "1 tsp rice vinegar",
+                "3 tbsp tonkatsu sauce",
+                "1 lemon, cut into wedges"
+              ]
+            }
+          ],
+          "steps": [
+            "Season the chicken with the salt. Set out three shallow bowls with the flour, the egg and the panko.",
+            "Dredge each thigh in flour, then egg, then panko, pressing the crumbs on firmly.",
+            "Heat the oil in a large frying pan over a medium-high heat to 340°F, or until a crumb sizzles at once.",
+            "Fry the chicken for 5 to 6 minutes a side until deep golden and cooked through. Drain on paper towels and rest for 2 minutes.",
+            "Toss the cabbage with the vinegar. Slice the katsu and serve with the cabbage, tonkatsu sauce and lemon."
+          ]
+        }
+      },
+      "tags": {
+        "meal_type": ["dinner"],
+        "cuisine": "japanese",
+        "protein": "chicken",
+        "effort": "weeknight",
+        "damage": "carnage"
+      },
+      "damage_reasoning": "1 frying pan + 3 bowls for the breading station + board and knife 1 = 5 points. Shallow frying in oil +2, breading +1 = 8 points, carnage.",
+      "extraction_warnings": []
+    }
+  ]
+}

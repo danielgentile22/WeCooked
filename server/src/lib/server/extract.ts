@@ -98,32 +98,16 @@ export const CONVERSION_RULES = `Conversion rules:
 6. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups"
    and "500 g" over "497 g".`;
 
-// SPEC 5.4 system prompt skeleton + 3.4 vocabulary and rubric + 5.3
-// conversion rules.
-export const EXTRACT_SYSTEM = `You extract recipes into structured data for a private two-person recipe book.
-
-Rules:
-- Transcribe ingredients and steps faithfully. Do not improve, shorten, or
-  modernise the recipe. Do not add ingredients that are not stated.
-- Preserve ingredient section headings ("For the sauce") as groups. If the
-  recipe has no sections, return one group with a null heading.
-- Ingredients stay as human-readable strings, exactly as a cook would read them.
+// SPEC 3.4 vocabulary and rubric + 5.3 conversion rules: everything that
+// shapes a recipe, whether it was transcribed or generated (issue #41).
+export const RECIPE_SHAPE_RULES = `- Ingredients stay as human-readable strings, exactly as a cook would read them.
 - Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
   Leave cuisine or protein null if unsure. effort and damage are required.
 - Score damage with the rubric below and show your arithmetic in
-  damage_reasoning.
-- If part of the source is unreadable, missing, or cut off, transcribe what you
-  can and describe the gap in extraction_warnings. Never invent the missing
-  part.
-- If the input contains no recipe at all, return empty ingredients and steps
-  and say what you found instead in extraction_warnings.
-- yield is a count plus a unit word ("4 servings", "12 muffins"). Use
-  "servings" when the source does not say.
-- source_text is a short human citation ("Ottolenghi, Simple, p.112") when the
-  source names one, else null.
+  damage_reasoning.`;
 
-Tag vocabulary:
+export const RECIPE_RULES = `Tag vocabulary:
 - meal_type (zero or more): ${MEAL_TYPES.join(', ')}
 - cuisine (at most one): ${CUISINES.join(', ')}
 - protein (at most one): ${PROTEINS.join(', ')}
@@ -143,6 +127,27 @@ mid-recipe does not count. Total 0 to 2 is tidy, 3 to 5 is messy, 6 or more
 is carnage.
 
 ${CONVERSION_RULES}`;
+
+// SPEC 5.4 system prompt skeleton.
+export const EXTRACT_SYSTEM = `You extract recipes into structured data for a private two-person recipe book.
+
+Rules:
+- Transcribe ingredients and steps faithfully. Do not improve, shorten, or
+  modernise the recipe. Do not add ingredients that are not stated.
+- Preserve ingredient section headings ("For the sauce") as groups. If the
+  recipe has no sections, return one group with a null heading.
+${RECIPE_SHAPE_RULES}
+- If part of the source is unreadable, missing, or cut off, transcribe what you
+  can and describe the gap in extraction_warnings. Never invent the missing
+  part.
+- If the input contains no recipe at all, return empty ingredients and steps
+  and say what you found instead in extraction_warnings.
+- yield is a count plus a unit word ("4 servings", "12 muffins"). Use
+  "servings" when the source does not say.
+- source_text is a short human citation ("Ottolenghi, Simple, p.112") when the
+  source names one, else null.
+
+${RECIPE_RULES}`;
 
 /** Shared tail of every extract handler: one Claude call, then the gate.
  *  An empty extraction from photos means the page could not be read
