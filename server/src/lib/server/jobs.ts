@@ -11,11 +11,12 @@ export type JobKind =
 	| 'extract_photos'
 	| 'scale'
 	| 'reconvert'
-	| 'shopping_merge';
+	| 'shopping_merge'
+	| 'generate';
 
-/** The three kinds whose job row is a draft (SPEC 6.5). */
-export const CAPTURE_KINDS = ['extract_url', 'extract_paste', 'extract_photos'] as const;
-export const isCaptureKind = (k: string) => (CAPTURE_KINDS as readonly string[]).includes(k);
+/** The kinds whose job row is a draft (SPEC 6.5): the captures and generation (issue #41). */
+export const DRAFT_KINDS = ['extract_url', 'extract_paste', 'extract_photos', 'generate'] as const;
+export const isDraftKind = (k: string) => (DRAFT_KINDS as readonly string[]).includes(k);
 
 export type JobRow = {
 	id: string;

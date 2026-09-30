@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrate } from './migrate';
@@ -51,10 +51,10 @@ describe('migrate', () => {
 		expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'a'").get()).toBeUndefined();
 	});
 
-	it('applies the real 001 schema', () => {
+	it('applies the real schema', () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		expect(version(db)).toBe(1);
+		expect(version(db)).toBe(2);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 			.all()
@@ -73,5 +73,27 @@ describe('migrate', () => {
 			'recipe_fts'
 		])
 			expect(tables).toContain(t);
+	});
+
+	it('002 lets the job table take generate jobs and keeps its rows and index', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'mig-'));
+		copyFileSync('migrations/001_schema.sql', join(dir, '001_schema.sql'));
+		const db = new Database(':memory:');
+		migrate(db, dir);
+		const insert = db.prepare(
+			`INSERT INTO job (id, kind, status, input_json, created_at) VALUES (?, ?, 'queued', '{}', '2026')`
+		);
+		insert.run('old', 'extract_paste');
+		expect(() => insert.run('early', 'generate')).toThrow(/CHECK/);
+
+		copyFileSync('migrations/002_generate_kind.sql', join(dir, '002_generate_kind.sql'));
+		migrate(db, dir);
+		expect(version(db)).toBe(2);
+		insert.run('gen', 'generate');
+		expect(() => insert.run('bad', 'bogus')).toThrow(/CHECK/);
+		expect(db.prepare('SELECT id FROM job ORDER BY id').all()).toEqual([{ id: 'gen' }, { id: 'old' }]);
+		expect(
+			db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job'`).all()
+		).toContainEqual({ name: 'job_pending' });
 	});
 });

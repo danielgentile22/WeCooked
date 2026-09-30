@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { createRecipe } from './recipes';
-import { CAPTURE_KINDS, isCaptureKind, type JobRow } from './jobs';
+import { DRAFT_KINDS, isDraftKind, type JobRow } from './jobs';
 import { presignGet } from './r2';
 import { draftToInput, type CaptureInput, type RecipeDraft } from '$lib/extract';
 import type { RecipeInput } from '$lib/tags';
@@ -20,10 +20,10 @@ export function listDrafts(db: Database): DraftCard[] {
 	const rows = db
 		.prepare(
 			`SELECT id, status, input_json, result_json FROM job
-			 WHERE kind IN (${CAPTURE_KINDS.map(() => '?').join(',')}) AND recipe_id IS NULL
+			 WHERE kind IN (${DRAFT_KINDS.map(() => '?').join(',')}) AND recipe_id IS NULL
 			 ORDER BY created_at DESC`
 		)
-		.all(...CAPTURE_KINDS) as {
+		.all(...DRAFT_KINDS) as {
 		id: string;
 		status: string;
 		input_json: string;
@@ -44,10 +44,10 @@ export function listDrafts(db: Database): DraftCard[] {
 	});
 }
 
-/** The capture job behind a draft, or null if there is no such capture job. */
-export function getCaptureJob(db: Database, id: string): JobRow | null {
+/** The job behind a draft, or null if there is no such draft-kind job. */
+export function getDraftJob(db: Database, id: string): JobRow | null {
 	const job = db.prepare(`SELECT * FROM job WHERE id = ?`).get(id) as JobRow | undefined;
-	return job && isCaptureKind(job.kind) ? job : null;
+	return job && isDraftKind(job.kind) ? job : null;
 }
 
 export type DraftImage = { id: string; url: string };

@@ -14,7 +14,7 @@ import {
 } from '../recipes';
 import { keepMine, recalcVariation, requestScale, retryScale } from '../scale';
 import { createJob, getJobPoll } from '../jobs';
-import { discardDraft, draftView, getCaptureJob, retryDraft, saveDraft } from '../drafts';
+import { discardDraft, draftView, getDraftJob, retryDraft, saveDraft } from '../drafts';
 import {
 	SECTION_ORDER,
 	addManual,
@@ -59,8 +59,8 @@ async function optionalBody(req: ApiRequest): Promise<Fields> {
 
 const optionalId = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
 
-function captureJob(db: Database, id: string) {
-	const job = getCaptureJob(db, id);
+function draftJob(db: Database, id: string) {
+	const job = getDraftJob(db, id);
 	if (!job) throw new ApiError(404, 'No such draft.');
 	return job;
 }
@@ -218,7 +218,7 @@ export const routes: readonly Route[] = [
 		method: 'GET',
 		path: '/drafts/:id',
 		run: (db, req) => {
-			const job = captureJob(db, req.params.id);
+			const job = draftJob(db, req.params.id);
 			return job.recipe_id ? { recipe_id: job.recipe_id } : draftView(db, job);
 		}
 	},
@@ -226,7 +226,7 @@ export const routes: readonly Route[] = [
 		method: 'POST',
 		path: '/drafts/:id/save',
 		run: async (db, req) => {
-			const job = captureJob(db, req.params.id);
+			const job = draftJob(db, req.params.id);
 			if (job.recipe_id) return { recipe_id: job.recipe_id };
 			const input = (await body(req)) as RecipeInput;
 			return { recipe_id: guard(() => saveDraft(db, job, input)) };
@@ -236,7 +236,7 @@ export const routes: readonly Route[] = [
 		method: 'POST',
 		path: '/drafts/:id/discard',
 		run: (db, req) => {
-			const job = captureJob(db, req.params.id);
+			const job = draftJob(db, req.params.id);
 			guard(() => discardDraft(db, job));
 			return OK;
 		}
@@ -245,7 +245,7 @@ export const routes: readonly Route[] = [
 		method: 'POST',
 		path: '/drafts/:id/retry',
 		run: (db, req) => {
-			retryDraft(db, captureJob(db, req.params.id));
+			retryDraft(db, draftJob(db, req.params.id));
 			return OK;
 		}
 	},
