@@ -224,7 +224,7 @@ was not confirmed this session.
 
 `make ios-upload` archives and uploads; `make ios-archive` and
 `make ios-export` are its two halves. Bump `CURRENT_PROJECT_VERSION` in
-`project.yml` before each upload; build 1 shipped on 2026-09-30.
+`project.yml` before each upload; build 1 shipped on 2026-09-30, build 3 is the phone-side fetch (#43).
 
 Deploy the server (`fly deploy` in `server/`) before any app build that
 depends on a contract change, and confirm the machine is on the new
