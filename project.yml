@@ -65,6 +65,8 @@ targets:
       path: WeCooked/Info.plist
       properties:
         CFBundleDisplayName: We Cooked
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
           UIColorName: LaunchBackground
           UIImageName: LaunchGlyph
@@ -123,6 +125,9 @@ targets:
       path: WeCookedShare/Info.plist
       properties:
         CFBundleDisplayName: We Cooked
+        # App Store Connect wants the extension on the app's version.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         WCBaseURL: $(WC_BASE_URL)
         WCAppGroup: group.kitchen.wecooked
         WCKeychainGroup: $(AppIdentifierPrefix)kitchen.wecooked.shared

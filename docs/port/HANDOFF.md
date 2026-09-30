@@ -10,11 +10,13 @@ with its evidence.
 
 Units 1 to 7 of the plan are done and verified, except the three shopping
 flows that spend Claude calls (see unit 6 below). Unit 8's simulator half
-(icon, launch screen, haptics, the dark pass, rows 68 to 70) is done; its
-device half waits on the owner (see unit 8 below). Unit 3 landed in the
-second session (2026-09-28, evening), unit 4 in the third, unit 5 in the
-fourth, unit 6 in the fifth, unit 7 in the sixth and unit 8's simulator half
-in the seventh (all 2026-09-29).
+(icon, launch screen, haptics, the dark pass, rows 68 to 70) is done. Its
+device half is done up to TestFlight: build 0.1.0 (1) is on TestFlight and
+installed on the owner's phone (see unit 8 and TestFlight below). Unit 3
+landed in the second session (2026-09-28, evening), unit 4 in the third,
+unit 5 in the fourth, unit 6 in the fifth, unit 7 in the sixth, unit 8's
+simulator half in the seventh (all 2026-09-29) and the device and
+TestFlight block in the eighth (2026-09-30).
 
 - `server/` is the SvelteKit app, unchanged for the web and now also serving
   `/api/v1` (table in `server/src/routes/api/v1/README.md`). Its tests write
@@ -87,14 +89,17 @@ half and back). Logs of the last runs are in `logs/`.
 
 ## Still needed from the owner
 
-- **Apple Team ID**, for device builds and TestFlight. This is the only
-  thing between the repo and a first device build. Two ways to find it:
-  open <https://developer.apple.com/account>, then Membership details, and
-  copy the 10-character Team ID. Or run `xcodegen generate`, open
-  `WeCooked.xcodeproj`, select the WeCooked target, Signing & Capabilities,
-  and pick your team in the Team dropdown, which shows the ID in
-  parentheses. Put it in `Config/Local.xcconfig` (copy
-  `Config/Local.xcconfig.example`). That file is ignored by git.
+- **The second tester's Apple ID email and name.** Internal TestFlight
+  testers must be App Store Connect users, so the lead invites them with
+  the Customer Support role limited to this app (`invite` in the session's
+  API script, or Users and Access on the site), they accept from the
+  email, and the lead adds them to the Internal group. The owner's own
+  invite only took once the email link was opened on the phone, because
+  TestFlight follows the App Store Apple ID, not the iCloud one.
+- **Proof of the shared Keychain on a device.** Sign in on the phone, kill
+  the app, reopen it. Landing on Recipes without the password is the
+  proof. Haptics and the icon in light and dark are also the owner's to
+  feel and see, and the Phone column of the parity checklist is theirs.
 - **A Claude allowance for unit 6's three gated tests** (four calls: one
   build, two for a rebuild that keeps and resets ticks, one retry of a
   forged failure), then `WC_CLAUDE=1 make ios-ui-test-unit6`. Until then row
@@ -197,15 +202,15 @@ simulator with seeded data, then in the Phone column by the owner.
    the simulator's home screen keeps light icons in dark mode, so the dark
    icon is proven by `assetutil` on the built `Assets.car`, not a
    screenshot. Haptics do not play on the simulator; the owner feels them on
-   the phone. Still to do, all needing the Team ID in `Config/Local.xcconfig`:
-   first device build (the first real run of the shared Keychain group,
-   expect `errSecMissingEntitlement` if the access group prefix is wrong),
-   `blast-radius` before any signing or entitlement change since both
-   targets share the groups, the App Store Connect record, a TestFlight
-   upload confirmed with the owner first, and a decision on whether the
-   inert share extension ships in the archive. A Debug device build also
-   needs `WC_BASE_URL` in `Local.xcconfig` pointing at the Mac's LAN
-   address, or a Release build against production.
+   the phone. The device half landed in the eighth session: the Team ID
+   is in `Config/Local.xcconfig` (ignored), both targets sign automatically
+   with the app group and the Keychain group, a Release build against
+   production runs on the owner's iPhone 15 Pro Max, the App Store Connect
+   record exists and build 0.1.0 (1) is on TestFlight. The inert share
+   extension ships in the build; the test notes say so. `blast-radius`
+   still applies before any signing or entitlement change since both
+   targets share the groups. A Debug device build needs `WC_BASE_URL` in
+   `Local.xcconfig` pointing at the Mac's LAN address.
 
 `make ios-test` runs the whole `WeCooked` scheme minus the UI tests. To
 grow the UI suite for a unit, add `UnitNTests.swift` next to `Unit3Tests`
@@ -214,6 +219,32 @@ and reuse its `launch`, `snap` and `openRecipe` helpers.
 Also before the next commit that touches CI: add a macOS job that runs
 `swift test` in `WeCookedKit`. It needs a runner image with Xcode 27, which
 was not confirmed this session.
+
+## TestFlight
+
+`make ios-upload` archives and uploads; `make ios-archive` and
+`make ios-export` are its two halves. Bump `CURRENT_PROJECT_VERSION` in
+`project.yml` before each upload; build 1 shipped on 2026-09-30.
+
+- The archive authenticates with the App Store Connect API key named in
+  `server/.env` (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`; the `.p8`
+  lives in `~/.appstoreconnect/private_keys/`, owner-only). The key has
+  the App Manager role. It can read and update everything but cannot
+  create an app record (the API forbids it; the record was made on the
+  site) and cannot use cloud-managed distribution certificates, so the
+  export step authenticates with the Apple ID signed into Xcode instead.
+- Signing needs the login keychain unlocked in the same login session as
+  the build. Over ssh the keychain is locked, `codesign` fails with
+  `errSecInternalComponent`, and an unlock in another terminal does not
+  carry over. Run `security unlock-keychain ~/Library/Keychains/login.keychain-db`
+  in the terminal, then `make ios-upload` in that same terminal, or start
+  Claude Code from that terminal.
+- The export pins `PATH` to the system directories because Apple's
+  openrsync spawns `rsync` from `PATH` as its server and the Homebrew
+  rsync rejects its options; the symptom is `exportArchive Copy failed`.
+- Internal testing: one internal group named Internal with access to all
+  builds, so new builds need no group step. Build 1 carries test notes and
+  `ITSAppUsesNonExemptEncryption` is false, so no compliance prompt.
 
 ## After parity
 

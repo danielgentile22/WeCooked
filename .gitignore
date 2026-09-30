@@ -42,3 +42,4 @@ WeCooked/Info.plist
 WeCookedShare/Info.plist
 *.entitlements
 Config/Local.xcconfig
+build/
