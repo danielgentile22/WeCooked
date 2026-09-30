@@ -43,7 +43,9 @@
 		<h1>Review draft</h1>
 	</header>
 
-	{#if extracting}
+	{#if 'candidates' in data}
+		<p class="working">Pick a recipe on the phone.</p>
+	{:else if extracting}
 		<p class="working" role="status">
 			<LoaderCircle class="spin" aria-hidden="true" /> Extracting… You can leave this page; the draft
 			card on Recipes will be ready to review.
