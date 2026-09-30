@@ -57,6 +57,17 @@ public enum ShoppingLayout {
 		(items.filter { pending[$0.id] ?? $0.ticked }.count, items.count)
 	}
 
+	/// The list as plain text for the share sheet, to paste into a shop's app,
+	/// Notes, or a message: unticked items one per line, then unticked staples
+	/// under "Check you have". Nil when nothing is left to buy.
+	public static func shareText(_ sections: [ShoppingSection]) -> String? {
+		let untickedLines = { (section: ShoppingSection) in section.rows.filter { !$0.ticked }.map(\.primary) }
+		let items = sections.filter { !$0.isCollapsedByDefault }.flatMap(untickedLines)
+		let staples = sections.filter(\.isCollapsedByDefault).flatMap(untickedLines)
+		let blocks = [items, staples.isEmpty ? [] : ["Check you have"] + staples].filter { !$0.isEmpty }
+		return blocks.isEmpty ? nil : blocks.map { $0.joined(separator: "\n") }.joined(separator: "\n\n")
+	}
+
 	/// Text for the once-per-build banner, or nil when nothing was lost.
 	public static func rebuildNotice(_ r: BuildResult) -> String? {
 		guard !r.reset.isEmpty else { return nil }
@@ -115,6 +126,10 @@ public final class ShoppingModel {
 
 	public var progress: (ticked: Int, total: Int) {
 		ShoppingLayout.progress(items: items, pending: env.device.pendingTicks)
+	}
+
+	public var shareText: String? {
+		phase == .building ? nil : ShoppingLayout.shareText(sections)
 	}
 
 	public var units: UnitSystem { env.device.units }

@@ -59,6 +59,8 @@ final class Unit6Tests: PortUITest {
 
 	func testRows54To56ListSectionsAndHeader() {
 		openShopping(header: forgedHeader)
+		XCTAssertTrue(el("shopping-share").exists, "the share button shows")
+		XCTAssertTrue(el("shopping-share").isEnabled, "a list with unticked items can be shared")
 		assertOrder(["Produce", "Meat and fish", "Dairy", "Dry goods", "Spices", "Other"])
 
 		let harissa = reveal(item("1 jar harissa"))
@@ -210,6 +212,13 @@ final class Unit6Tests: PortUITest {
 		expect(empty.waitForExistence(timeout: 10), "the empty state shows", snapshot: "empty")
 		XCTAssertTrue(app.buttons["Add recipes"].exists)
 		XCTAssertFalse(header.exists, "no count without a list")
+	}
+
+	func testRow76ShareDisabledOnEmptyList() {
+		openShopping()
+		let share = el("shopping-share")
+		expect(share.waitForExistence(timeout: 10), "the share button shows", snapshot: "share-disabled")
+		XCTAssertFalse(share.isEnabled, "an empty list cannot be shared")
 	}
 
 	// MARK: Gated (each spends Claude calls)

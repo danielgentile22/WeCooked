@@ -38,6 +38,14 @@ private struct ShoppingScreen: View {
 			}
 		}
 		.navigationTitle("Shopping")
+		.toolbar {
+			ToolbarItem(placement: .topBarTrailing) {
+				let text = model.shareText
+				ShareLink(item: text ?? "")
+					.disabled(text == nil)
+					.accessibilityIdentifier("shopping-share")
+			}
+		}
 		.watching(model.resource, every: .seconds(5))
 		.task { await model.appear() }
 		.confirmationDialog(

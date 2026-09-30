@@ -171,6 +171,14 @@ struct ShoppingModelTests {
 		#expect(model.buildError == "The build failed.")
 	}
 
+	@Test func shareTextWaitsForTheBuild() throws {
+		let model = try Self.model(Self.env(FakeServer()))
+		#expect(model.shareText != nil)
+		model.resource.replace(try Self.withBuild(ShoppingBuild(
+			jobId: "01TEST00000000000000000042", status: .pending, errorText: nil, result: nil)))
+		#expect(model.shareText == nil)
+	}
+
 	@Test func addManualPostsAndRefetches() async throws {
 		let server = FakeServer([
 			"POST \(Self.base)/manual": Self.ok, "GET \(Self.base)": FakeServer.fixture("shopping-get"),

@@ -120,6 +120,43 @@ struct ShoppingLayoutTests {
 		#expect(s.flatMap(\.rows).first { $0.id == id }?.ticked == true)
 		#expect(ShoppingLayout.progress(items: items, pending: [id: true]).ticked == 2)
 	}
+
+	static let chickpeas: ShoppingItemID = "01TEST00000000000000000029"
+	static let oliveOil: ShoppingItemID = "01TEST00000000000000000030"
+	static let binBags: ShoppingItemID = "01TEST00000000000000000031"
+
+	static func shareText(
+		_ fixture: String = "shopping-get", units: UnitSystem = .metric, pending: [ShoppingItemID: Bool] = [:]
+	) throws -> String? {
+		let reply = try Wire.makeDecoder().decode(ShoppingResponse.self, from: Fixtures.data(fixture))
+		return ShoppingLayout.shareText(ShoppingLayout.sections(
+			items: reply.list.items, order: Self.order, units: units, pending: pending))
+	}
+
+	@Test func shareTextListsUntickedItemsThenStaples() throws {
+		#expect(try Self.shareText() == "600 g tinned chickpeas\nbin bags\n\nCheck you have\nolive oil")
+	}
+
+	@Test func shareTextFollowsTheUnitSystem() throws {
+		#expect(try Self.shareText(units: .us) == "21 oz canned chickpeas\nbin bags\n\nCheck you have\nolive oil")
+	}
+
+	@Test func aTickedStapleDropsTheWholeCheckBlock() throws {
+		#expect(try Self.shareText(pending: [Self.oliveOil: true]) == "600 g tinned chickpeas\nbin bags")
+	}
+
+	@Test func staplesAloneStartAtCheckYouHave() throws {
+		#expect(try Self.shareText(pending: [Self.chickpeas: true, Self.binBags: true]) == "Check you have\nolive oil")
+	}
+
+	@Test func anAllTickedListSharesNothing() throws {
+		let all = Dictionary(uniqueKeysWithValues: try Self.response().list.items.map { ($0.id, true) })
+		#expect(try Self.shareText(pending: all) == nil)
+	}
+
+	@Test func anEmptyListSharesNothing() throws {
+		#expect(try Self.shareText("shopping-get-empty") == nil)
+	}
 }
 
 struct RecipeDisplayTests {

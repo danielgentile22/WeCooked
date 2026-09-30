@@ -19,6 +19,7 @@ FREE=(
 	testRow62AddManualLine
 	testRow63DoneShoppingAsksThenClears
 	testRow64EmptyState
+	testRow76ShareDisabledOnEmptyList
 )
 GATED=(
 	testRow59BuildCompletes
@@ -35,7 +36,7 @@ prep_for() {
 	testRow59BuildingBannerAndSkeletons) prep stuck-build ;;
 	testRow60RebuildNoticeShownOnce) prep rebuild-result ;;
 	testRow61FailedBuildShowsRetry | testRow61RetryAfterFailure) prep fail-build ;;
-	testRow64EmptyState | testRow59BuildCompletes | testRow60RebuildKeepsAndResets) prep clear ;;
+	testRow64EmptyState | testRow76ShareDisabledOnEmptyList | testRow59BuildCompletes | testRow60RebuildKeepsAndResets) prep clear ;;
 	*) echo "Unknown test: $1" >&2 && return 1 ;;
 	esac
 }

@@ -963,6 +963,12 @@ List behaviour:
   optimistically on the ticking phone. Conflicts are last write wins per item;
   a double tick is idempotent. No websockets.
 - Manual lines can be added by hand and survive rebuilds.
+- **Share as text** (native app). A toolbar share button opens the system
+  share sheet with the list as plain text: unticked lines one per line in
+  list order, then the unticked staples under a "Check you have" line. Ticked
+  lines are left out. The button is disabled while a build runs and when
+  nothing is left to buy. No server involvement; the sheet's own Copy is how
+  the list gets into another shop's app.
 - Changing the recipe set rebuilds the merge. Ticks are preserved where item
   text matches exactly and reset otherwise. This is a deliberately dumb rule:
   fuzzy matching would sometimes keep a tick it should not, which is worse in a
