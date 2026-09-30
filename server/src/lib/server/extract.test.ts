@@ -228,7 +228,7 @@ describe('asUrl (SPEC 7.1 text-or-URL detection)', () => {
 	});
 });
 
-describe('findRecipeJsonLd (SPEC 7.1 step 3)', () => {
+describe('findRecipeJsonLd (SPEC 7.1 step 5)', () => {
 	const wrap = (json: unknown) =>
 		`<html><head><script type="application/ld+json">${JSON.stringify(json)}</script></head></html>`;
 
@@ -256,7 +256,7 @@ describe('findRecipeJsonLd (SPEC 7.1 step 3)', () => {
 	});
 });
 
-describe('stripHtml (SPEC 7.1 step 4)', () => {
+describe('stripHtml (SPEC 7.1 step 6)', () => {
 	it('drops scripts and styles, keeps text, decodes entities', () => {
 		const text = stripHtml(
 			'<head><style>p{color:red}</style><script>var x=1</script></head>' +

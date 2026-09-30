@@ -1,5 +1,5 @@
 import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
-import { hasRecipe, type RecipeDraft } from '$lib/extract';
+import { hasRecipe, type CaptureInput, type RecipeDraft } from '$lib/extract';
 import type { Database } from 'better-sqlite3';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -165,7 +165,7 @@ async function extract(
 export const extractPaste: JobHandler = (job, db) =>
 	extract(db, (JSON.parse(job.input_json) as { text: string }).text);
 
-// SPEC 7.1 URL path, steps 1-2: 10 s timeout, desktop UA, up to 5 redirects
+// SPEC 7.1 URL path, steps 3-4: 10 s timeout, desktop UA, up to 5 redirects
 // followed manually (native fetch allows 20). 401, 402, 403 and 429 are
 // fetch_blocked and never retried or escalated (ADR-010); publishers answer
 // bots with all four. Everything else broken is fetch_failed.
@@ -232,7 +232,6 @@ export async function fetchPage(
 	const signal = AbortSignal.timeout(10_000);
 	let current = url;
 	for (let hop = 0; hop <= 5; hop++) {
-		current = trimTrailingPunctuation(current);
 		// Every hop, not just the first: a public page can redirect inward.
 		let target: URL;
 		try {
@@ -255,7 +254,7 @@ export async function fetchPage(
 		if (res.status >= 300 && res.status < 400) {
 			const loc = res.headers.get('location');
 			if (!loc) throw new JobError('fetch_failed', `Redirect without Location from ${current}`);
-			current = new URL(loc, current).href;
+			current = trimTrailingPunctuation(new URL(loc, current).href);
 			continue;
 		}
 		if (!res.ok) throw new JobError('fetch_failed', `HTTP ${res.status} from ${current}`);
@@ -269,7 +268,7 @@ const isRecipeType = (d: unknown): boolean => {
 	return t === 'Recipe' || (Array.isArray(t) && t.includes('Recipe'));
 };
 
-/** SPEC 7.1 step 3: first schema.org Recipe object, including inside @graph. */
+/** SPEC 7.1 step 5: first schema.org Recipe object, including inside @graph. */
 export function findRecipeJsonLd(html: string): object | null {
 	const re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 	for (const [, block] of html.matchAll(re)) {
@@ -298,7 +297,7 @@ const decodeEntities = (s: string) =>
 		return code <= 0x10ffff ? String.fromCodePoint(code) : m;
 	});
 
-/** SPEC 7.1 step 4: 300 kB of blog HTML down to the readable text. */
+/** SPEC 7.1 step 6: 300 kB of blog HTML down to the readable text. */
 export function stripHtml(html: string): string {
 	return decodeEntities(
 		html
@@ -359,11 +358,7 @@ export const extractUrl = async (
 	db: Database,
 	fetchPageFn: (url: string) => Promise<string> = fetchPage
 ): Promise<RecipeDraft> => {
-	const { url, page, text } = JSON.parse(job.input_json) as {
-		url: string;
-		page?: string;
-		text?: string;
-	};
+	const { url, page, text } = JSON.parse(job.input_json) as CaptureInput & { url: string };
 	try {
 		return await extract(db, page ?? pageContent(await fetchPageFn(url)));
 	} catch (e) {

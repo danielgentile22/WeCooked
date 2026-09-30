@@ -540,9 +540,11 @@ Rules:
 
 User content per path:
 
-- **URL**: `{stripped page text}` plus, when found, `Authoritative structured
-  data from the page (schema.org Recipe JSON-LD), use these ingredients and
-  steps verbatim: {json}`.
+- **URL**: `{stripped page text}`, then `Page description: {og:description
+  or meta description}` when the page has one (an Instagram reel keeps its
+  caption there), then, when found, `Authoritative structured data from the
+  page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim:
+  {json}`. Blocks are joined by blank lines and empty ones are skipped.
 - **Paste**: the pasted text as-is.
 - **Photos**: 1 to N image blocks, then `These images are pages of a printed
   cookbook, in order. They may be a two-page spread or a recipe continued on a

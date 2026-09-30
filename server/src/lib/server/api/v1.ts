@@ -81,7 +81,7 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 		if (!url) throw bad('That is not a link. Share a web page instead.');
 		const html = b.html ?? '';
 		if (typeof html !== 'string') throw bad('Malformed submission.');
-		// Issue #43: the phone's rendered HTML (up to about 2 MB) is reduced here,
+		// Issue #43: the phone's rendered HTML (up to 4 MB) is reduced here,
 		// so the job row stays small and a retry re-extracts from the stored page.
 		// A page that reduces to nothing counts as absent, so the server still fetches.
 		const page = (html && pageContent(html)) || undefined;

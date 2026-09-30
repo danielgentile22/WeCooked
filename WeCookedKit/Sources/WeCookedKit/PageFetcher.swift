@@ -12,7 +12,10 @@ public enum PageFetcher {
 	/// Client-rendered JSON-LD lands after `didFinish`; Pinterest needs about a second.
 	static let settle: Duration = .seconds(1.5)
 
-	public static func html(of url: URL, timeout: Duration = .seconds(15)) async -> String? {
+	static let timeout: Duration = .seconds(15)
+
+	/// Nil after `timeout`; the server then fetches the page itself.
+	public static func html(of url: URL) async -> String? {
 		let rules = await blockRules()
 		let loader = Loader(rules: rules)
 		return await loader.load(url, timeout: timeout)
@@ -40,7 +43,8 @@ public enum PageFetcher {
 	@MainActor private final class Loader: NSObject, WKNavigationDelegate {
 		private var webView: WKWebView?
 		private var continuation: CheckedContinuation<String?, Never>?
-		private var pending: [Task<Void, Never>] = []
+		private var timeoutTask: Task<Void, Never>?
+		private var settleTask: Task<Void, Never>?
 
 		init(rules: WKContentRuleList?) {
 			let configuration = WKWebViewConfiguration()
@@ -54,10 +58,10 @@ public enum PageFetcher {
 		func load(_ url: URL, timeout: Duration) async -> String? {
 			await withCheckedContinuation { continuation in
 				self.continuation = continuation
-				pending.append(Task { [weak self] in
+				timeoutTask = Task { [weak self] in
 					try? await Task.sleep(for: timeout)
 					self?.finish(nil)
-				})
+				}
 				webView?.load(URLRequest(url: url))
 			}
 		}
@@ -65,19 +69,22 @@ public enum PageFetcher {
 		private func finish(_ html: String?) {
 			guard let continuation else { return }
 			self.continuation = nil
-			for task in pending { task.cancel() }
-			pending = []
+			timeoutTask?.cancel()
+			settleTask?.cancel()
 			webView?.stopLoading()
 			webView?.navigationDelegate = nil
 			webView = nil
 			continuation.resume(returning: html)
 		}
 
+		/// A page that navigates itself again restarts the settle, so the read
+		/// sees the final document rather than the one mid-replacement.
 		func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-			pending.append(Task { [weak self] in
+			settleTask?.cancel()
+			settleTask = Task { [weak self] in
 				guard (try? await Task.sleep(for: PageFetcher.settle)) != nil else { return }
 				await self?.readDocument()
-			})
+			}
 		}
 
 		func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
