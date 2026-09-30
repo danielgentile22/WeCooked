@@ -166,8 +166,9 @@ export const extractPaste: JobHandler = (job, db) =>
 	extract(db, (JSON.parse(job.input_json) as { text: string }).text);
 
 // SPEC 7.1 URL path, steps 1-2: 10 s timeout, desktop UA, up to 5 redirects
-// followed manually (native fetch allows 20). 403/401 is fetch_blocked and
-// never retried or escalated (ADR-010); everything else broken is fetch_failed.
+// followed manually (native fetch allows 20). 401, 402, 403 and 429 are
+// fetch_blocked and never retried or escalated (ADR-010); publishers answer
+// bots with all four. Everything else broken is fetch_failed.
 const DESKTOP_UA =
 	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
@@ -193,6 +194,12 @@ PRIVATE.addSubnet('fe80::', 10, 'ipv6');
 
 // Fly's private DNS names (*.internal, *.flycast) and localhost never leave the box.
 const PRIVATE_HOST = /(^|\.)(localhost|internal|flycast)$/;
+
+const BLOCKED_STATUSES = [401, 402, 403, 429];
+
+// Google's share.google redirects append a stray comma (seen: "?shem=aimgspe,").
+// Parentheses stay: Wikipedia-style paths end in one.
+const trimTrailingPunctuation = (url: string) => url.replace(/[,.;]+$/, '');
 
 export type ResolveFn = (host: string) => Promise<string[]>;
 const resolveAll: ResolveFn = async (host) =>
@@ -225,6 +232,7 @@ export async function fetchPage(
 	const signal = AbortSignal.timeout(10_000);
 	let current = url;
 	for (let hop = 0; hop <= 5; hop++) {
+		current = trimTrailingPunctuation(current);
 		// Every hop, not just the first: a public page can redirect inward.
 		let target: URL;
 		try {
@@ -243,7 +251,7 @@ export async function fetchPage(
 		} catch (e) {
 			throw new JobError('fetch_failed', e instanceof Error ? e.message : String(e));
 		}
-		if (res.status === 403 || res.status === 401) throw new JobError('fetch_blocked');
+		if (BLOCKED_STATUSES.includes(res.status)) throw new JobError('fetch_blocked');
 		if (res.status >= 300 && res.status < 400) {
 			const loc = res.headers.get('location');
 			if (!loc) throw new JobError('fetch_failed', `Redirect without Location from ${current}`);
@@ -282,18 +290,23 @@ export function findRecipeJsonLd(html: string): object | null {
 // HTML is stripped with regexes. Swap in a real parser if a site defeats them.
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', nbsp: ' ' };
 
+const decodeEntities = (s: string) =>
+	s.replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e: string) => {
+		if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+		const code = parseInt(e.slice(e[1] === 'x' ? 2 : 1), e[1] === 'x' ? 16 : 10);
+		// fromCodePoint throws past U+10FFFF, and the HTML is untrusted.
+		return code <= 0x10ffff ? String.fromCodePoint(code) : m;
+	});
+
 /** SPEC 7.1 step 4: 300 kB of blog HTML down to the readable text. */
 export function stripHtml(html: string): string {
-	return html
-		.replace(/<!--[\s\S]*?-->/g, ' ')
-		.replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-		.replace(/<(?:\/?(?:p|div|li|ul|ol|h[1-6]|tr|table|section|article|header|footer)\b[^>]*|br\s*\/?)>/gi, '\n')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e: string) =>
-			e[0] === '#'
-				? String.fromCodePoint(parseInt(e.slice(e[1] === 'x' ? 2 : 1), e[1] === 'x' ? 16 : 10))
-				: (ENTITIES[e.toLowerCase()] ?? m)
-		)
+	return decodeEntities(
+		html
+			.replace(/<!--[\s\S]*?-->/g, ' ')
+			.replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+			.replace(/<(?:\/?(?:p|div|li|ul|ol|h[1-6]|tr|table|section|article|header|footer)\b[^>]*|br\s*\/?)>/gi, '\n')
+			.replace(/<[^>]+>/g, ' ')
+	)
 		.replace(/[^\S\n]+/g, ' ')
 		.replace(/\s*\n\s*/g, '\n')
 		.trim();
@@ -303,24 +316,56 @@ export function stripHtml(html: string): string {
 const JSONLD_PREAMBLE =
 	'Authoritative structured data from the page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim: ';
 
+/** og:description, else name=description: a reel page's whole caption lives there. */
+function metaDescription(html: string): string {
+	const metas = [...html.matchAll(/<meta\b[^>]*>/gi)].map(([tag]) =>
+		Object.fromEntries(
+			[...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map(([, k, dq, sq]) => [
+				k.toLowerCase(),
+				dq ?? sq
+			])
+		)
+	);
+	const content = (attr: string, value: string) =>
+		decodeEntities(metas.find((m) => m[attr]?.toLowerCase() === value)?.content ?? '').trim();
+	return content('property', 'og:description') || content('name', 'description');
+}
+
+/** The extract_url user content for a page's HTML (SPEC 5.4): the readable
+ *  text, the page description, then the JSON-LD preamble. Runs on fetched
+ *  HTML and, at ingest, on the HTML the phone rendered (issue #43). */
+export function pageContent(html: string): string {
+	const description = metaDescription(html);
+	const jsonLd = findRecipeJsonLd(html);
+	return [
+		// Cap at 100k characters so a pathological page cannot blow the context.
+		stripHtml(html).slice(0, 100_000),
+		description && `Page description: ${description}`,
+		jsonLd && `${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`
+	]
+		.filter(Boolean)
+		.join('\n\n');
+}
+
 // Issue #39: a reel page blocks fetchers or strips to a login wall, but the
 // caption the cook pasted alongside the link still holds the recipe.
 const FALLBACK_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked', 'no_recipe_found'];
 
-/** Handler for the extract_url job kind: input_json is { url, text? }. */
+/** Handler for the extract_url job kind: input_json is { url, page?, text? }.
+ *  page is pageContent of the HTML the phone rendered; when present the
+ *  server never fetches (issue #43). */
 export const extractUrl = async (
 	job: JobRow,
 	db: Database,
 	fetchPageFn: (url: string) => Promise<string> = fetchPage
 ): Promise<RecipeDraft> => {
-	const { url, text } = JSON.parse(job.input_json) as { url: string; text?: string };
+	const { url, page, text } = JSON.parse(job.input_json) as {
+		url: string;
+		page?: string;
+		text?: string;
+	};
 	try {
-		const html = await fetchPageFn(url);
-		const jsonLd = findRecipeJsonLd(html);
-		// Cap at 100k characters so a pathological page cannot blow the context.
-		let content = stripHtml(html).slice(0, 100_000);
-		if (jsonLd) content += `\n\n${JSONLD_PREAMBLE}${JSON.stringify(jsonLd)}`;
-		return await extract(db, content);
+		return await extract(db, page ?? pageContent(await fetchPageFn(url)));
 	} catch (e) {
 		if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
 		return extract(db, text);

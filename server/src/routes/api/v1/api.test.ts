@@ -506,6 +506,36 @@ describe('/api/v1', () => {
 		});
 	});
 
+	it('POST /captures: phone-rendered page (issue #43)', async () => {
+		await fails('POST', '/captures', 400, 'Malformed submission.', {
+			body: { url: 'https://www.example.com/r', html: 42 }
+		});
+		const html =
+			'<meta property="og:description" content="Caption: 2 eggs &amp; toast">' +
+			'<p>Fried eggs</p><script>window.tracker = 1</script>';
+		const rendered = await ok('POST', '/captures', { body: { url: 'https://www.example.com/r', html } });
+		const page = 'Fried eggs\n\nPage description: Caption: 2 eggs & toast';
+		expect(JSON.parse(job(rendered.job_id)!.input_json)).toEqual({ url: 'https://www.example.com/r', page });
+		expect(job(rendered.job_id)!.input_json).not.toContain('<script');
+
+		const captioned = await ok('POST', '/captures', {
+			body: { url: 'https://www.example.com/r', html, text: ' My note ' }
+		});
+		expect(JSON.parse(job(captioned.job_id)!.input_json)).toEqual({
+			url: 'https://www.example.com/r',
+			page,
+			text: 'My note'
+		});
+
+		const blank = await ok('POST', '/captures', { body: { url: 'https://www.example.com/r', html: '' } });
+		expect(JSON.parse(job(blank.job_id)!.input_json)).toEqual({ url: 'https://www.example.com/r' });
+
+		const empty = await ok('POST', '/captures', {
+			body: { url: 'https://www.example.com/r', html: '<html><body><script>x()</script></body></html>' }
+		});
+		expect(JSON.parse(job(empty.job_id)!.input_json)).toEqual({ url: 'https://www.example.com/r' });
+	});
+
 	it('records an error body', async () => {
 		fixture('error', (await call('GET', '/recipes/missing')).body);
 	});

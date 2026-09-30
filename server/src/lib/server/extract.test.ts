@@ -8,6 +8,7 @@ import {
 	extractUrl,
 	fetchPage as realFetchPage,
 	findRecipeJsonLd,
+	pageContent,
 	photoBlocks,
 	stripHtml,
 	PHOTOS_INSTRUCTION
@@ -105,6 +106,31 @@ describe('fetchPage (SPEC 7.1 URL path)', () => {
 	it('fails immediately with fetch_blocked on 403 and 401', async () => {
 		expect(await code(fetchPage('https://x.com', async () => resp(403)))).toBe('fetch_blocked');
 		expect(await code(fetchPage('https://x.com', async () => resp(401)))).toBe('fetch_blocked');
+	});
+
+	it('treats 402 and 429 as fetch_blocked too (issue #43)', async () => {
+		expect(await code(fetchPage('https://x.com', async () => resp(402)))).toBe('fetch_blocked');
+		expect(await code(fetchPage('https://x.com', async () => resp(429)))).toBe('fetch_blocked');
+	});
+
+	it('drops the trailing comma Google appends to a redirect target', async () => {
+		const seen: string[] = [];
+		await fetchPage('https://share.google/abc', async (url) => {
+			seen.push(String(url));
+			return seen.length === 1
+				? resp(302, '', { location: 'https://www.seriouseats.com/eggs-recipe?shem=aimgspe,' })
+				: resp(200, 'landed');
+		});
+		expect(seen[1]).toBe('https://www.seriouseats.com/eggs-recipe?shem=aimgspe');
+	});
+
+	it('keeps a trailing parenthesis in a URL', async () => {
+		const seen: string[] = [];
+		await fetchPage('https://en.wikipedia.org/wiki/Salsa_(sauce)', async (url) => {
+			seen.push(String(url));
+			return resp(200, 'ok');
+		});
+		expect(seen).toEqual(['https://en.wikipedia.org/wiki/Salsa_(sauce)']);
 	});
 
 	it('follows redirects, resolving relative locations', async () => {
@@ -322,10 +348,45 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 	});
 });
 
+describe('pageContent (issue #43)', () => {
+	it('is the stripped text alone when the page has no description or JSON-LD', () => {
+		expect(pageContent('<p>Toast the bread.</p><script>track()</script>')).toBe('Toast the bread.');
+	});
+
+	it('adds the meta description, decoded, which is all a reel page carries', () => {
+		const html = '<meta name="description" content="Caption: 2 eggs &amp; toast &#233;clair"><p>Log in</p>';
+		expect(pageContent(html)).toBe('Log in\n\nPage description: Caption: 2 eggs & toast \u00e9clair');
+	});
+
+	it('prefers og:description over name=description, in either attribute order', () => {
+		const html =
+			'<meta name="description" content="short"><meta content="the full caption" property="og:description">';
+		expect(pageContent(html)).toBe('Page description: the full caption');
+	});
+
+	it('skips an empty description and falls back to the next one', () => {
+		const html = '<meta property="og:description" content="  "><meta name="description" content="short">';
+		expect(pageContent(html)).toBe('Page description: short');
+	});
+
+	it('still appends the JSON-LD preamble after the description', () => {
+		const html =
+			'<meta property="og:description" content="Soup"><p>Body</p>' +
+			'<script type="application/ld+json">{"@type":"Recipe","name":"Soup"}</script>';
+		const content = pageContent(html);
+		expect(content).toMatch(/^Body\n\nPage description: Soup\n\nAuthoritative structured data/);
+		expect(content).toMatch(/\{"@type":"Recipe","name":"Soup"\}$/);
+	});
+
+	it('leaves an out-of-range numeric entity alone instead of throwing', () => {
+		expect(pageContent('<p>a &#99999999; b</p>')).toBe('a &#99999999; b');
+	});
+});
+
 describe('extract_url fallback (issue #39)', () => {
 	const db = new Database(':memory:');
 	const caption = 'Caption: 2 eggs, fry them.';
-	const jobRow = (input: { url: string; text?: string }) =>
+	const jobRow = (input: { url: string; page?: string; text?: string }) =>
 		({ kind: 'extract_url', input_json: JSON.stringify(input) }) as JobRow;
 	const blocked = async (): Promise<string> => {
 		throw new JobError('fetch_blocked');
@@ -360,6 +421,28 @@ describe('extract_url fallback (issue #39)', () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
 		const page = async () => '<p>Log in to see this reel</p>';
 		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
+		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
+	});
+
+	it('extracts from the phone-rendered page without fetching (issue #43)', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		const fetchSpy = vi.fn(async () => '<p>server copy</p>');
+		await extractUrl(jobRow({ url: 'https://example.com/r', page: 'Rendered page' }), db, fetchSpy);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(sentContent()).toEqual(['Rendered page']);
+	});
+
+	it('falls back to the text when the rendered page yields no recipe', async () => {
+		const empty = draft();
+		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+		const fetchSpy = vi.fn(async () => '<p>server copy</p>');
+		await extractUrl(
+			jobRow({ url: 'https://example.com/r', page: 'Log in to see this reel', text: caption }),
+			db,
+			fetchSpy
+		);
+		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
 	});
 });

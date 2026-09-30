@@ -14,8 +14,9 @@ import type {
 	RecipeInput
 } from '$lib/tags';
 
-/** A capture job's input_json: pasted text, a url, or image ids (photos later). */
-export type CaptureInput = { text?: string; url?: string; image_ids?: string[] };
+/** A capture job's input_json: pasted text, a url, or image ids. page is the
+ *  reduced content of the HTML the phone rendered for url (issue #43). */
+export type CaptureInput = { text?: string; url?: string; page?: string; image_ids?: string[] };
 
 /**
  * SPEC 7.1 text-or-URL detection: a lone link takes the URL path, anything

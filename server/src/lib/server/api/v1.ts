@@ -25,6 +25,7 @@ import {
 	setTicked
 } from '../shopping';
 import { saveImage } from '../images';
+import { pageContent } from '../extract';
 import { asUrl } from '$lib/extract';
 import { ERROR_COPY } from '$lib/jobs';
 import { CUISINES, DAMAGES, EFFORTS, MEAL_TYPES, PROTEINS, type RecipeInput } from '$lib/tags';
@@ -78,8 +79,14 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 		// Issue #39 share sheet: the link is the source; text is a caption to fall back on.
 		const url = typeof b.url === 'string' ? asUrl(b.url.trim()) : null;
 		if (!url) throw bad('That is not a link. Share a web page instead.');
-		const text = String(b.text ?? '').trim();
-		return { job_id: createJob(db, 'extract_url', text ? { url, text } : { url }) };
+		const html = b.html ?? '';
+		if (typeof html !== 'string') throw bad('Malformed submission.');
+		// Issue #43: the phone's rendered HTML (up to about 2 MB) is reduced here,
+		// so the job row stays small and a retry re-extracts from the stored page.
+		// A page that reduces to nothing counts as absent, so the server still fetches.
+		const page = (html && pageContent(html)) || undefined;
+		const text = String(b.text ?? '').trim() || undefined;
+		return { job_id: createJob(db, 'extract_url', { url, page, text }) };
 	}
 	const text = String(b.text ?? '').trim();
 	if (!text) throw bad('Paste some recipe text first.');
