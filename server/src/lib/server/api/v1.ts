@@ -131,9 +131,9 @@ function device(b: Fields) {
 	if (!device_id || device_id.length > 64) throw bad('Missing device id.');
 	const push_token = typeof b.push_token === 'string' ? b.push_token.trim().toLowerCase() : '';
 	if (!/^[0-9a-f]{64,200}$/.test(push_token)) throw bad('That push token is not valid.');
-	const environment = b.environment as PushEnvironment;
-	if (!PUSH_ENVIRONMENTS.includes(environment)) throw bad('Environment must be sandbox or production.');
-	return { device_id, push_token, environment };
+	if (!(PUSH_ENVIRONMENTS as readonly unknown[]).includes(b.environment))
+		throw bad('Environment must be sandbox or production.');
+	return { device_id, push_token, environment: b.environment as PushEnvironment };
 }
 
 function picks(v: unknown): { recipe_id: string; yield_count: unknown }[] {
