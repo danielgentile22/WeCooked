@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
-import { createJob } from './jobs';
+import { createJob, pendingCoverJob } from './jobs';
 import {
 	MEAL_TYPES,
 	CUISINES,
@@ -371,6 +371,8 @@ export type RecipeDetail = {
 	steps: string[];
 	cover_image_id: string | null;
 	images: RecipeImage[];
+	/** The cover job looking for this recipe's cover, if any (issue #44). */
+	cover_job_id: string | null;
 	variation_id: string;
 	hand_edited: boolean;
 	is_original: boolean;
@@ -421,6 +423,7 @@ export function getRecipe(db: Database, id: string, variationId?: string): Recip
 		| 'ingredients'
 		| 'steps'
 		| 'images'
+		| 'cover_job_id'
 		| 'source_units'
 		| 'bodies'
 		| 'reconvert'
@@ -527,7 +530,8 @@ export function getRecipe(db: Database, id: string, variationId?: string): Recip
 		steps: source.steps,
 		bodies,
 		reconvert,
-		images
+		images,
+		cover_job_id: pendingCoverJob(db, { recipe_id: id })
 	};
 }
 

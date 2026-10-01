@@ -637,7 +637,8 @@ describe('/api/v1', () => {
 			},
 			fetchImage: async () => found,
 			searchImages: async () => [
-				{ image_url: 'https://images.example.com/omelette.jpg', title: 'Omelette', page_url: 'https://example.com' }
+				{ image_url: 'https://images.example.com/omelette.jpg', title: 'Omelette', page_url: 'https://example.com' },
+				{ image_url: 'https://images.example.com/omelette-2.jpg', title: 'Omelette', page_url: 'https://example.com' }
 			],
 			claudePick: async () => 0
 		};
@@ -646,10 +647,8 @@ describe('/api/v1', () => {
 				id: string;
 				input_json: string;
 			}[];
-		const runCover = async (input: object) => {
-			const cover = pendingCovers().find((c) => c.input_json === JSON.stringify(input))!;
-			finishJob(cover.id, await coverHandler(deps)(job(cover.id)!, db));
-		};
+		const runJob = async (id: string) => finishJob(id, await coverHandler(deps)(job(id)!, db));
+		const runCover = (input: object) => runJob(pendingCovers().find((c) => c.input_json === JSON.stringify(input))!.id);
 
 		tick();
 		const html = '<meta property="og:image" content="/hero.jpg"><p>Toast the bread.</p>';
@@ -678,5 +677,35 @@ describe('/api/v1', () => {
 			height: 600,
 			source_url: 'https://images.example.com/omelette.jpg'
 		});
+		expect(view.recipe.cover_job_id).toBeNull();
+
+		// "Find another photo": a search past every URL already found.
+		const draftRefresh = fixture('draft-cover-refresh', await ok('POST', `/drafts/${job_id}/cover`));
+		expect(JSON.parse(job(draftRefresh.job_id)!.input_json)).toEqual({
+			draft_id: job_id,
+			replace: true,
+			exclude: ['https://www.example.com/hero.jpg']
+		});
+		expect((await ok('GET', `/drafts/${job_id}`)).cover_job_id).toBe(draftRefresh.job_id);
+		await fails('POST', `/drafts/${job_id}/cover`, 400, 'Already looking for a photo.');
+		await runJob(draftRefresh.job_id);
+		const refreshed = await ok('GET', `/drafts/${job_id}`);
+		expect(refreshed.cover_job_id).toBeNull();
+		expect(refreshed.initial.images).toEqual([
+			{ id: refreshed.initial.cover_image_id, url: expect.any(String), source_url: 'https://images.example.com/omelette.jpg' }
+		]);
+		await fails('POST', '/drafts/missing/cover', 404, 'No such draft.');
+
+		const recipeRefresh = fixture('recipe-cover-refresh', await ok('POST', `/recipes/${omelette}/cover`));
+		expect(JSON.parse(job(recipeRefresh.job_id)!.input_json).exclude).toEqual(['https://images.example.com/omelette.jpg']);
+		expect((await ok('GET', `/recipes/${omelette}`)).recipe.cover_job_id).toBe(recipeRefresh.job_id);
+		await fails('POST', `/recipes/${omelette}/cover`, 400, 'Already looking for a photo.');
+		await runJob(recipeRefresh.job_id);
+		const replaced = (await ok('GET', `/recipes/${omelette}`)).recipe;
+		expect(replaced.cover_job_id).toBeNull();
+		expect(replaced.images).toEqual([
+			expect.objectContaining({ id: replaced.cover_image_id, source_url: 'https://images.example.com/omelette-2.jpg' })
+		]);
+		await fails('POST', '/recipes/missing/cover', 404, 'Recipe not found');
 	});
 });

@@ -33,7 +33,7 @@ import {
 	setTicked
 } from '../shopping';
 import { saveImage } from '../images';
-import { BACKFILL_LIMIT, backfillCovers } from '../cover';
+import { BACKFILL_LIMIT, backfillCovers, findDraftCover, findRecipeCover } from '../cover';
 import { pageContent, pageImages } from '../extract';
 import { asUrl, type CaptureInput, type GenerateInput } from '$lib/extract';
 import { ERROR_COPY } from '$lib/jobs';
@@ -209,6 +209,16 @@ export const routes: readonly Route[] = [
 			return OK;
 		}
 	},
+	// Issue #44 "Find another photo": a cover job past the found cover.
+	{
+		method: 'POST',
+		path: '/recipes/:id/cover',
+		run: (db, req) => {
+			const jobId = guard(() => findRecipeCover(db, req.params.id));
+			if (!jobId) throw new ApiError(404, 'Recipe not found');
+			return { job_id: jobId };
+		}
+	},
 
 	{
 		method: 'POST',
@@ -287,6 +297,14 @@ export const routes: readonly Route[] = [
 		run: (db, req) => {
 			retryDraft(db, draftJob(db, req.params.id));
 			return OK;
+		}
+	},
+	{
+		method: 'POST',
+		path: '/drafts/:id/cover',
+		run: (db, req) => {
+			const job = draftJob(db, req.params.id);
+			return { job_id: guard(() => findDraftCover(db, job)) };
 		}
 	},
 

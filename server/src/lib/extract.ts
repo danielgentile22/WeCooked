@@ -36,12 +36,19 @@ export type GenerateInput = {
 	cover_image_id?: string;
 };
 
-/** A cover job's input_json (issue #44): a draft-kind job id, or a saved
- *  recipe for the backfill. */
-export type CoverInput = { draft_id: string } | { recipe_id: string };
+/** What a cover job is for (issue #44): a draft-kind job id, or a saved recipe. */
+export type CoverTarget = { draft_id: string } | { recipe_id: string };
 
-/** A done cover job's result_json. */
-export type CoverResult = { image_id: string | null; origin: 'source' | 'search' | null };
+/** A cover job's input_json. replace is "Find another photo": it searches
+ *  past the found cover, skipping exclude (image URLs already tried). */
+export type CoverInput = CoverTarget & { replace?: true; exclude?: string[] };
+
+/** A done cover job's result_json. source_url is where the image came from. */
+export type CoverResult = {
+	image_id: string | null;
+	origin: 'source' | 'search' | null;
+	source_url: string | null;
+};
 
 /**
  * SPEC 7.1 text-or-URL detection: a lone link takes the URL path, anything

@@ -13,11 +13,12 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | GET | /tags | | `{meal_types, cuisines, proteins, efforts, damages, section_order, error_copy}` | |
 | GET | /recipes?q=&meal=&cuisine=&protein=&effort=&damage= | | `{drafts: DraftCard[], recipes: {id,title,effort,damage,cover_url}[]}` | |
 | POST | /recipes | `RecipeInput` | `{id}` | 400 |
-| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh. `recipe.images[]` is `{id, url, width, height, source_url}` | 404 |
+| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh. `recipe.images[]` is `{id, url, width, height, source_url}`; `recipe.cover_job_id` is the cover job running for the recipe (directly or through its draft), else null | 404 |
 | PUT | /recipes/:id | `{payload: RecipeInput, variation_id?}` | `{id, variation_id}` (null means the original) | 400 |
 | DELETE | /recipes/:id | | `{ok:true}` (to Trash) | |
 | POST | /recipes/:id/calculate | `{to_count}` | `{variation_id}` if that yield exists, else `{job_id}` | 400 |
 | POST | /recipes/:id/retry-reconvert | `{variation_id?}` | `{ok:true}` | 400 |
+| POST | /recipes/:id/cover | | `{job_id}`: "Find another photo", a cover job that searches past every image already found for the recipe and replaces a found cover | 400 a cover job is already running, or the cover is a household photo; 404 |
 | POST | /variations/:id/retry-scale | | `{job_id}` | 400 |
 | POST | /variations/:id/recalculate | | `{job_id}` | 400 |
 | POST | /variations/:id/keep-mine | | `{ok:true}` | |
@@ -28,6 +29,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400 (also before a generation's pick), 404 |
 | POST | /drafts/:id/discard | | `{ok:true}` | 400 while extracting, 404 |
 | POST | /drafts/:id/retry | | `{ok:true}` (requeues a failed draft) | 404 |
+| POST | /drafts/:id/cover | | `{job_id}`: "Find another photo" for the draft, as for a recipe | 400 still choosing, not done extracting, or a cover job is already running; 404 |
 | POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |
 | GET | /shopping | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}` | |

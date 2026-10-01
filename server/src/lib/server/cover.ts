@@ -1,13 +1,13 @@
 import type { Database } from 'better-sqlite3';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import { env } from '$env/dynamic/private';
-import type { CaptureInput, CoverInput, CoverResult } from '$lib/extract';
+import type { CaptureInput, CoverInput, CoverResult, CoverTarget } from '$lib/extract';
 import { claudeCall } from './claude';
-import { draftOf, getDraftJob } from './drafts';
+import { draftOf, getDraftJob, isChoosing } from './drafts';
 import { fetchPage, fetchPublic, pageImages, type ResolveFn } from './extract';
 import { deriveThumb, normaliseFound, saveImage } from './images';
 import { searchImages, type ImageHit } from './imagesearch';
-import { JobError, createJob, type JobHandler } from './jobs';
+import { JobError, coverJobs, createJob, pendingCoverJob, type JobHandler, type JobRow } from './jobs';
 
 // Recipe covers (issue #44, ADR-043): a follow-up job per draft that finds a
 // photo of the dish, first on the source page, else by image search with
@@ -31,6 +31,58 @@ export const withCover =
 		enqueueCover(db, job.id);
 		return result;
 	};
+
+/** What a cover points at: nothing (or a deleted image), an image found on
+ *  the web, or a photo the household took. */
+type CoverKind = 'none' | 'found' | 'own';
+
+function coverKind(db: Database, imageId: string | null | undefined): CoverKind {
+	if (!imageId) return 'none';
+	const image = db.prepare(`SELECT source_url FROM image WHERE id = ? AND deleted_at IS NULL`).get(imageId) as
+		| { source_url: string | null }
+		| undefined;
+	return !image ? 'none' : image.source_url === null ? 'own' : 'found';
+}
+
+/** The image URLs a replace must not offer again: what every done cover job
+ *  for the target found, and the current cover's (older results carry no
+ *  source_url, so the cover they found is only known through its row). */
+function triedUrls(db: Database, target: CoverTarget, coverId: string | null | undefined): string[] {
+	const found = coverJobs(db, target, ['done']).map(
+		(j) => j.result_json && (JSON.parse(j.result_json) as CoverResult).source_url
+	);
+	const current = coverId
+		? (db.prepare(`SELECT source_url FROM image WHERE id = ?`).get(coverId) as { source_url: string | null } | undefined)
+				?.source_url
+		: null;
+	return [...new Set([...found, current].filter((u): u is string => !!u))];
+}
+
+/** Each tap costs a Brave query and a Claude call, so one at a time. */
+function queueReplace(db: Database, target: CoverTarget, coverId: string | null | undefined): string {
+	if (pendingCoverJob(db, target)) throw new Error('Already looking for a photo.');
+	const input: CoverInput = { ...target, replace: true, exclude: triedUrls(db, target, coverId) };
+	return createJob(db, 'cover', input);
+}
+
+/** "Find another photo" on a draft. Throws the refusal the cook sees. */
+export function findDraftCover(db: Database, job: JobRow): string {
+	if (isChoosing(job)) throw new Error('Pick a recipe first.');
+	if (job.status !== 'done') throw new Error('Still extracting; wait for it to finish.');
+	const { cover_image_id } = JSON.parse(job.input_json) as CaptureInput;
+	return queueReplace(db, { draft_id: job.id }, cover_image_id);
+}
+
+/** "Find another photo" on a saved recipe, or null when it is missing or
+ *  trashed. Throws the refusal the cook sees. */
+export function findRecipeCover(db: Database, recipeId: string): string | null {
+	const recipe = db
+		.prepare(`SELECT cover_image_id FROM recipe WHERE id = ? AND deleted_at IS NULL`)
+		.get(recipeId) as { cover_image_id: string | null } | undefined;
+	if (!recipe) return null;
+	if (coverKind(db, recipe.cover_image_id) === 'own') throw new Error('Your own photo is the cover.');
+	return queueReplace(db, { recipe_id: recipeId }, recipe.cover_image_id);
+}
 
 /** Each search-step cover is one Claude call against the daily cap (ADR-027),
  *  and cover jobs queue ahead of fresh captures, so a backfill goes in batches. */
@@ -139,7 +191,7 @@ export async function claudePick(db: Database, title: string, thumbs: Buffer[]):
 export type CoverDeps = {
 	fetchPage: (url: string) => Promise<string>;
 	fetchImage: (url: string) => Promise<Buffer | null>;
-	searchImages: (query: string) => Promise<ImageHit[]>;
+	searchImages: (query: string, count: number) => Promise<ImageHit[]>;
 	claudePick: (db: Database, title: string, thumbs: Buffer[]) => Promise<number>;
 };
 
@@ -147,15 +199,24 @@ export type CoverDeps = {
 type Target = { title: string | null; url: string | null; candidates: string[] };
 type Found = { full: Buffer; source_url: string; origin: 'source' | 'search' };
 
-const NONE: CoverResult = { image_id: null, origin: null };
+const NONE: CoverResult = { image_id: null, origin: null, source_url: null };
 const SEARCH_ATTEMPTS = 8;
 const SEARCH_KEEP = 4;
+// A replace asks for more hits so some are left once the tried ones are skipped.
+const SEARCH_HITS = 10;
+const REPLACE_HITS = 20;
 
-function recipeTarget(db: Database, recipeId: string, capture: CaptureInput = {}): Target | null {
+function recipeTarget(
+	db: Database,
+	recipeId: string,
+	replace: boolean,
+	capture: CaptureInput = {}
+): Target | null {
 	const recipe = db
 		.prepare(`SELECT title, source_url, cover_image_id FROM recipe WHERE id = ? AND deleted_at IS NULL`)
 		.get(recipeId) as { title: string; source_url: string | null; cover_image_id: string | null } | undefined;
-	if (!recipe || recipe.cover_image_id) return null;
+	if (!recipe) return null;
+	if (replace ? coverKind(db, recipe.cover_image_id) === 'own' : recipe.cover_image_id) return null;
 	return {
 		title: recipe.title,
 		url: capture.url ?? recipe.source_url,
@@ -164,14 +225,16 @@ function recipeTarget(db: Database, recipeId: string, capture: CaptureInput = {}
 }
 
 /** Null when there is nothing to do: the draft is gone, saved with a cover,
- *  or already has one; the recipe is trashed or already has one. */
+ *  or already has one; the recipe is trashed or already has one. A replace
+ *  goes on past a found cover, never past the household's own photo. */
 function resolveTarget(db: Database, input: CoverInput): Target | null {
-	if ('recipe_id' in input) return recipeTarget(db, input.recipe_id);
+	const replace = !!input.replace;
+	if ('recipe_id' in input) return recipeTarget(db, input.recipe_id, replace);
 	const job = getDraftJob(db, input.draft_id);
 	if (!job) return null;
 	const capture = JSON.parse(job.input_json) as CaptureInput;
-	if (capture.cover_image_id) return null;
-	if (job.recipe_id) return recipeTarget(db, job.recipe_id, capture);
+	if (capture.cover_image_id && !replace) return null;
+	if (job.recipe_id) return recipeTarget(db, job.recipe_id, replace, capture);
 	return {
 		title: draftOf(job)?.title ?? null,
 		url: capture.url ?? null,
@@ -199,10 +262,11 @@ async function fromSource(deps: CoverDeps, target: Target): Promise<Found | null
 /** The image search query for a title. */
 export const coverQuery = (title: string) => (/recipe/i.test(title) ? title : `${title} recipe`);
 
-async function fromSearch(db: Database, deps: CoverDeps, title: string): Promise<Found | null> {
-	const hits = await deps.searchImages(coverQuery(title));
+async function fromSearch(db: Database, deps: CoverDeps, title: string, input: CoverInput): Promise<Found | null> {
+	const hits = await deps.searchImages(coverQuery(title), input.replace ? REPLACE_HITS : SEARCH_HITS);
+	const tried = new Set(input.exclude);
 	const kept: Found[] = [];
-	for (const hit of hits.slice(0, SEARCH_ATTEMPTS)) {
+	for (const hit of hits.filter((h) => !tried.has(h.image_url)).slice(0, SEARCH_ATTEMPTS)) {
 		const full = await deps.fetchImage(hit.image_url);
 		if (full) kept.push({ full, source_url: hit.image_url, origin: 'search' });
 		if (kept.length === SEARCH_KEEP) break;
@@ -221,11 +285,14 @@ async function fromSearch(db: Database, deps: CoverDeps, title: string): Promise
 }
 
 /** Attach the stored image to whatever the target is now, re-read inside one
- *  transaction: the cook may have saved or discarded the draft meanwhile.
- *  Returns false, with the image soft-deleted, when nothing takes it. */
+ *  transaction: the cook may have saved or discarded the draft meanwhile, or
+ *  made a photo of their own the cover. A replace soft-deletes the found
+ *  cover it displaces. Returns false, with the image soft-deleted, when
+ *  nothing takes it. */
 function attach(db: Database, input: CoverInput, imageId: string): boolean {
+	const ts = new Date().toISOString();
 	const drop = (): false => {
-		db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ?`).run(new Date().toISOString(), imageId);
+		db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ?`).run(ts, imageId);
 		return false;
 	};
 	return db.transaction(() => {
@@ -237,22 +304,28 @@ function attach(db: Database, input: CoverInput, imageId: string): boolean {
 			if (!job) return drop();
 			if (!job.recipe_id) {
 				const draftInput = JSON.parse(job.input_json) as CaptureInput;
-				if (draftInput.cover_image_id) return drop();
+				const previous = draftInput.cover_image_id;
+				if (previous && !input.replace) return drop();
 				db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
 					JSON.stringify({ ...draftInput, cover_image_id: imageId }),
 					input.draft_id
 				);
+				if (previous)
+					db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`).run(ts, previous);
 				return true;
 			}
 			recipeId = job.recipe_id;
 		} else recipeId = input.recipe_id;
-		const claimed = db
-			.prepare(
-				`UPDATE recipe SET cover_image_id = ? WHERE id = ? AND deleted_at IS NULL AND cover_image_id IS NULL`
-			)
-			.run(imageId, recipeId).changes;
-		if (!claimed) return drop();
+		const recipe = db
+			.prepare(`SELECT cover_image_id FROM recipe WHERE id = ? AND deleted_at IS NULL`)
+			.get(recipeId) as { cover_image_id: string | null } | undefined;
+		if (!recipe) return drop();
+		const previous = coverKind(db, recipe.cover_image_id);
+		if (input.replace ? previous === 'own' : recipe.cover_image_id) return drop();
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = ?`).run(imageId, recipeId);
 		db.prepare(`UPDATE image SET recipe_id = ? WHERE id = ?`).run(recipeId, imageId);
+		if (previous === 'found')
+			db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ?`).run(ts, recipe.cover_image_id);
 		return true;
 	})();
 }
@@ -262,11 +335,13 @@ export function coverHandler(deps: CoverDeps): JobHandler {
 		const input = JSON.parse(job.input_json) as CoverInput;
 		const target = resolveTarget(db, input);
 		if (!target) return NONE;
+		// A replace skips the source step: the page's photo is what the cook is replacing.
 		const found =
-			(await fromSource(deps, target)) ?? (target.title ? await fromSearch(db, deps, target.title) : null);
+			(input.replace ? null : await fromSource(deps, target)) ??
+			(target.title ? await fromSearch(db, deps, target.title, input) : null);
 		if (!found) return NONE;
 		const { id } = await saveImage(db, found.full, 'photo', { source_url: found.source_url });
-		return attach(db, input, id) ? { image_id: id, origin: found.origin } : NONE;
+		return attach(db, input, id) ? { image_id: id, origin: found.origin, source_url: found.source_url } : NONE;
 	};
 }
 
@@ -274,6 +349,6 @@ export function coverHandler(deps: CoverDeps): JobHandler {
 export const cover = coverHandler({
 	fetchPage: (url) => fetchPage(url),
 	fetchImage: (url) => fetchImage(url),
-	searchImages: (query) => searchImages(query),
+	searchImages: (query, count) => searchImages(query, count),
 	claudePick
 });

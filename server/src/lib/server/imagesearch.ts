@@ -33,9 +33,11 @@ export function parseImageResults(data: unknown): ImageHit[] {
 	});
 }
 
-/** Image hits for query, best first. No key means no search, never a failure. */
+/** Up to count image hits for query, best first. No key means no search,
+ *  never a failure. */
 export async function searchImages(
 	query: string,
+	count = 10,
 	key = env.BRAVE_SEARCH_API_KEY,
 	fetchFn: typeof fetch = fetch
 ): Promise<ImageHit[]> {
@@ -44,7 +46,7 @@ export async function searchImages(
 		warned = true;
 		return [];
 	}
-	const params = new URLSearchParams({ q: query, count: '10', safesearch: 'strict', country: 'us' });
+	const params = new URLSearchParams({ q: query, count: String(count), safesearch: 'strict', country: 'us' });
 	const res = await fetchFn(`${ENDPOINT}?${params}`, {
 		headers: { 'X-Subscription-Token': key, Accept: 'application/json' },
 		signal: AbortSignal.timeout(10_000)

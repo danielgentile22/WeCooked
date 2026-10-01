@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
 import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
+import type { CoverTarget } from '$lib/extract';
 
 // The in-process job runner (SPEC 6): 500 ms poll, concurrency 2,
 // transactional claim, startup recovery. No queue service, no second process.
@@ -70,6 +71,34 @@ export function createJob(
 	);
 	return id;
 }
+
+/** The cover jobs in these statuses for a draft, or for a recipe directly or
+ *  through the draft that became it (issue #44). Newest first. */
+export function coverJobs(
+	db: Database,
+	target: CoverTarget,
+	statuses: JobRow['status'][]
+): Pick<JobRow, 'id' | 'result_json'>[] {
+	const [match, id] =
+		'draft_id' in target
+			? [`json_extract(input_json, '$.draft_id') = @id`, target.draft_id]
+			: [
+					`(json_extract(input_json, '$.recipe_id') = @id
+					  OR json_extract(input_json, '$.draft_id') IN (SELECT id FROM job WHERE recipe_id = @id))`,
+					target.recipe_id
+				];
+	return db
+		.prepare(
+			`SELECT id, result_json FROM job
+			 WHERE kind = 'cover' AND status IN (${statuses.map(() => '?').join(',')}) AND ${match}
+			 ORDER BY created_at DESC, id DESC`
+		)
+		.all(...statuses, { id }) as Pick<JobRow, 'id' | 'result_json'>[];
+}
+
+/** The queued or running cover job for a draft or recipe, else null. */
+export const pendingCoverJob = (db: Database, target: CoverTarget): string | null =>
+	coverJobs(db, target, ['queued', 'running'])[0]?.id ?? null;
 
 /** SPEC 6.3 polling contract, or null for an unknown job. */
 export function getJobPoll(db: Database, id: string): JobPoll | null {

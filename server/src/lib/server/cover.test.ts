@@ -4,7 +4,17 @@ import sharp from 'sharp';
 import type { CaptureInput, CoverResult, RecipeDraft } from '$lib/extract';
 import { migrate } from './migrate';
 import { createJob, JobError, type JobRow } from './jobs';
-import { acceptable, backfillCovers, coverHandler, enqueueCover, fetchImage, withCover, type CoverDeps } from './cover';
+import {
+	acceptable,
+	backfillCovers,
+	coverHandler,
+	enqueueCover,
+	fetchImage,
+	findDraftCover,
+	findRecipeCover,
+	withCover,
+	type CoverDeps
+} from './cover';
 import { parseImageResults } from './imagesearch';
 
 vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
@@ -72,6 +82,7 @@ function deps(over: Partial<CoverDeps> = {}): CoverDeps {
 
 const run = async (d: CoverDeps, jobId: string) => (await coverHandler(d)(row(jobId)!, db)) as CoverResult;
 const coverJob = (input: object) => createJob(db, 'cover', input);
+const NONE: CoverResult = { image_id: null, origin: null, source_url: null };
 const hits = (...urls: string[]) => urls.map((u) => ({ image_url: u, title: '', page_url: '' }));
 
 describe('cover handler (issue #44)', () => {
@@ -80,7 +91,7 @@ describe('cover handler (issue #44)', () => {
 		const full = await jpeg();
 		const d = deps({ fetchImage: vi.fn(async (u: string) => (u.endsWith('dish.jpg') ? full : null)) });
 		const result = await run(d, coverJob({ draft_id: id }));
-		expect(result).toMatchObject({ origin: 'source' });
+		expect(result).toMatchObject({ origin: 'source', source_url: 'https://a.com/dish.jpg' });
 		expect(inputOf(id).cover_image_id).toBe(result.image_id);
 		expect(inputOf(id).url).toBe('https://a.com/r');
 		expect(image(result.image_id!)).toEqual({
@@ -106,7 +117,7 @@ describe('cover handler (issue #44)', () => {
 		const result = await run(d, coverJob({ draft_id: id }));
 		expect(result).toMatchObject({ origin: 'search' });
 		expect(image(result.image_id!).source_url).toBe('https://img.com/1.jpg');
-		expect(d.searchImages).toHaveBeenCalledWith('Shakshuka recipe');
+		expect(d.searchImages).toHaveBeenCalledWith('Shakshuka recipe', 10);
 		const [, title, thumbs] = vi.mocked(d.claudePick).mock.calls[0];
 		expect(title).toBe('Shakshuka');
 		expect(thumbs).toHaveLength(3);
@@ -146,8 +157,8 @@ describe('cover handler (issue #44)', () => {
 			id
 		);
 		const d = deps({ searchImages: vi.fn(async () => []) });
-		expect(await run(d, coverJob({ draft_id: id }))).toEqual({ image_id: null, origin: null });
-		expect(d.searchImages).toHaveBeenCalledWith('Recipe for flapjacks');
+		expect(await run(d, coverJob({ draft_id: id }))).toEqual(NONE);
+		expect(d.searchImages).toHaveBeenCalledWith('Recipe for flapjacks', 10);
 		expect(d.claudePick).not.toHaveBeenCalled();
 	});
 
@@ -161,14 +172,14 @@ describe('cover handler (issue #44)', () => {
 				fetchImage: vi.fn(async () => full),
 				claudePick
 			});
-			expect(await run(d, coverJob({ draft_id: id }))).toEqual({ image_id: null, origin: null });
+			expect(await run(d, coverJob({ draft_id: id }))).toEqual(NONE);
 			expect(inputOf(id).cover_image_id).toBeUndefined();
 		}
 		expect(db.prepare('SELECT COUNT(*) AS n FROM image').get()).toEqual({ n: 0 });
 	});
 
 	it('does nothing for a discarded draft, and soft-deletes a cover found after the discard', async () => {
-		expect(await run(deps(), coverJob({ draft_id: 'gone' }))).toEqual({ image_id: null, origin: null });
+		expect(await run(deps(), coverJob({ draft_id: 'gone' }))).toEqual(NONE);
 
 		const id = draft({ url: 'https://a.com/r', image_urls: ['https://a.com/dish.jpg'] });
 		const job = coverJob({ draft_id: id });
@@ -179,7 +190,7 @@ describe('cover handler (issue #44)', () => {
 				return full;
 			})
 		});
-		expect(await run(d, job)).toEqual({ image_id: null, origin: null });
+		expect(await run(d, job)).toEqual(NONE);
 		const stored = db.prepare('SELECT deleted_at FROM image').all() as { deleted_at: string | null }[];
 		expect(stored).toHaveLength(1);
 		expect(stored[0].deleted_at).not.toBeNull();
@@ -229,13 +240,12 @@ describe('cover handler (issue #44)', () => {
 			 VALUES ('mine', 'r1', 'f', 'd', 1, 1, 'photo', '2026')`
 		).run();
 		db.prepare(`UPDATE recipe SET cover_image_id = 'mine' WHERE id = 'r1'`).run();
-		const none = { image_id: null, origin: null };
-		expect(await run(deps(), coverJob({ recipe_id: 'r1' }))).toEqual(none);
-		expect(await run(deps(), coverJob({ recipe_id: 'trashed' }))).toEqual(none);
+		expect(await run(deps(), coverJob({ recipe_id: 'r1' }))).toEqual(NONE);
+		expect(await run(deps(), coverJob({ recipe_id: 'trashed' }))).toEqual(NONE);
 		recipe('r2', { deleted_at: '2026' });
-		expect(await run(deps(), coverJob({ recipe_id: 'r2' }))).toEqual(none);
+		expect(await run(deps(), coverJob({ recipe_id: 'r2' }))).toEqual(NONE);
 		const id = draft({ url: 'https://a.com/r', cover_image_id: 'mine' });
-		expect(await run(deps(), coverJob({ draft_id: id }))).toEqual(none);
+		expect(await run(deps(), coverJob({ draft_id: id }))).toEqual(NONE);
 
 		// Found while the cook set a cover by hand: the recipe keeps theirs.
 		recipe('r3');
@@ -249,8 +259,160 @@ describe('cover handler (issue #44)', () => {
 		});
 		db.prepare(`UPDATE recipe SET source_url = 'https://a.com/r' WHERE id = 'r3'`).run();
 		d.fetchPage = vi.fn(async () => '<meta property="og:image" content="/x.jpg">');
-		expect(await run(d, coverJob({ recipe_id: 'r3' }))).toEqual(none);
+		expect(await run(d, coverJob({ recipe_id: 'r3' }))).toEqual(NONE);
 		expect(coverOf('r3')).toBe('mine');
+	});
+});
+
+/** An image row: found when sourceUrl is set, else the household's own photo. */
+function stored(id: string, recipeId: string | null, sourceUrl: string | null): string {
+	db.prepare(
+		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, source_url, created_at)
+		 VALUES (?, ?, 'f', 'd', 1, 1, 'photo', ?, '2026')`
+	).run(id, recipeId, sourceUrl);
+	return id;
+}
+
+describe('cover replace mode ("Find another photo")', () => {
+	const searchDeps = (full: Buffer, ...urls: string[]) =>
+		deps({
+			searchImages: vi.fn(async () => hits(...urls)),
+			fetchImage: vi.fn(async () => full),
+			claudePick: vi.fn(async () => 0)
+		});
+
+	it('replaces a draft\'s found cover from search, skipping the source page and tried URLs', async () => {
+		stored('old', null, 'https://a.com/dish.jpg');
+		const id = draft({ url: 'https://a.com/r', image_urls: ['https://a.com/dish.jpg'], cover_image_id: 'old' });
+		const d = searchDeps(await jpeg(), 'https://img.com/0.jpg', 'https://img.com/1.jpg');
+		const job = coverJob({ draft_id: id, replace: true, exclude: ['https://img.com/0.jpg'] });
+		const result = await run(d, job);
+		expect(result).toMatchObject({ origin: 'search', source_url: 'https://img.com/1.jpg' });
+		expect(d.searchImages).toHaveBeenCalledWith('Shakshuka recipe', 20);
+		expect(vi.mocked(d.fetchImage).mock.calls).toEqual([['https://img.com/1.jpg']]);
+		expect(inputOf(id).cover_image_id).toBe(result.image_id);
+		expect(image('old').deleted_at).not.toBeNull();
+		expect(image(result.image_id!)).toMatchObject({ recipe_id: null, deleted_at: null });
+	});
+
+	it('finds nothing when every hit was tried, and keeps the old cover', async () => {
+		stored('old', null, 'https://img.com/0.jpg');
+		const id = draft({ text: 'x', cover_image_id: 'old' }, 'extract_paste');
+		const d = searchDeps(await jpeg(), 'https://img.com/0.jpg');
+		expect(await run(d, coverJob({ draft_id: id, replace: true, exclude: ['https://img.com/0.jpg'] }))).toEqual(NONE);
+		expect(d.fetchImage).not.toHaveBeenCalled();
+		expect(inputOf(id).cover_image_id).toBe('old');
+		expect(image('old').deleted_at).toBeNull();
+	});
+
+	it('replaces a recipe\'s found cover, directly or through its saved draft', async () => {
+		const full = await jpeg();
+		recipe('r1');
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = 'r1'`).run(stored('old', 'r1', 'https://a.com/x.jpg'));
+		const result = await run(searchDeps(full, 'https://img.com/0.jpg'), coverJob({ recipe_id: 'r1', replace: true }));
+		expect(coverOf('r1')).toBe(result.image_id);
+		expect(image(result.image_id!)).toMatchObject({ recipe_id: 'r1', deleted_at: null });
+		expect(image('old').deleted_at).not.toBeNull();
+
+		const id = draft({ text: 'x' }, 'extract_paste');
+		db.prepare('UPDATE job SET recipe_id = ? WHERE id = ?').run(recipe('r2'), id);
+		const viaDraft = await run(searchDeps(full, 'https://img.com/0.jpg'), coverJob({ draft_id: id, replace: true }));
+		expect(coverOf('r2')).toBe(viaDraft.image_id);
+	});
+
+	it('never replaces the household\'s own photo', async () => {
+		recipe('r1');
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = 'r1'`).run(stored('mine', 'r1', null));
+		expect(await run(deps(), coverJob({ recipe_id: 'r1', replace: true }))).toEqual(NONE);
+
+		// Made the cover while the search ran: the cook's photo stays, the new image goes.
+		recipe('r2');
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = 'r2'`).run(stored('found', 'r2', 'https://a.com/x.jpg'));
+		const d = searchDeps(await jpeg(), 'https://img.com/0.jpg');
+		d.fetchImage = vi.fn(async () => {
+			stored('theirs', 'r2', null);
+			db.prepare(`UPDATE recipe SET cover_image_id = 'theirs' WHERE id = 'r2'`).run();
+			return jpeg();
+		});
+		expect(await run(d, coverJob({ recipe_id: 'r2', replace: true }))).toEqual(NONE);
+		expect(coverOf('r2')).toBe('theirs');
+		const dropped = db.prepare(`SELECT deleted_at FROM image WHERE source_url = 'https://img.com/0.jpg'`).get() as {
+			deleted_at: string | null;
+		};
+		expect(dropped.deleted_at).not.toBeNull();
+		expect(image('found').deleted_at).toBeNull();
+	});
+
+	it('gives a coverless recipe its first cover', async () => {
+		recipe('r1');
+		const result = await run(searchDeps(await jpeg(), 'https://img.com/0.jpg'), coverJob({ recipe_id: 'r1', replace: true }));
+		expect(coverOf('r1')).toBe(result.image_id);
+	});
+});
+
+describe('find another photo requests', () => {
+	const done = (input: object, result: Partial<CoverResult>) => {
+		const id = coverJob(input);
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(JSON.stringify(result), id);
+	};
+	const inputOfCover = (id: string) => {
+		const input = JSON.parse(row(id)!.input_json);
+		return { ...input, exclude: input.exclude.sort() };
+	};
+
+	it('queues a replace for a done draft, excluding every URL found for it', () => {
+		stored('old', null, 'https://a.com/current.jpg');
+		const id = draft({ url: 'https://a.com/r', cover_image_id: 'old' });
+		done({ draft_id: id }, { image_id: 'old', origin: 'source', source_url: 'https://a.com/current.jpg' });
+		done({ draft_id: id, replace: true }, { image_id: 'x', origin: 'search', source_url: 'https://img.com/a.jpg' });
+		done({ draft_id: id }, { image_id: null, origin: null });
+		done({ draft_id: 'other' }, { image_id: 'y', origin: 'search', source_url: 'https://img.com/other.jpg' });
+		const job = findDraftCover(db, row(id)!);
+		expect(inputOfCover(job)).toEqual({
+			draft_id: id,
+			replace: true,
+			exclude: ['https://a.com/current.jpg', 'https://img.com/a.jpg']
+		});
+		expect(() => findDraftCover(db, row(id)!)).toThrow('Already looking for a photo.');
+	});
+
+	it('refuses a draft that is still choosing or extracting', () => {
+		const choosing = createJob(db, 'generate', { description: 'x', yield_count: 2, picked: null });
+		db.prepare(`UPDATE job SET status = 'done', result_json = '{"candidates":[]}' WHERE id = ?`).run(choosing);
+		expect(() => findDraftCover(db, row(choosing)!)).toThrow('Pick a recipe first.');
+		const running = createJob(db, 'extract_paste', { text: 'x' });
+		expect(() => findDraftCover(db, row(running)!)).toThrow('Still extracting; wait for it to finish.');
+	});
+
+	it('queues a replace for a recipe, excluding what its draft and its own jobs found', () => {
+		recipe('r1');
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = 'r1'`).run(stored('found', 'r1', 'https://a.com/now.jpg'));
+		const saved = draft({ text: 'x' }, 'extract_paste');
+		db.prepare(`UPDATE job SET recipe_id = 'r1' WHERE id = ?`).run(saved);
+		done({ draft_id: saved }, { image_id: 'a', origin: 'search', source_url: 'https://img.com/draft.jpg' });
+		done({ recipe_id: 'r1', replace: true }, { image_id: 'found', origin: 'search', source_url: 'https://a.com/now.jpg' });
+		const job = findRecipeCover(db, 'r1')!;
+		expect(inputOfCover(job)).toEqual({
+			recipe_id: 'r1',
+			replace: true,
+			exclude: ['https://a.com/now.jpg', 'https://img.com/draft.jpg']
+		});
+		expect(() => findRecipeCover(db, 'r1')).toThrow('Already looking for a photo.');
+	});
+
+	it('counts a pending cover job of the recipe\'s draft, and refuses an own photo or a missing recipe', () => {
+		recipe('r1');
+		const saved = draft({ text: 'x' }, 'extract_paste');
+		db.prepare(`UPDATE job SET recipe_id = 'r1' WHERE id = ?`).run(saved);
+		coverJob({ draft_id: saved });
+		expect(() => findRecipeCover(db, 'r1')).toThrow('Already looking for a photo.');
+
+		recipe('r2');
+		db.prepare(`UPDATE recipe SET cover_image_id = ? WHERE id = 'r2'`).run(stored('mine', 'r2', null));
+		expect(() => findRecipeCover(db, 'r2')).toThrow('Your own photo is the cover.');
+
+		expect(findRecipeCover(db, 'missing')).toBeNull();
+		expect(findRecipeCover(db, recipe('r3', { deleted_at: '2026' }))).toBeNull();
 	});
 });
 
@@ -296,10 +458,10 @@ describe('cover triggers (issue #44)', () => {
 		expect(backfillCovers(db, 2)).toBe(2);
 		db.prepare(
 			`UPDATE job SET status = 'done', result_json = ? WHERE kind = 'cover' AND json_extract(input_json, '$.recipe_id') = 'a'`
-		).run(JSON.stringify({ image_id: 'img', origin: 'source' } satisfies CoverResult));
+		).run(JSON.stringify({ image_id: 'img', origin: 'source', source_url: 'https://a.com/x.jpg' } satisfies CoverResult));
 		db.prepare(
 			`UPDATE job SET status = 'done', result_json = ? WHERE kind = 'cover' AND json_extract(input_json, '$.recipe_id') = 'b'`
-		).run(JSON.stringify({ image_id: null, origin: null } satisfies CoverResult));
+		).run(JSON.stringify(NONE));
 		// a found one (since removed by the cook): skipped; b found nothing: tried again.
 		expect(backfillCovers(db)).toBe(2);
 		const queued = db

@@ -317,7 +317,12 @@ issues are the spec; the bullets below are the original wording.
   fetch with a block (the same wall as ADR-041, from home too), and the
   search step was off. Set the key, then
   `POST /api/v1/covers/backfill` again; recipes whose job found nothing
-  are retried, ones whose cover the cook removed are not.
+  are retried, ones whose cover the cook removed are not. "Find another
+  photo" (`POST /api/v1/drafts/:id/cover` and `/recipes/:id/cover`) queues a
+  replace-mode cover job that skips the source page and searches past every
+  image already found, one at a time per draft or recipe. The new image takes
+  over a found cover and the old one is soft-deleted; a household photo cover
+  is never replaced.
 - **Widgets and push.** A shopping list widget, and an APNs push when a
   capture is ready to review, which also gives the share extension its way
   back into the app.

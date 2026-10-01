@@ -38,7 +38,7 @@ try {
 		const key = process.env.BRAVE_SEARCH_API_KEY;
 		if (!key) throw new Error('BRAVE_SEARCH_API_KEY is not set in server/.env');
 		const query = coverQuery(arg);
-		const hits = await searchImages(query, key);
+		const hits = await searchImages(query, 10, key);
 		candidates = hits.map((h) => ({ url: h.image_url, note: `${h.title} <${h.page_url}>` }));
 		console.log(`${candidates.length} image hit(s) for "${query}"`);
 	}

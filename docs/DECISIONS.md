@@ -1528,6 +1528,16 @@ out to matter.
 **Revisit if** the source step fails for most captures (move the image fetch
 to the phone), or Brave's pricing changes.
 
+**Amended 2026-10-01.** "Find another photo" in the editor queues a cover
+job in replace mode for a draft or a saved recipe whose cover is empty or
+found, never one whose cover is a household photo. It skips the source step
+(the page's photo is what the cook is replacing) and searches with 20 hits
+instead of 10, past every image URL a cover job already found for that draft
+or recipe; the route stores that list on the job. The new image takes the
+cover and the found one it displaces is soft-deleted. Each tap is one Brave
+query and one Claude call, so the server refuses a second while one is
+pending.
+
 ---
 
 ## Decisions deferred to prototypes

@@ -1042,6 +1042,14 @@ to the recipe when it still has no cover; if it was discarded, the image is
 soft-deleted. `POST /api/v1/covers/backfill` queues the same job for every
 saved recipe without a cover.
 
+"Find another photo" in the editor, on a draft or a saved recipe whose cover
+is empty or a found image, queues the job in replace mode: no source step,
+straight to the search, skipping every image URL a cover job already found
+for that draft or recipe. The new image becomes the cover and the found one
+it replaces is soft-deleted. If the cook makes a photo of their own the cover
+meanwhile, theirs stays and the new image is dropped. One request runs at a
+time; the draft's or recipe's `cover_job_id` names it while it runs.
+
 ---
 
 ## 8. Implementation notes that will otherwise bite

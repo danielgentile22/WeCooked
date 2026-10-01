@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { createRecipe } from './recipes';
-import { DRAFT_KINDS, isDraftKind, type JobRow } from './jobs';
+import { DRAFT_KINDS, isDraftKind, pendingCoverJob, type JobRow } from './jobs';
 import { CANDIDATE_COUNT } from './generate';
 import { enqueueCover } from './cover';
 import { presignGet } from './r2';
@@ -30,7 +30,7 @@ const generateInput = (job: Pick<JobRow, 'input_json'>) =>
 	JSON.parse(job.input_json) as GenerateInput;
 
 /** A done generate job whose candidates still wait for a pick. */
-const isChoosing = (job: DraftSource) =>
+export const isChoosing = (job: DraftSource) =>
 	job.kind === 'generate' &&
 	job.status === 'done' &&
 	generateInput(job).picked === null;
@@ -136,18 +136,6 @@ function draftImages(
 	return { images, cover_image_id: cover };
 }
 
-/** The queued or running cover job for a draft, else null. */
-function pendingCoverJob(db: Database, draftId: string): string | null {
-	const row = db
-		.prepare(
-			`SELECT id FROM job WHERE kind = 'cover' AND status IN ('queued', 'running')
-			   AND json_extract(input_json, '$.draft_id') = ?
-			 ORDER BY created_at DESC, id DESC LIMIT 1`
-		)
-		.get(draftId) as { id: string } | undefined;
-	return row?.id ?? null;
-}
-
 /** One candidate as the deck compares it: the as-written ingredients, flattened. */
 export type Candidate = {
 	title: string;
@@ -203,7 +191,7 @@ function generationView(db: Database, job: JobRow): DraftView | GenerationView {
 		initial: draft
 			? { ...draftToInput(draft), source_text: description, source_url: null, ...draftImages(db, input) }
 			: null,
-		cover_job_id: pendingCoverJob(db, job.id),
+		cover_job_id: pendingCoverJob(db, { draft_id: job.id }),
 		warnings: [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
@@ -230,7 +218,7 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
 			: input.url || seed.images.length
 				? { source_url: input.url ?? null, ...seed }
 				: null,
-		cover_job_id: pendingCoverJob(db, job.id),
+		cover_job_id: pendingCoverJob(db, { draft_id: job.id }),
 		warnings: draft?.extraction_warnings ?? [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
