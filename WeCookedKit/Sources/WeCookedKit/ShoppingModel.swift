@@ -141,7 +141,7 @@ public final class ShoppingModel {
 	/// Every reply (the first is the cached one) may carry a finished build to
 	/// announce, and is a moment to retry ticks a dead spot left behind.
 	public func appear() async {
-		for await reply in Observations({ self.resource.value }) {
+		for await reply in changes(of: { self.resource.value }) {
 			if let reply { noticed(reply) }
 			if !env.device.pendingTicks.isEmpty { await flush() }
 		}

@@ -127,7 +127,7 @@ struct DraftRow: View {
 					Label(card.status.line, systemImage: card.status.symbol)
 						.font(.subheadline)
 						.foregroundStyle(.secondary)
-						.symbolEffect(.rotate, isActive: card.status.isWorking)
+						.modifier(WorkingSymbol(isActive: card.status.isWorking))
 				}
 			}
 			.padding(.vertical, 6)
@@ -264,6 +264,18 @@ private struct TagGroup<T: Hashable>: View {
 					.buttonStyle(.plain)
 				}
 			}
+		}
+	}
+}
+
+/// Spins a working draft's symbol; iOS 17 has no rotate effect, so it pulses there.
+private struct WorkingSymbol: ViewModifier {
+	let isActive: Bool
+	func body(content: Content) -> some View {
+		if #available(iOS 18, *) {
+			content.symbolEffect(.rotate, isActive: isActive)
+		} else {
+			content.symbolEffect(.pulse, isActive: isActive)
 		}
 	}
 }

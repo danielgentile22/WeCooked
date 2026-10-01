@@ -10,7 +10,7 @@ import PackageDescription
 // WKWebView is allowed in app extensions and compiles on macOS too.
 let package = Package(
 	name: "WeCookedKit",
-	platforms: [.iOS(.v26), .macOS(.v26)],
+	platforms: [.iOS(.v17), .macOS(.v14)],
 	products: [.library(name: "WeCookedKit", targets: ["WeCookedKit"])],
 	targets: [
 		.target(

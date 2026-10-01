@@ -183,7 +183,7 @@ public final class RecipeModel {
 				for other in missing { group.addTask(priority: .utility) { await other.revalidate() } }
 			}
 		}
-		for await reply in Observations({ self.resource.value }) {
+		for await reply in changes(of: { self.resource.value }) {
 			if let reply { noticed(reply) }
 		}
 	}

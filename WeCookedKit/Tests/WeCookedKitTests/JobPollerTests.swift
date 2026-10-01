@@ -1,5 +1,5 @@
 import Foundation
-import Synchronization
+import os
 import Testing
 
 @testable import WeCookedKit
@@ -7,8 +7,8 @@ import Testing
 /// A fake clock: `sleep` records the duration and advances `now`, so 300 s of
 /// schedule run in microseconds and the wall-clock timeout is still exercised.
 final class Recorder: Sendable {
-	let log = Mutex<[Duration]>([])
-	let clock = Mutex(ContinuousClock.now)
+	let log = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+	let clock = OSAllocatedUnfairLock(initialState: ContinuousClock.now)
 	func sleep(_ d: Duration) {
 		log.withLock { $0.append(d) }
 		clock.withLock { $0 = $0.advanced(by: d) }
@@ -22,7 +22,7 @@ struct JobPollerTests {
 		script: @escaping @Sendable (Int) throws -> JobPoll
 	) -> (JobPoller, Recorder) {
 		let sleeps = Recorder()
-		let calls = Mutex(0)
+		let calls = OSAllocatedUnfairLock(initialState: 0)
 		let p = JobPoller(
 			fetch: { _ in
 				let n = calls.withLock { $0 += 1; return $0 }

@@ -85,21 +85,21 @@ struct Tabs: View {
 	var body: some View {
 		@Bindable var router = router
 		TabView(selection: $router.tab) {
-			Tab("Recipes", systemImage: "book.closed", value: AppTab.recipes) {
-				NavigationStack(path: $router.recipesPath) {
-					RecipesTab().navigationDestination(for: Route.self) { destination($0) }
-				}
+			NavigationStack(path: $router.recipesPath) {
+				RecipesTab().navigationDestination(for: Route.self) { destination($0) }
 			}
-			Tab("Add", systemImage: "plus.circle", value: AppTab.add) {
-				NavigationStack(path: $router.addPath) {
-					AddTab(model: CaptureModel(env: env)).navigationDestination(for: Route.self) { destination($0) }
-				}
+			.tabItem { Label("Recipes", systemImage: "book.closed") }
+			.tag(AppTab.recipes)
+			NavigationStack(path: $router.addPath) {
+				AddTab(model: CaptureModel(env: env)).navigationDestination(for: Route.self) { destination($0) }
 			}
-			Tab("Shopping", systemImage: "cart", value: AppTab.shopping) {
-				NavigationStack(path: $router.shoppingPath) {
-					ShoppingTab().navigationDestination(for: Route.self) { destination($0) }
-				}
+			.tabItem { Label("Add", systemImage: "plus.circle") }
+			.tag(AppTab.add)
+			NavigationStack(path: $router.shoppingPath) {
+				ShoppingTab().navigationDestination(for: Route.self) { destination($0) }
 			}
+			.tabItem { Label("Shopping", systemImage: "cart") }
+			.tag(AppTab.shopping)
 		}
 		.sheet(item: $router.sheet) { SheetContent(sheet: $0) }
 	}

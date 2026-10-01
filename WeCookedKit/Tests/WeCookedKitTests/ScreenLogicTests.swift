@@ -86,9 +86,9 @@ struct DeviceStateTests {
 	}
 }
 
-import Synchronization
+import os
 final class MutexBox: Sendable {
-	private let m = Mutex<[String: Data]>([:])
+	private let m = OSAllocatedUnfairLock<[String: Data]>(initialState: [:])
 	func get(_ k: String) -> Data? { m.withLock { $0[k] } }
 	func put(_ k: String, _ v: Data?) { m.withLock { $0[k] = v } }
 }

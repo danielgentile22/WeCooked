@@ -1,6 +1,6 @@
 import Foundation
 import Security
-import Synchronization
+import os
 
 /// The session token, in one place both the app and the share extension read.
 /// Synchronous on purpose: a Keychain read is microseconds and every request
@@ -65,10 +65,10 @@ public struct KeychainTokenStore: TokenStore {
 	}
 }
 
-/// For tests and previews. `Mutex` makes it honestly `Sendable`.
+/// For tests and previews. `OSAllocatedUnfairLock` makes it honestly `Sendable`.
 public final class InMemoryTokenStore: TokenStore {
-	private let box: Mutex<String?>
-	public init(_ token: String? = nil) { box = Mutex(token) }
+	private let box: OSAllocatedUnfairLock<String?>
+	public init(_ token: String? = nil) { box = OSAllocatedUnfairLock(initialState: token) }
 	public func read() -> String? { box.withLock { $0 } }
 	public func write(_ token: String) { box.withLock { $0 = token } }
 	public func clear() { box.withLock { $0 = nil } }

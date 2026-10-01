@@ -1,5 +1,5 @@
 import Foundation
-import Synchronization
+import os
 import Testing
 
 @testable import WeCookedKit
@@ -11,7 +11,7 @@ final class FakeServer: Sendable {
 	typealias Reply = (status: Int, body: Data)
 	let host = UUID().uuidString.lowercased() + ".test"
 	private let routes: [String: Reply]
-	private let log = Mutex<[String]>([])
+	private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
 
 	init(_ routes: [String: Reply] = [:]) {
 		self.routes = routes
@@ -33,7 +33,7 @@ final class FakeServer: Sendable {
 }
 
 final class StubProtocol: URLProtocol, @unchecked Sendable {
-	static let servers = Mutex<[String: FakeServer]>([:])
+	static let servers = OSAllocatedUnfairLock<[String: FakeServer]>(initialState: [:])
 
 	override class func canInit(with request: URLRequest) -> Bool { true }
 	override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

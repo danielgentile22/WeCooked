@@ -242,7 +242,7 @@ public final class EditorModel {
 			if resource.value == nil, case .failed(let e) = resource.phase {
 				phase = .extractionFailed(e.message)
 			}
-			for await lookup in Observations({ resource.value }) {
+			for await lookup in changes(of: { resource.value }) {
 				if let lookup { apply(lookup, job: job) }
 			}
 		case .recipe(let id, let v):

@@ -1,5 +1,5 @@
 import Foundation
-import Synchronization
+import os
 import Testing
 
 @testable import WeCookedKit
@@ -119,7 +119,7 @@ struct StoreTests {
 @MainActor
 struct StoreWatcherTests {
 	final class Gate: Sendable {
-		let open = Mutex(false)
+		let open = OSAllocatedUnfairLock(initialState: false)
 		let polls = CallCounter()
 	}
 
@@ -206,7 +206,7 @@ struct StoreWatcherTests {
 }
 
 final class CallCounter: Sendable {
-	private let n = Mutex(0)
+	private let n = OSAllocatedUnfairLock(initialState: 0)
 	var count: Int { n.withLock { $0 } }
 	func next() -> Int { n.withLock { $0 += 1; return $0 } }
 }
