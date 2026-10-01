@@ -1206,6 +1206,7 @@ issuance. Fly terminates TLS itself.
 | `DAILY_CALL_CAP` | `50` (Claude calls per day, ADR-027) |
 | `BRAVE_SEARCH_API_KEY` | Image search for found covers (ADR-043); unset turns the search off |
 | `COVER_MODEL` | Optional; the cover pick's model, default `claude-sonnet-5-5` |
+| `APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID` | Apple push: the `.p8` key (PEM, or base64 of it), its key id and the team id (ADR-044); unset turns push off |
 
 All set with `fly secrets set`. Locally they live in `.env`, which is
 gitignored **in the first commit**, before any key is ever written to it.

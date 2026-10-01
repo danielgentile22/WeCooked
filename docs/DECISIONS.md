@@ -1540,6 +1540,66 @@ pending.
 
 ---
 
+## ADR-044: Push through Apple directly, the widget through a file
+
+**Question.** Issue #42: a push that says a capture is ready and a home
+screen widget with the shopping list. Who sends the push, how does the
+server know which phone queued the capture, and how does the widget get the
+list without a network or a token?
+
+**Options.**
+
+- **A. A push provider (OneSignal, Firebase Cloud Messaging).** A hosted
+  service holds the device tokens and talks to Apple.
+- **B. Apple's push service directly.** The server signs a token with the
+  push key and posts to Apple over HTTP/2. Device tokens live in the
+  server's own database.
+- **C. No push.** The app polls while open, as today.
+
+For the widget:
+
+- **D. The widget calls the API.** It would need the session token, so the
+  Keychain group, and a network in the shop.
+- **E. The widget reads a snapshot the app writes** into the app group.
+
+**Decision: B and E.**
+
+**Why.** A is a third party holding household data and tokens for a
+two-person app, against SPEC 1.1. B is one table, one key and one HTTP
+call; Node's `http2` module speaks it without a dependency. C leaves the
+reel-sharing gap the issue is about. D puts the session token in a third
+process and fails exactly where the widget is needed, in a shop with no
+signal. E works offline by construction: the app writes the unticked list
+whenever the shopping reply or a local tick changes, in both unit systems,
+and the widget renders the file.
+
+**Which phone.** The app generates a random device identifier once, keeps
+it in the app group defaults, and sends it as `X-Device-Id` on every
+request; the share extension sends the same one. Each capture job records
+it in a nullable `job.device_id`. When a capture finishes, done or failed,
+the runner pushes to that device only, so one phone's captures never buzz
+the other. `POST /devices` upserts the push token by device identifier, and
+the app re-registers on every launch, so a reinstall or a token change is a
+new row or an updated one, never a stale one. A token Apple reports as bad
+is deleted.
+
+**Never on the critical path.** The push runs after the job row is
+finished, in its own try/catch; a failure is logged and the job is still
+done. Missing push secrets turn the sender into a logged no-op, so a dev
+server works without a key.
+
+**Consequence.** Migration 004 adds `device` and `job.device_id`. Three Fly
+secrets: `APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID`. A third target,
+`WeCookedWidget`, shares the app group only, never the Keychain group, so
+it can never hold the token. The permission prompt is asked the first time
+the phone queues a capture, never at launch.
+
+**Revisit if** a lock screen or watch widget is wanted (a second snapshot
+consumer), or if captures start from a third device (the device identifier
+would want to become an account).
+
+---
+
 ## Decisions deferred to prototypes
 
 The owner asked that UI decisions be settled with prototypes rather than prose.

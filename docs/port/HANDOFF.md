@@ -103,6 +103,14 @@ half and back). Logs of the last runs are in `logs/`.
   instead of two simulators; see decisions.tsv. The offline half (a tick
   queued without signal) is proven by the `DeviceState` and `ShoppingModel`
   tests only, so tick it on the phone like rows 33, 42 and 50.
+- **The push key.** Create an Apple Push Notification service (APNs) key
+  on the developer website (Keys, "Apple Push Notifications service"; the
+  App Manager API key cannot do it), download the `.p8` once, and set `APNS_KEY` (the file's contents or
+  its base64), `APNS_KEY_ID` and `APNS_TEAM_ID` with `fly secrets set` and
+  in `server/.env`. The key file never goes into the repo. Then the device
+  checklist for issue #42: widget shows the list, a tick updates it,
+  airplane mode keeps it, a share-sheet capture notifies, the tap opens the
+  draft, and Destiny's capture does not buzz the owner's phone.
 - A tap-through of wecooked.kitchen after the next deploy. The curl smoke in
   `logs/unit1-web-smoke.log` covers every page, but six route files were
   rewritten to share code with the API, and a real click-through is the
@@ -326,9 +334,28 @@ issues are the spec; the bullets below are the original wording.
   image already found, one at a time per draft or recipe. The new image takes
   over a found cover and the old one is soft-deleted; a household photo cover
   is never replaced.
-- **Widgets and push.** A shopping list widget, and an APNs push when a
-  capture is ready to review, which also gives the share extension its way
-  back into the app.
+- **Widgets and push.** Built on 2026-10-01 (issue #42, ADR-044). Push:
+  every request carries `X-Device-Id`, a UUID the app generates once into
+  the app-group defaults (`DeviceIdentity`, shared with the share
+  extension, kept across sign-out). Captures and generations record it on
+  the job (`job.device_id`, migration 004, so a dev server restarts after
+  pulling it). When a capture finishes, done or failed, the runner's
+  `afterJob` hook sends "Ready to review: <title>" or "Capture failed" to
+  that one phone, straight to Apple over HTTP/2 (`server/src/lib/server/push.ts`,
+  no provider). The app asks for permission the first time it queues a
+  capture from the Add tab or consumes a share-sheet hand-off, registers
+  with `POST /api/v1/devices` on every launch while authorized, and a tap
+  opens the draft through the same `DeepLink` as every other entry. The
+  three `APNS_*` secrets are unset until the owner creates the key (below);
+  until then the server logs once at boot and sends nothing. Widget: a
+  third target, `WeCookedWidget` (WidgetKit, medium and large), shares the
+  app group only. `AppEnvironment` rewrites `shopping-widget.json` in the
+  app-group container whenever the shopping reply, a tick or the unit
+  system changes (`ShoppingSnapshot`, both unit systems, staple count),
+  and reloads the widget's timeline; the widget never calls the server or
+  reads the Keychain, and a tap opens the Shopping tab. The snapshot's
+  rendering is a pure function with package tests; the widget itself is
+  proven by its previews and the owner's phone.
 
 ## Running the app locally
 
