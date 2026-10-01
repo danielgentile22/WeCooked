@@ -11,10 +11,18 @@ export type ApiRequest = {
 	query: URLSearchParams;
 	/** Client IP, for the login rate limit. */
 	ip: string;
+	/** The phone's install id from X-Device-Id (issue #42), already parsed. */
+	deviceId: string | undefined;
 	/** The JSON body, or undefined when it is empty or malformed. */
 	json(): Promise<unknown>;
 	bytes(): Promise<Buffer>;
 };
+
+/** X-Device-Id is a UUID from the app; anything blank or oversized is ignored, not refused. */
+export function deviceIdHeader(raw: string | null): string | undefined {
+	const id = raw?.trim();
+	return id && id.length <= 64 ? id : undefined;
+}
 
 export type Route = {
 	method: Method;

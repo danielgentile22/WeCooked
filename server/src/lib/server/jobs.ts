@@ -16,8 +16,12 @@ export type JobKind =
 	| 'generate'
 	| 'cover';
 
+/** The kinds that turn something the cook shared into a draft. */
+export const CAPTURE_KINDS = ['extract_url', 'extract_paste', 'extract_photos'] as const;
+export const isCaptureKind = (k: string) => (CAPTURE_KINDS as readonly string[]).includes(k);
+
 /** The kinds whose job row is a draft (SPEC 6.5): the captures and generation (issue #41). */
-export const DRAFT_KINDS = ['extract_url', 'extract_paste', 'extract_photos', 'generate'] as const;
+export const DRAFT_KINDS = [...CAPTURE_KINDS, 'generate'] as const;
 export const isDraftKind = (k: string) => (DRAFT_KINDS as readonly string[]).includes(k);
 
 export type JobRow = {
@@ -32,6 +36,8 @@ export type JobRow = {
 	error_code: ErrorCode | null;
 	error_text: string | null;
 	attempts: number;
+	/** The phone that queued it (issue #42), from X-Device-Id. */
+	device_id: string | null;
 };
 
 /** A handler returns the value stored as result_json. */
@@ -54,18 +60,19 @@ export function createJob(
 	db: Database,
 	kind: JobKind,
 	input: unknown,
-	refs: { recipe_id?: string; variation_id?: string; list_id?: string } = {}
+	refs: { recipe_id?: string; variation_id?: string; list_id?: string; device_id?: string } = {}
 ): string {
 	const id = ulid();
 	db.prepare(
-		`INSERT INTO job (id, kind, status, recipe_id, variation_id, list_id, input_json, created_at)
-		 VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)`
+		`INSERT INTO job (id, kind, status, recipe_id, variation_id, list_id, device_id, input_json, created_at)
+		 VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		kind,
 		refs.recipe_id ?? null,
 		refs.variation_id ?? null,
 		refs.list_id ?? null,
+		refs.device_id ?? null,
 		JSON.stringify(input),
 		now()
 	);
@@ -147,7 +154,10 @@ function claimNext(db: Database): JobRow | undefined {
 		.get(now()) as JobRow | undefined;
 }
 
-async function run(db: Database, handlers: Handlers, job: JobRow): Promise<void> {
+/** Runs once a job has finished, done or failed (issue #42: the capture push). */
+export type AfterJob = (job: JobRow) => Promise<void>;
+
+async function run(db: Database, handlers: Handlers, job: JobRow, afterJob?: AfterJob): Promise<void> {
 	try {
 		const handler = handlers[job.kind];
 		if (!handler) throw new JobError('api_error', `No handler for job kind ${job.kind}`);
@@ -166,11 +176,18 @@ async function run(db: Database, handlers: Handlers, job: JobRow): Promise<void>
 			`UPDATE job SET status = 'failed', error_code = ?, error_text = ?, finished_at = ? WHERE id = ?`
 		).run(code, ERROR_COPY[code], now(), job.id);
 	}
+	if (!afterJob) return;
+	// The job's outcome is already stored; nothing here may change it.
+	try {
+		await afterJob(db.prepare('SELECT * FROM job WHERE id = ?').get(job.id) as JobRow);
+	} catch (e) {
+		console.error(`after job ${job.id} (${job.kind}) failed:`, e);
+	}
 }
 
 const CONCURRENCY = 2;
 
-export function startRunner(db: Database, handlers: Handlers, pollMs = 500) {
+export function startRunner(db: Database, handlers: Handlers, pollMs = 500, afterJob?: AfterJob) {
 	let running = 0;
 	// Claims up to the free slots; returns completion of the jobs it started.
 	const tick = (): Promise<void> => {
@@ -179,7 +196,7 @@ export function startRunner(db: Database, handlers: Handlers, pollMs = 500) {
 			const job = claimNext(db);
 			if (!job) break;
 			running++;
-			started.push(run(db, handlers, job).finally(() => running--));
+			started.push(run(db, handlers, job, afterJob).finally(() => running--));
 		}
 		return Promise.all(started).then(() => {});
 	};

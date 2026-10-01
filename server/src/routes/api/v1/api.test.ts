@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env } from '$env/dynamic/private';
 import { migrate } from '$lib/server/migrate';
-import { dispatch, type Method } from '$lib/server/api/dispatch';
+import { deviceIdHeader, dispatch, type Method } from '$lib/server/api/dispatch';
 import { routes } from '$lib/server/api/v1';
 import { bearerToken, gate } from '$lib/server/gate';
 import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '$lib/server/session';
@@ -17,6 +17,7 @@ import { scale } from '$lib/server/scale';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import type { JobRow } from '$lib/server/jobs';
+import { getDevice } from '$lib/server/devices';
 import type { GenerateResult, RecipeDraft } from '$lib/extract';
 import candidates from '../../../../fixtures/candidates.json';
 import type { RecipeInput } from '$lib/tags';
@@ -75,12 +76,13 @@ afterAll(() => {
 /** Move the clock on, so created_at orders rows the way real use would. */
 const tick = () => vi.setSystemTime(Date.now() + 60_000);
 
-type Call = { body?: unknown; query?: string; bytes?: Buffer; ip?: string };
+type Call = { body?: unknown; query?: string; bytes?: Buffer; ip?: string; deviceId?: string };
 
 async function call(method: Method, path: string, opts: Call = {}) {
 	const reply = await dispatch(db, routes, method, path, {
 		query: new URLSearchParams(opts.query),
 		ip: opts.ip ?? '10.0.0.1',
+		deviceId: opts.deviceId,
 		json: async () => opts.body,
 		bytes: async () => opts.bytes ?? Buffer.alloc(0)
 	});
@@ -381,15 +383,51 @@ describe('/api/v1', () => {
 			body: { url: 'https://example.com', image_ids: ['p'] }
 		});
 		tick();
-		const url = await ok('POST', '/captures', { body: { text: 'www.example.com/soup' } });
-		expect(job(url.job_id)).toMatchObject({ kind: 'extract_url', input_json: '{"url":"https://www.example.com/soup"}' });
+		const url = await ok('POST', '/captures', { body: { text: 'www.example.com/soup' }, deviceId: 'phone-1' });
+		expect(job(url.job_id)).toMatchObject({
+			kind: 'extract_url',
+			input_json: '{"url":"https://www.example.com/soup"}',
+			device_id: 'phone-1'
+		});
 		tick();
 		const paste = fixture('captures', await ok('POST', '/captures', { body: { text: 'Toast\nToast the bread.' } }));
-		expect(job(paste.job_id)).toMatchObject({ kind: 'extract_paste' });
+		expect(job(paste.job_id)).toMatchObject({ kind: 'extract_paste', device_id: null });
 		tick();
 		const page = await ok('POST', '/images', { query: 'role=capture', bytes: await jpeg() });
 		const photos = await ok('POST', '/captures', { body: { image_ids: [page.id] } });
 		expect(JSON.parse(job(photos.job_id)!.input_json)).toEqual({ image_ids: [page.id] });
+	});
+
+	it('devices: register, re-register (issue #42)', async () => {
+		const push_token = 'ab'.repeat(32);
+		const device = { device_id: 'phone-1', push_token, environment: 'sandbox' };
+		await fails('POST', '/devices', 400, 'Missing device id.', { body: { ...device, device_id: ' ' } });
+		await fails('POST', '/devices', 400, 'Missing device id.', { body: { ...device, device_id: 'x'.repeat(65) } });
+		await fails('POST', '/devices', 400, 'That push token is not valid.', { body: { ...device, push_token: 'abc' } });
+		await fails('POST', '/devices', 400, 'That push token is not valid.', { body: { ...device, push_token: 'zz'.repeat(32) } });
+		await fails('POST', '/devices', 400, 'Environment must be sandbox or production.', {
+			body: { ...device, environment: 'staging' }
+		});
+		expect(fixture('devices-register', await ok('POST', '/devices', { body: device }))).toEqual({ ok: true });
+		expect(getDevice(db, 'phone-1')).toMatchObject({ push_token, environment: 'sandbox' });
+
+		const fresh = 'cd'.repeat(40);
+		await ok('POST', '/devices', { body: { ...device, push_token: fresh, environment: 'production' } });
+		expect(db.prepare('SELECT count(*) AS n FROM device').get()).toEqual({ n: 1 });
+		expect(getDevice(db, 'phone-1')).toEqual({
+			id: 'phone-1',
+			push_token: fresh,
+			environment: 'production',
+			updated_at: new Date().toISOString()
+		});
+
+		expect([' phone-2 ', '', '   ', null, 'x'.repeat(65)].map(deviceIdHeader)).toEqual([
+			'phone-2',
+			undefined,
+			undefined,
+			undefined,
+			undefined
+		]);
 	});
 
 	it('drafts: browse cards, review, retry, save, discard', async () => {
@@ -556,8 +594,12 @@ describe('/api/v1', () => {
 			});
 
 		tick();
-		const running = fixture('generations', await ok('POST', '/generations', { body: { description, yield_count: 2 } }));
+		const running = fixture(
+			'generations',
+			await ok('POST', '/generations', { body: { description, yield_count: 2 }, deviceId: 'phone-1' })
+		);
 		expect(JSON.parse(job(running.job_id)!.input_json)).toEqual({ description, yield_count: 2, picked: null });
+		expect(job(running.job_id)!.device_id).toBe('phone-1');
 		db.prepare(`UPDATE job SET status = 'running' WHERE id = ?`).run(running.job_id);
 		const generating = fixture('draft-get-generating', await ok('GET', `/drafts/${running.job_id}`));
 		expect(generating).toMatchObject({ status: 'running', initial: null, source_text: description });

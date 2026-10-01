@@ -54,7 +54,7 @@ describe('migrate', () => {
 	it('applies the real schema', () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		expect(version(db)).toBe(3);
+		expect(version(db)).toBe(4);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 			.all()
@@ -70,7 +70,8 @@ describe('migrate', () => {
 			'shopping_list',
 			'shopping_list_recipe',
 			'shopping_list_item',
-			'recipe_fts'
+			'recipe_fts',
+			'device'
 		])
 			expect(tables).toContain(t);
 	});

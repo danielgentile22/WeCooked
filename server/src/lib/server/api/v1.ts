@@ -33,6 +33,7 @@ import {
 	setTicked
 } from '../shopping';
 import { saveImage } from '../images';
+import { PUSH_ENVIRONMENTS, registerDevice, type PushEnvironment } from '../devices';
 import { BACKFILL_LIMIT, backfillCovers, findDraftCover, findRecipeCover } from '../cover';
 import { pageContent, pageImages } from '../extract';
 import { asUrl, type CaptureInput, type GenerateInput } from '$lib/extract';
@@ -74,7 +75,9 @@ function draftJob(db: Database, id: string) {
 	return job;
 }
 
-async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
+// Issue #42: every capture and generation remembers the phone that queued it.
+async function capture(db: Database, b: Fields, device_id?: string): Promise<{ job_id: string }> {
+	const refs = { device_id };
 	if ('image_ids' in b && 'url' in b) throw bad('Share one thing at a time: a link, text or photos.');
 	if ('image_ids' in b) {
 		// SPEC 7.1 photo path: images are already uploaded via POST /images?role=capture.
@@ -82,7 +85,7 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 		if (!Array.isArray(ids) || ids.length === 0 || ids.some((i) => typeof i !== 'string'))
 			throw bad('Add at least one photo first.');
 		if (ids.length > 10) throw bad('At most 10 pages per recipe.');
-		return { job_id: createJob(db, 'extract_photos', { image_ids: ids }) };
+		return { job_id: createJob(db, 'extract_photos', { image_ids: ids }, refs) };
 	}
 	if ('url' in b) {
 		// Issue #39 share sheet: the link is the source; text is a caption to fall back on.
@@ -98,26 +101,39 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 		// Issue #44: the page's own photos, candidates for the cover job.
 		const found = html ? pageImages(html, url) : [];
 		const input: CaptureInput = { url, page, text, image_urls: found.length ? found : undefined };
-		return { job_id: createJob(db, 'extract_url', input) };
+		return { job_id: createJob(db, 'extract_url', input, refs) };
 	}
 	const text = String(b.text ?? '').trim();
 	if (!text) throw bad('Paste some recipe text first.');
 	const url = asUrl(text);
 	return {
-		job_id: url ? createJob(db, 'extract_url', { url }) : createJob(db, 'extract_paste', { text })
+		job_id: url
+			? createJob(db, 'extract_url', { url }, refs)
+			: createJob(db, 'extract_paste', { text }, refs)
 	};
 }
 
 // Issue #41: the cook sets the yield up front, so quantities come out right
 // without a rescale.
-function startGeneration(db: Database, b: Fields): { job_id: string } {
+function startGeneration(db: Database, b: Fields, device_id?: string): { job_id: string } {
 	const description = typeof b.description === 'string' ? b.description.trim() : '';
 	if (!description || description.length > 1000) throw bad('Describe what you want to cook.');
 	const count = b.yield_count;
 	if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 100)
 		throw bad('Yield must be a whole number from 1 to 100.');
 	const input: GenerateInput = { description, yield_count: count, picked: null };
-	return { job_id: createJob(db, 'generate', input) };
+	return { job_id: createJob(db, 'generate', input, { device_id }) };
+}
+
+// Issue #42: the app posts its APNs token after the cook allows notifications.
+function device(b: Fields) {
+	const device_id = typeof b.device_id === 'string' ? b.device_id.trim() : '';
+	if (!device_id || device_id.length > 64) throw bad('Missing device id.');
+	const push_token = typeof b.push_token === 'string' ? b.push_token.trim().toLowerCase() : '';
+	if (!/^[0-9a-f]{64,200}$/.test(push_token)) throw bad('That push token is not valid.');
+	const environment = b.environment as PushEnvironment;
+	if (!PUSH_ENVIRONMENTS.includes(environment)) throw bad('Environment must be sandbox or production.');
+	return { device_id, push_token, environment };
 }
 
 function picks(v: unknown): { recipe_id: string; yield_count: unknown }[] {
@@ -247,7 +263,7 @@ export const routes: readonly Route[] = [
 		}
 	},
 
-	{ method: 'POST', path: '/captures', run: async (db, req) => capture(db, await body(req)) },
+	{ method: 'POST', path: '/captures', run: async (db, req) => capture(db, await body(req), req.deviceId) },
 	{
 		method: 'GET',
 		path: '/drafts/:id',
@@ -278,7 +294,7 @@ export const routes: readonly Route[] = [
 	{
 		method: 'POST',
 		path: '/generations',
-		run: async (db, req) => startGeneration(db, await body(req))
+		run: async (db, req) => startGeneration(db, await body(req), req.deviceId)
 	},
 	{
 		method: 'POST',
@@ -316,6 +332,15 @@ export const routes: readonly Route[] = [
 			const limit = Number(req.query.get('limit') ?? BACKFILL_LIMIT);
 			if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('limit must be 1 to 200.');
 			return { queued: backfillCovers(db, limit) };
+		}
+	},
+
+	{
+		method: 'POST',
+		path: '/devices',
+		run: async (db, req) => {
+			registerDevice(db, device(await body(req)));
+			return OK;
 		}
 	},
 

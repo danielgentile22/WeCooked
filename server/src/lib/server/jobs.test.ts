@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from './migrate';
 import { createJob, recoverInterrupted, startRunner, JobError, type JobRow } from './jobs';
@@ -79,6 +79,46 @@ describe('job runner (SPEC 6)', () => {
 		await first;
 		await runner.tick();
 		expect(counts()).toEqual([{ status: 'done', n: 3 }]);
+	});
+
+	it('calls afterJob with the finished row, done or failed (issue #42)', async () => {
+		const db = testDb();
+		const done = createJob(db, 'reconvert', { ok: true }, { device_id: 'phone' });
+		const failed = createJob(db, 'reconvert', { ok: false });
+		const seen: JobRow[] = [];
+		const runner = startRunner(
+			db,
+			{
+				reconvert: async (job) => {
+					if (!JSON.parse(job.input_json).ok) throw new JobError('no_recipe_found');
+					return 'ok';
+				}
+			},
+			500,
+			async (job) => {
+				seen.push(job);
+			}
+		);
+		runner.stop();
+		await runner.tick();
+		const by = Object.fromEntries(seen.map((j) => [j.id, j]));
+		expect(seen).toHaveLength(2);
+		expect(by[done]).toMatchObject({ status: 'done', result_json: '"ok"', device_id: 'phone' });
+		expect(by[failed]).toMatchObject({ status: 'failed', error_code: 'no_recipe_found', device_id: null });
+	});
+
+	it('a throwing afterJob is logged and leaves the status alone (issue #42)', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const runner = startRunner(db, { reconvert: async () => 'ok' }, 500, async () => {
+			throw new Error('push down');
+		});
+		runner.stop();
+		await runner.tick();
+		expect(row(db, id).status).toBe('done');
+		expect(log).toHaveBeenCalledWith(expect.stringContaining(id), expect.any(Error));
+		log.mockRestore();
 	});
 
 	it('startup recovery fails running jobs with interrupted and retry copy', () => {

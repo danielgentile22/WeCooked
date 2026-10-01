@@ -1,6 +1,7 @@
 import { json, redirect, type Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, issueSessionToken, setSessionCookie } from '$lib/server/session';
 import { bearerToken, gate } from '$lib/server/gate';
+import { env } from '$env/dynamic/private';
 import db from '$lib/server/db'; // opens the database and runs migrations at boot
 import { recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
 import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
@@ -9,6 +10,7 @@ import { generate } from '$lib/server/generate';
 import { reconvert } from '$lib/server/reconvert';
 import { scale } from '$lib/server/scale';
 import { shoppingMerge } from '$lib/server/shopping';
+import { http2Transport, makeApnsAuth, pushAfterJob } from '$lib/server/push';
 
 const handlers: Handlers = {
 	// Issue #44: a successful capture queues its cover; a generation does on pick.
@@ -28,7 +30,9 @@ const g = globalThis as typeof globalThis & {
 };
 if (!g.__jobRunner) {
 	recoverInterrupted(db); // SPEC 6.2
-	g.__jobRunner = startRunner(db, handlers);
+	// Issue #42: a finished capture pushes "Ready to review" to the phone that queued it.
+	const push = pushAfterJob(db, { transport: http2Transport, auth: makeApnsAuth(env) });
+	g.__jobRunner = startRunner(db, handlers, 500, push);
 }
 
 // The single auth gate (SPEC 8.5): every route except /login, /healthz and

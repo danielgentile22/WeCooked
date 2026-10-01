@@ -4,6 +4,8 @@ JSON API for the native client. Every route is a row in `src/lib/server/api/v1.t
 
 Auth: send `Authorization: Bearer <token>`, where the token comes from `POST /login`. It is the session cookie value, valid for a year. When it is older than 30 days, the reply carries a fresh one in `X-Session-Token`; store it. Without a valid token every `/api` path answers 401 `{"error":"unauthorized"}`. Send JSON bodies as `Content-Type: application/json`.
 
+Device: send `X-Device-Id: <uuid>` on every call (issue #42). Captures and generations record it on their job, so a finished capture pushes "Ready to review" only to the phone that queued it. Blank or over 64 characters counts as absent.
+
 Errors are always `{"error": string}`. 400 is a validation message fit to show the user. Unknown paths are 404 and wrong methods 405.
 
 | Method | Path | Body | Reply | Errors |
@@ -32,6 +34,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /drafts/:id/cover | | `{job_id}`: "Find another photo" for the draft, as for a recipe | 400 still choosing, not done extracting, or a cover job is already running; 404 |
 | POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |
+| POST | /devices | `{device_id, push_token, environment}`: `push_token` is the APNs token as hex, `environment` is `sandbox` or `production` | `{ok:true}`; upserts by `device_id`, so re-registering every launch is safe | 400 missing device id, bad push token, unknown environment |
 | GET | /shopping | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}` | |
 | POST | /shopping/build | `{picks: {recipe_id, yield_count}[]}` | `{job_id}` | 400 |
 | POST | /shopping/retry | | `{job_id}` | |
