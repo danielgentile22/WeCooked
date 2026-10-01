@@ -89,13 +89,6 @@ half and back). Logs of the last runs are in `logs/`.
 
 ## Still needed from the owner
 
-- **The second tester's Apple ID email and name.** Internal TestFlight
-  testers must be App Store Connect users, so the lead invites them with
-  the Customer Support role limited to this app (`invite` in the session's
-  API script, or Users and Access on the site), they accept from the
-  email, and the lead adds them to the Internal group. The owner's own
-  invite only took once the email link was opened on the phone, because
-  TestFlight follows the App Store Apple ID, not the iCloud one.
 - **Proof of the shared Keychain on a device.** Sign in on the phone, kill
   the app, reopen it. Landing on Recipes without the password is the
   proof. Haptics and the icon in light and dark are also the owner's to
@@ -251,6 +244,17 @@ reason: the app sent `{url, text}` to a server that did not know `text`.
 - Internal testing: one internal group named Internal with access to all
   builds, so new builds need no group step. Build 1 carries test notes and
   `ITSAppUsesNonExemptEncryption` is false, so no compliance prompt.
+- Both testers are in: the owner and the second tester (2026-10-01, on
+  iOS 17.6.1, hence build 5's iOS 17 minimum). Adding a tester takes two
+  steps. First the lead invites them as an App Store Connect user with the
+  Customer Support role limited to this app (Users and Access), and they
+  accept from that email. That only makes them a team member; TestFlight
+  shows nothing until the lead also adds them to the Internal group
+  (`POST /v1/betaTesters` with the group, or the group's page on the site),
+  which sends a second, TestFlight email. Open its link in Safari or Mail,
+  since Chrome on iOS does not hand it to TestFlight. TestFlight follows the
+  App Store Apple ID, not the iCloud one, so that account must match the
+  invited email.
 
 ## After parity
 
