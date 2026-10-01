@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { createRecipe } from './recipes';
 import { DRAFT_KINDS, isDraftKind, type JobRow } from './jobs';
 import { CANDIDATE_COUNT } from './generate';
+import { enqueueCover } from './cover';
 import { presignGet } from './r2';
 import {
 	draftToInput,
@@ -83,7 +84,12 @@ export function getGenerationJob(db: Database, id: string): JobRow | null {
 	return job?.kind === 'generate' ? job : null;
 }
 
-export type DraftImage = { id: string; url: string };
+/** source_url is set on a found cover (issue #44): fetched, not taken. */
+export type DraftImage = { id: string; url: string; source_url: string | null };
+
+/** What every seeded form carries besides the recipe: the link, the photo
+ *  strip, and the found cover's id when the cover job found one. */
+type DraftSeed = { source_url: string | null; images: DraftImage[]; cover_image_id: string | null };
 
 export type DraftView = {
 	id: string;
@@ -91,13 +97,56 @@ export type DraftView = {
 	status: JobRow['status'];
 	error_text: string | null;
 	source_text: string | null;
-	initial:
-		| (Partial<RecipeInput> & { source_url: string | null; images: DraftImage[] })
-		| { source_url: string | null; images: DraftImage[] }
-		| null;
+	initial: (Partial<RecipeInput> & DraftSeed) | DraftSeed | null;
+	/** The cover job still looking for this draft's cover, if any (issue #44):
+	 *  the phone watches it and re-reads the draft when it ends. */
+	cover_job_id: string | null;
 	warnings: string[];
 	damage_reasoning: string | null;
 };
+
+type DraftImageRefs = Pick<CaptureInput, 'image_ids' | 'cover_image_id'>;
+
+/** Capture photos ride input_json (ADR-024); the found cover comes last (issue #44). */
+const draftImageIds = (input: DraftImageRefs) => [
+	...(input.image_ids ?? []),
+	...(input.cover_image_id ? [input.cover_image_id] : [])
+];
+
+/** A draft's live images, in draftImageIds order. */
+function draftImages(
+	db: Database,
+	input: DraftImageRefs
+): { images: DraftImage[]; cover_image_id: string | null } {
+	const ids = draftImageIds(input);
+	const rows = ids.length
+		? (db
+				.prepare(
+					`SELECT id, r2_key_display, source_url FROM image
+					 WHERE id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL`
+				)
+				.all(...ids) as { id: string; r2_key_display: string; source_url: string | null }[])
+		: [];
+	const byId = new Map(rows.map((r) => [r.id, r]));
+	const images = ids.flatMap((id) => {
+		const r = byId.get(id);
+		return r ? [{ id, url: presignGet(r.r2_key_display), source_url: r.source_url }] : [];
+	});
+	const cover = input.cover_image_id && byId.has(input.cover_image_id) ? input.cover_image_id : null;
+	return { images, cover_image_id: cover };
+}
+
+/** The queued or running cover job for a draft, else null. */
+function pendingCoverJob(db: Database, draftId: string): string | null {
+	const row = db
+		.prepare(
+			`SELECT id FROM job WHERE kind = 'cover' AND status IN ('queued', 'running')
+			   AND json_extract(input_json, '$.draft_id') = ?
+			 ORDER BY created_at DESC, id DESC LIMIT 1`
+		)
+		.get(draftId) as { id: string } | undefined;
+	return row?.id ?? null;
+}
 
 /** One candidate as the deck compares it: the as-written ingredients, flattened. */
 export type Candidate = {
@@ -133,8 +182,9 @@ const candidate = (d: RecipeDraft): Candidate => ({
 /** A generation before its pick is a GenerationView; after, the review form's
  *  data like any draft, seeded from the picked candidate with the description
  *  as its source text. */
-function generationView(job: JobRow): DraftView | GenerationView {
-	const { description, yield_count } = generateInput(job);
+function generationView(db: Database, job: JobRow): DraftView | GenerationView {
+	const input = generateInput(job);
+	const { description, yield_count } = input;
 	if (isChoosing(job))
 		return {
 			id: job.id,
@@ -151,8 +201,9 @@ function generationView(job: JobRow): DraftView | GenerationView {
 		error_text: job.error_text,
 		source_text: description,
 		initial: draft
-			? { ...draftToInput(draft), source_text: description, source_url: null, images: [] }
+			? { ...draftToInput(draft), source_text: description, source_url: null, ...draftImages(db, input) }
 			: null,
+		cover_job_id: pendingCoverJob(db, job.id),
 		warnings: [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
@@ -160,24 +211,12 @@ function generationView(job: JobRow): DraftView | GenerationView {
 
 /** The review form's data for an unsaved draft job. */
 export function draftView(db: Database, job: JobRow): DraftView | GenerationView {
-	if (job.kind === 'generate') return generationView(job);
+	if (job.kind === 'generate') return generationView(db, job);
 	const input = JSON.parse(job.input_json) as CaptureInput;
 	const draft = draftOf(job);
-	// Capture photos ride input_json too (ADR-024): the strip shows them on
-	// success and on failure alike, and Save claims them onto the recipe.
-	const imageIds = input.image_ids ?? [];
-	const rows = imageIds.length
-		? (db
-				.prepare(
-					`SELECT id, r2_key_display FROM image
-					 WHERE id IN (${imageIds.map(() => '?').join(',')}) AND deleted_at IS NULL`
-				)
-				.all(...imageIds) as { id: string; r2_key_display: string }[])
-		: [];
-	const byId = new Map(rows.map((r) => [r.id, r.r2_key_display]));
-	const images = imageIds
-		.filter((id) => byId.has(id))
-		.map((id) => ({ id, url: presignGet(byId.get(id)!) }));
+	// The strip shows the photos on success and on failure alike, and Save
+	// claims them onto the recipe.
+	const seed = draftImages(db, input);
 	return {
 		id: job.id,
 		kind: 'capture',
@@ -187,10 +226,11 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
 		// The URL rides input_json, not the extraction, so it seeds the form
 		// here: on failure too, so a fetch_blocked draft still carries its link.
 		initial: draft
-			? { ...draftToInput(draft), source_url: input.url ?? null, images }
-			: input.url || images.length
-				? { source_url: input.url ?? null, images }
+			? { ...draftToInput(draft), source_url: input.url ?? null, ...seed }
+			: input.url || seed.images.length
+				? { source_url: input.url ?? null, ...seed }
 				: null,
+		cover_job_id: pendingCoverJob(db, job.id),
 		warnings: draft?.extraction_warnings ?? [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
@@ -202,14 +242,26 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
  */
 export function saveDraft(db: Database, job: JobRow, payload: RecipeInput): string {
 	if (isChoosing(job)) throw new Error('Pick a recipe first.');
-	const id = createRecipe(db, payload);
-	db.prepare(`UPDATE job SET recipe_id = ? WHERE id = ?`).run(id, job.id);
-	return id;
+	return db.transaction(() => {
+		const id = createRecipe(db, payload);
+		db.prepare(`UPDATE job SET recipe_id = ? WHERE id = ?`).run(id, job.id);
+		// A found cover the form left out (removed, or never seen because the
+		// form was loaded before the cover job finished) would otherwise sit
+		// unclaimed forever (issue #44).
+		const { cover_image_id } = JSON.parse(job.input_json) as CaptureInput;
+		if (cover_image_id && !(payload.image_ids ?? []).includes(cover_image_id))
+			db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`).run(
+				new Date().toISOString(),
+				cover_image_id
+			);
+		return id;
+	})();
 }
 
 /**
  * Discard hard-deletes the job row (machine output, ADR-035) and
- * soft-deletes its capture images. Running jobs cannot be discarded.
+ * soft-deletes its capture images and found cover. Running jobs cannot be
+ * discarded.
  */
 export function discardDraft(db: Database, job: JobRow): void {
 	if (job.status === 'queued' || job.status === 'running')
@@ -218,7 +270,7 @@ export function discardDraft(db: Database, job: JobRow): void {
 				? 'Still generating; wait for it to finish.'
 				: 'Still extracting; wait for it to finish.'
 		);
-	const imageIds = (JSON.parse(job.input_json) as CaptureInput).image_ids ?? [];
+	const imageIds = draftImageIds(JSON.parse(job.input_json) as CaptureInput);
 	db.transaction(() => {
 		const soft = db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`);
 		for (const id of imageIds) soft.run(new Date().toISOString(), id);
@@ -251,4 +303,5 @@ export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 		JSON.stringify({ ...input, picked: index }),
 		job.id
 	);
+	enqueueCover(db, job.id);
 }

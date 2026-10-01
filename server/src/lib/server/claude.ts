@@ -46,13 +46,14 @@ export async function claudeCall<T>(
 		messages: MessageParam[];
 		schema: Record<string, unknown>;
 		max_tokens?: number;
+		model?: string;
 	}
 ): Promise<T> {
 	takeQuota(db);
 	let msg: Anthropic.Message;
 	try {
 		msg = await client().messages.create({
-			model: env.CLAUDE_MODEL ?? 'claude-opus-5',
+			model: opts.model ?? env.CLAUDE_MODEL ?? 'claude-opus-5',
 			max_tokens: opts.max_tokens ?? 16_000,
 			system: opts.system,
 			messages: opts.messages,

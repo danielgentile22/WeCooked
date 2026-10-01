@@ -13,7 +13,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | GET | /tags | | `{meal_types, cuisines, proteins, efforts, damages, section_order, error_copy}` | |
 | GET | /recipes?q=&meal=&cuisine=&protein=&effort=&damage= | | `{drafts: DraftCard[], recipes: {id,title,effort,damage,cover_url}[]}` | |
 | POST | /recipes | `RecipeInput` | `{id}` | 400 |
-| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh | 404 |
+| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh. `recipe.images[]` is `{id, url, width, height, source_url}` | 404 |
 | PUT | /recipes/:id | `{payload: RecipeInput, variation_id?}` | `{id, variation_id}` (null means the original) | 400 |
 | DELETE | /recipes/:id | | `{ok:true}` (to Trash) | |
 | POST | /recipes/:id/calculate | `{to_count}` | `{variation_id}` if that yield exists, else `{job_id}` | 400 |
@@ -22,13 +22,14 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /variations/:id/recalculate | | `{job_id}` | 400 |
 | POST | /variations/:id/keep-mine | | `{ok:true}` | |
 | DELETE | /variations/:id | | `{ok:true}` (to Trash) | 400 |
-| POST | /captures | `{text}`, `{url, html?, text?}` or `{image_ids}` | `{job_id}` | 400 |
+| POST | /captures | `{text}`, `{url, html?, text?}` or `{image_ids}` | `{job_id}`; a successful extraction queues a cover job | 400 |
 | POST | /generations | `{description, yield_count}` | `{job_id}` | 400 empty or over 1000 characters, 400 yield not a whole number from 1 to 100 |
-| GET | /drafts/:id | | `DraftView`, `GenerationView` while a generation waits for a pick, or `{recipe_id}` once saved | 404 |
+| GET | /drafts/:id | | `DraftView`, `GenerationView` while a generation waits for a pick, or `{recipe_id}` once saved. `DraftView.initial` carries `images: {id, url, source_url}[]` and `cover_image_id` (the found cover, else null); `DraftView.cover_job_id` is the cover job still running for the draft, else null, so the phone can watch it and re-read the draft | 404 |
 | POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400 (also before a generation's pick), 404 |
 | POST | /drafts/:id/discard | | `{ok:true}` | 400 while extracting, 404 |
 | POST | /drafts/:id/retry | | `{ok:true}` (requeues a failed draft) | 404 |
-| POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
+| POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
+| POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |
 | GET | /shopping | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}` | |
 | POST | /shopping/build | `{picks: {recipe_id, yield_count}[]}` | `{job_id}` | 400 |
 | POST | /shopping/retry | | `{job_id}` | |
@@ -40,5 +41,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /trash/variations/:id/restore | | `{restored:true, displaced}` | 400 |
 | GET | /jobs/:id | | `JobPoll {status, error_code, error_text, result_ref}` | 404 |
 | POST | /images?role=photo\|capture | raw JPEG bytes | `{id, url, width, height}` | 400, 413 over 8 MiB |
+
+Found covers (issue #44, ADR-043): after a capture or a pick, a background `cover` job looks for a photo of the dish and, when it finds one, adds it to the draft as the last image and names it `cover_image_id`. Its `source_url` is where it was fetched from; photos the household took have `source_url: null`. Save it like any photo: send its id in `image_ids` and, if it is still the cover, as `cover_image_id`. The draft does not wait for it, so poll `GET /drafts/:id` again to see a late one.
 
 Job ids are polled with `GET /jobs/:id` (1.5 s, backing off to 5 s). Image URLs are presigned for 7 days and change daily; cache by image id.

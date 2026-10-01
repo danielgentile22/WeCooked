@@ -15,12 +15,33 @@ import type {
 } from '$lib/tags';
 
 /** A capture job's input_json: pasted text, a url, or image ids. page is the
- *  reduced content of the HTML the phone rendered for url (issue #43). */
-export type CaptureInput = { text?: string; url?: string; page?: string; image_ids?: string[] };
+ *  reduced content of the HTML the phone rendered for url (issue #43).
+ *  image_urls are that page's own photos, best first; cover_image_id is the
+ *  cover the cover job found (issue #44). */
+export type CaptureInput = {
+	text?: string;
+	url?: string;
+	page?: string;
+	image_ids?: string[];
+	image_urls?: string[];
+	cover_image_id?: string;
+};
 
 /** A generate job's input_json (issue #41). picked stays null until the cook
  *  picks a candidate; it is what turns the generation into a draft. */
-export type GenerateInput = { description: string; yield_count: number; picked: number | null };
+export type GenerateInput = {
+	description: string;
+	yield_count: number;
+	picked: number | null;
+	cover_image_id?: string;
+};
+
+/** A cover job's input_json (issue #44): a draft-kind job id, or a saved
+ *  recipe for the backfill. */
+export type CoverInput = { draft_id: string } | { recipe_id: string };
+
+/** A done cover job's result_json. */
+export type CoverResult = { image_id: string | null; origin: 'source' | 'search' | null };
 
 /**
  * SPEC 7.1 text-or-URL detection: a lone link takes the URL path, anything

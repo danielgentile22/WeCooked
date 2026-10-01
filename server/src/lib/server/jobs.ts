@@ -12,7 +12,8 @@ export type JobKind =
 	| 'scale'
 	| 'reconvert'
 	| 'shopping_merge'
-	| 'generate';
+	| 'generate'
+	| 'cover';
 
 /** The kinds whose job row is a draft (SPEC 6.5): the captures and generation (issue #41). */
 export const DRAFT_KINDS = ['extract_url', 'extract_paste', 'extract_photos', 'generate'] as const;

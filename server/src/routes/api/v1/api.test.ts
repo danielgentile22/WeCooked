@@ -15,6 +15,7 @@ import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '$lib/server/
 import { claudeCall } from '$lib/server/claude';
 import { scale } from '$lib/server/scale';
 import { applyMerge, getListId } from '$lib/server/shopping';
+import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import type { JobRow } from '$lib/server/jobs';
 import type { GenerateResult, RecipeDraft } from '$lib/extract';
 import candidates from '../../../../fixtures/candidates.json';
@@ -124,8 +125,8 @@ function finishJob(id: string, result: unknown) {
 	);
 }
 
-const jpeg = () =>
-	sharp({ create: { width: 40, height: 30, channels: 3, background: '#c86432' } })
+const jpeg = (width = 40, height = 30) =>
+	sharp({ create: { width, height, channels: 3, background: '#c86432' } })
 		.jpeg()
 		.toBuffer();
 
@@ -625,5 +626,57 @@ describe('/api/v1', () => {
 		finishJob(running.job_id, result);
 		expect(await ok('POST', `/drafts/${running.job_id}/discard`)).toEqual({ ok: true });
 		expect(job(running.job_id)).toBeUndefined();
+	});
+
+	// Last so its job and image ids shift no earlier fixture the Kit pins.
+	it('found covers: draft cover, backfill, recipe cover (issue #44)', async () => {
+		const found = await jpeg(800, 600);
+		const deps: CoverDeps = {
+			fetchPage: async () => {
+				throw new Error('fetched a page');
+			},
+			fetchImage: async () => found,
+			searchImages: async () => [
+				{ image_url: 'https://images.example.com/omelette.jpg', title: 'Omelette', page_url: 'https://example.com' }
+			],
+			claudePick: async () => 0
+		};
+		const pendingCovers = () =>
+			db.prepare(`SELECT id, input_json FROM job WHERE kind = 'cover' AND status = 'queued'`).all() as {
+				id: string;
+				input_json: string;
+			}[];
+		const runCover = async (input: object) => {
+			const cover = pendingCovers().find((c) => c.input_json === JSON.stringify(input))!;
+			finishJob(cover.id, await coverHandler(deps)(job(cover.id)!, db));
+		};
+
+		tick();
+		const html = '<meta property="og:image" content="/hero.jpg"><p>Toast the bread.</p>';
+		const { job_id } = await ok('POST', '/captures', { body: { url: 'https://www.example.com/toast', html } });
+		expect(JSON.parse(job(job_id)!.input_json).image_urls).toEqual(['https://www.example.com/hero.jpg']);
+		finishJob(job_id, draftResult());
+		enqueueCover(db, job_id);
+		await runCover({ draft_id: job_id });
+		const draft = fixture('draft-get-cover', await ok('GET', `/drafts/${job_id}`));
+		expect(draft.initial.cover_image_id).toBe(draft.initial.images[0].id);
+		expect(draft.initial.images).toEqual([
+			{ id: expect.any(String), url: expect.stringMatching(/display\.jpg/), source_url: 'https://www.example.com/hero.jpg' }
+		]);
+
+		// Coverless and live: the omelette and the lemon drizzle cake. The
+		// generated recipe's draft still has its cover job queued.
+		expect(fixture('covers-backfill', await ok('POST', '/covers/backfill'))).toEqual({ queued: 2 });
+		expect(await ok('POST', '/covers/backfill')).toEqual({ queued: 0 });
+
+		const omelette = (await ok('GET', '/recipes', { query: 'q=omelette' })).recipes[0].id as string;
+		await runCover({ recipe_id: omelette });
+		const view = fixture('recipe-get-cover', await ok('GET', `/recipes/${omelette}`));
+		expect(view.recipe.cover_image_id).toBe(view.recipe.images[0].id);
+		expect(view.recipe.images[0]).toMatchObject({
+			width: 800,
+			height: 600,
+			source_url: 'https://images.example.com/omelette.jpg'
+		});
 	});
 });

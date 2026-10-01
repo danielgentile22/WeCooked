@@ -9,6 +9,7 @@ import {
 	fetchPage as realFetchPage,
 	findRecipeJsonLd,
 	pageContent,
+	pageImages,
 	photoBlocks,
 	stripHtml,
 	PHOTOS_INSTRUCTION
@@ -380,6 +381,59 @@ describe('pageContent (issue #43)', () => {
 
 	it('leaves an out-of-range numeric entity alone instead of throwing', () => {
 		expect(pageContent('<p>a &#99999999; b</p>')).toBe('a &#99999999; b');
+	});
+});
+
+describe('pageImages (issue #44)', () => {
+	const ld = (image: unknown) =>
+		`<script type="application/ld+json">${JSON.stringify({ '@type': 'Recipe', image })}</script>`;
+
+	it('reads the Recipe JSON-LD image as a string, an array, or ImageObjects', () => {
+		expect(pageImages(ld('https://a.com/1.jpg'))).toEqual(['https://a.com/1.jpg']);
+		expect(pageImages(ld(['https://a.com/1.jpg', 'https://a.com/2.jpg']))).toEqual([
+			'https://a.com/1.jpg',
+			'https://a.com/2.jpg'
+		]);
+		expect(pageImages(ld({ '@type': 'ImageObject', url: 'https://a.com/1.jpg' }))).toEqual(['https://a.com/1.jpg']);
+		expect(
+			pageImages(ld([{ contentUrl: 'https://a.com/1.jpg' }, { url: 'https://a.com/2.jpg', width: 1200 }]))
+		).toEqual(['https://a.com/1.jpg', 'https://a.com/2.jpg']);
+	});
+
+	it('reads og:image, decoding entities, and twitter:image in either spelling', () => {
+		expect(pageImages('<meta property="og:image" content="https://a.com/x.jpg?w=1&amp;h=2">')).toEqual([
+			'https://a.com/x.jpg?w=1&h=2'
+		]);
+		expect(pageImages('<meta name="twitter:image" content="https://a.com/t.jpg">')).toEqual(['https://a.com/t.jpg']);
+		expect(pageImages('<meta content="https://a.com/s.jpg" name="twitter:image:src">')).toEqual([
+			'https://a.com/s.jpg'
+		]);
+	});
+
+	it('orders JSON-LD, then og:image, then twitter:image, without duplicates', () => {
+		const html =
+			'<meta name="twitter:image" content="https://a.com/t.jpg">' +
+			'<meta property="og:image" content="https://a.com/ld.jpg">' +
+			'<meta property="og:image" content="https://a.com/og.jpg">' +
+			ld('https://a.com/ld.jpg');
+		expect(pageImages(html)).toEqual(['https://a.com/ld.jpg', 'https://a.com/og.jpg', 'https://a.com/t.jpg']);
+	});
+
+	it('resolves relative URLs against the page and drops what is not http(s)', () => {
+		const html =
+			ld(['/img/a.jpg', '//cdn.a.com/b.jpg', 'data:image/png;base64,xx', '']) +
+			'<meta property="og:image" content="ftp://a.com/c.jpg">';
+		expect(pageImages(html, 'https://a.com/r/soup')).toEqual(['https://a.com/img/a.jpg', 'https://cdn.a.com/b.jpg']);
+		expect(pageImages(ld('/img/a.jpg'))).toEqual([]);
+	});
+
+	it('keeps at most six', () => {
+		const many = Array.from({ length: 9 }, (_, i) => `https://a.com/${i}.jpg`);
+		expect(pageImages(ld(many))).toEqual(many.slice(0, 6));
+	});
+
+	it('finds nothing on a page without images', () => {
+		expect(pageImages('<p>Toast</p>' + ld(null))).toEqual([]);
 	});
 });
 

@@ -312,6 +312,8 @@ CREATE TABLE image (
   width          INTEGER NOT NULL,
   height         INTEGER NOT NULL,
   role           TEXT NOT NULL CHECK (role IN ('capture','photo')),
+  source_url     TEXT,            -- set on a found cover: fetched from the web,
+                                  -- not taken by the household (migration 003, ADR-043)
   created_at     TEXT NOT NULL,
   deleted_at     TEXT
 );
@@ -320,7 +322,8 @@ CREATE TABLE job (
   id           TEXT PRIMARY KEY,
   kind         TEXT NOT NULL CHECK (kind IN (
                  'extract_url','extract_paste','extract_photos',
-                 'scale','reconvert','shopping_merge','generate')),  -- generate: migration 002
+                 'scale','reconvert','shopping_merge','generate','cover')),
+                                  -- generate: migration 002; cover: migration 003
   status       TEXT NOT NULL CHECK (status IN ('queued','running','done','failed')),
   recipe_id    TEXT REFERENCES recipe(id) ON DELETE CASCADE,
   variation_id TEXT REFERENCES variation(id) ON DELETE CASCADE,
@@ -442,6 +445,7 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 | `reconvert` | one edited body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
 | `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
+| cover pick | a recipe title + up to four 512 px photos | the index of the dish photo, or -1 (ADR-043) | under $0.01 |
 
 ### 5.3 Shared output shapes
 
@@ -751,6 +755,10 @@ which then reads as a ready draft seeded from that candidate; the review
 form and Save are the ones above. The saved recipe records the description
 as its `source_text` and has no `source_url`.
 
+A **cover** job (issue #44, ADR-043) is not a draft kind. It follows a
+successful capture or a pick, finds a cover photo, and writes its image id to
+the draft's `input_json` as `cover_image_id`; see 7.8.
+
 ---
 
 ## 7. Features
@@ -1008,6 +1016,32 @@ Trash is the safety net for deletions, and the review form is the safety net for
 extractions. **Nothing catches a bad edit to an existing recipe**: edit history
 was considered and cut. This is a known, accepted gap.
 
+### 7.8 Cover images
+
+A recipe with no photo of its own gets a found one (issue #44, ADR-043). A
+successful capture, or a generation's pick, queues a `cover` job; the draft
+is ready without waiting for it. The job tries three things in order:
+
+1. **The source page's own photo.** At ingest the server keeps up to six
+   image URLs from the rendered page: the Recipe JSON-LD `image`, then
+   `og:image`, then `twitter:image`. Without them it fetches the page itself.
+   Each candidate is fetched under the page fetch's rules (public addresses
+   only, 10 s, 5 redirects) and must be an image under 10 MB, at least 500 px
+   on the long edge and 300 px on the short one, and no wider than 2:1. The
+   first that passes is the cover.
+2. **An image search** for the title (plus "recipe"), when the page gave
+   nothing. Up to four acceptable hits from the first eight go to one Claude
+   vision call that picks the real photograph of this dish, or none.
+3. **No cover.** A nonsense title, a failed pick or a missing search key
+   ends here, and the recipe shows the pot tile.
+
+The found image is stored like an upload with `source_url` set, joins the
+draft's photo strip last, and is its cover until the cook removes it or adds
+a photo of their own. If the draft was saved first, the image goes straight
+to the recipe when it still has no cover; if it was discarded, the image is
+soft-deleted. `POST /api/v1/covers/backfill` queues the same job for every
+saved recipe without a cover.
+
 ---
 
 ## 8. Implementation notes that will otherwise bite
@@ -1162,6 +1196,8 @@ issuance. Fly terminates TLS itself.
 | `CLAUDE_MODEL` | `claude-opus-5` |
 | `CLAUDE_EFFORT` | `medium` |
 | `DAILY_CALL_CAP` | `50` (Claude calls per day, ADR-027) |
+| `BRAVE_SEARCH_API_KEY` | Image search for found covers (ADR-043); unset turns the search off |
+| `COVER_MODEL` | Optional; the cover pick's model, default `claude-sonnet-5-5` |
 
 All set with `fly secrets set`. Locally they live in `.env`, which is
 gitignored **in the first commit**, before any key is ever written to it.

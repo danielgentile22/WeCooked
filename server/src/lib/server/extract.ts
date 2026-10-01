@@ -233,13 +233,14 @@ export async function assertPublicUrl(url: URL, resolve: ResolveFn = resolveAll)
 			throw new JobError('fetch_failed', `Refusing private address ${a} for ${host}`);
 }
 
-export async function fetchPage(
+/** GET url with the desktop UA, following up to 5 redirects by hand and
+ *  checking every hop is public. Returns the first non-redirect response. */
+export async function fetchPublic(
 	url: string,
+	signal: AbortSignal,
 	fetchFn: typeof fetch = fetch,
 	resolve: ResolveFn = resolveAll
-): Promise<string> {
-	// One 10 s deadline for the whole fetch, redirects included, not per hop.
-	const signal = AbortSignal.timeout(10_000);
+): Promise<{ res: Response; url: string }> {
 	let current = url;
 	for (let hop = 0; hop <= 5; hop++) {
 		// Every hop, not just the first: a public page can redirect inward.
@@ -260,17 +261,27 @@ export async function fetchPage(
 		} catch (e) {
 			throw new JobError('fetch_failed', e instanceof Error ? e.message : String(e));
 		}
-		if (BLOCKED_STATUSES.includes(res.status)) throw new JobError('fetch_blocked');
 		if (res.status >= 300 && res.status < 400) {
 			const loc = res.headers.get('location');
 			if (!loc) throw new JobError('fetch_failed', `Redirect without Location from ${current}`);
 			current = trimTrailingPunctuation(new URL(loc, current).href);
 			continue;
 		}
-		if (!res.ok) throw new JobError('fetch_failed', `HTTP ${res.status} from ${current}`);
-		return res.text();
+		return { res, url: current };
 	}
 	throw new JobError('fetch_failed', `Too many redirects from ${url}`);
+}
+
+export async function fetchPage(
+	url: string,
+	fetchFn: typeof fetch = fetch,
+	resolve: ResolveFn = resolveAll
+): Promise<string> {
+	// One 10 s deadline for the whole fetch, redirects included, not per hop.
+	const { res, url: final } = await fetchPublic(url, AbortSignal.timeout(10_000), fetchFn, resolve);
+	if (BLOCKED_STATUSES.includes(res.status)) throw new JobError('fetch_blocked');
+	if (!res.ok) throw new JobError('fetch_failed', `HTTP ${res.status} from ${final}`);
+	return res.text();
 }
 
 const isRecipeType = (d: unknown): boolean => {
@@ -325,9 +336,11 @@ export function stripHtml(html: string): string {
 const JSONLD_PREAMBLE =
 	'Authoritative structured data from the page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim: ';
 
-/** og:description, else name=description: a reel page's whole caption lives there. */
-function metaDescription(html: string): string {
-	const metas = [...html.matchAll(/<meta\b[^>]*>/gi)].map(([tag]) =>
+type MetaTag = Record<string, string | undefined>;
+
+/** Every <meta> tag's attributes, names lowercased, values as written. */
+function metaTags(html: string): MetaTag[] {
+	return [...html.matchAll(/<meta\b[^>]*>/gi)].map(([tag]) =>
 		Object.fromEntries(
 			[...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map(([, k, dq, sq]) => [
 				k.toLowerCase(),
@@ -335,9 +348,61 @@ function metaDescription(html: string): string {
 			])
 		)
 	);
-	const content = (attr: string, value: string) =>
-		decodeEntities(metas.find((m) => m[attr]?.toLowerCase() === value)?.content ?? '').trim();
-	return content('property', 'og:description') || content('name', 'description');
+}
+
+/** The decoded content of every meta tag whose attr is one of names, in page order. */
+const metaContents = (metas: MetaTag[], attr: string, names: string[]) =>
+	metas
+		.filter((m) => names.includes(m[attr]?.toLowerCase() ?? ''))
+		.map((m) => decodeEntities(m.content ?? '').trim())
+		.filter(Boolean);
+
+/** og:description, else name=description: a reel page's whole caption lives there. */
+function metaDescription(html: string): string {
+	const metas = metaTags(html);
+	return (
+		metaContents(metas, 'property', ['og:description'])[0] ??
+		metaContents(metas, 'name', ['description'])[0] ??
+		''
+	);
+}
+
+const MAX_PAGE_IMAGES = 6;
+
+/** schema.org image: a URL, an ImageObject, or an array of either. */
+function jsonLdImages(image: unknown): string[] {
+	if (typeof image === 'string') return [image];
+	if (Array.isArray(image)) return image.flatMap(jsonLdImages);
+	if (image && typeof image === 'object') {
+		const { url, contentUrl } = image as { url?: unknown; contentUrl?: unknown };
+		return jsonLdImages(url ?? contentUrl);
+	}
+	return [];
+}
+
+/** Issue #44: the page's own photos, best first. Recipe JSON-LD image, then
+ *  og:image, then twitter:image. Relative URLs resolve against base when given;
+ *  anything that is not absolute http(s) is dropped. */
+export function pageImages(html: string, base?: string): string[] {
+	const metas = metaTags(html);
+	const recipe = findRecipeJsonLd(html) as { image?: unknown } | null;
+	const raw = [
+		...jsonLdImages(recipe?.image),
+		...metaContents(metas, 'property', ['og:image']),
+		...metaContents(metas, 'name', ['twitter:image', 'twitter:image:src'])
+	];
+	const urls = new Set<string>();
+	for (const r of raw.map((r) => r.trim()).filter(Boolean)) {
+		let url: URL;
+		try {
+			url = new URL(r, base);
+		} catch {
+			continue;
+		}
+		if (url.protocol === 'http:' || url.protocol === 'https:') urls.add(url.href);
+		if (urls.size === MAX_PAGE_IMAGES) break;
+	}
+	return [...urls];
 }
 
 /** The extract_url user content for a page's HTML (SPEC 5.4): the readable

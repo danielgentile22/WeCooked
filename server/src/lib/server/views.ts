@@ -30,7 +30,7 @@ export function browseView(db: Database, p: URLSearchParams) {
 
 export type RecipeView = {
 	recipe: Omit<RecipeDetail, 'images'> & {
-		images: { id: string; url: string; width: number; height: number }[];
+		images: { id: string; url: string; width: number; height: number; source_url: string | null }[];
 	};
 	refresh: { job_id: string | null; status: 'pending' | 'failed' } | null;
 	calcJob: CalcJob | null;
@@ -56,7 +56,8 @@ export function recipeView(db: Database, id: string, variationId?: string): Reci
 				id: i.id,
 				url: presignGet(i.r2_key_display),
 				width: i.width,
-				height: i.height
+				height: i.height,
+				source_url: i.source_url
 			}))
 		},
 		refresh,

@@ -33,8 +33,9 @@ import {
 	setTicked
 } from '../shopping';
 import { saveImage } from '../images';
-import { pageContent } from '../extract';
-import { asUrl, type GenerateInput } from '$lib/extract';
+import { BACKFILL_LIMIT, backfillCovers } from '../cover';
+import { pageContent, pageImages } from '../extract';
+import { asUrl, type CaptureInput, type GenerateInput } from '$lib/extract';
 import { ERROR_COPY } from '$lib/jobs';
 import { CUISINES, DAMAGES, EFFORTS, MEAL_TYPES, PROTEINS, type RecipeInput } from '$lib/tags';
 import type { Database } from 'better-sqlite3';
@@ -94,7 +95,10 @@ async function capture(db: Database, b: Fields): Promise<{ job_id: string }> {
 		// A page that reduces to nothing counts as absent, so the server still fetches.
 		const page = (html && pageContent(html)) || undefined;
 		const text = String(b.text ?? '').trim() || undefined;
-		return { job_id: createJob(db, 'extract_url', { url, page, text }) };
+		// Issue #44: the page's own photos, candidates for the cover job.
+		const found = html ? pageImages(html, url) : [];
+		const input: CaptureInput = { url, page, text, image_urls: found.length ? found : undefined };
+		return { job_id: createJob(db, 'extract_url', input) };
 	}
 	const text = String(b.text ?? '').trim();
 	if (!text) throw bad('Paste some recipe text first.');
@@ -283,6 +287,17 @@ export const routes: readonly Route[] = [
 		run: (db, req) => {
 			retryDraft(db, draftJob(db, req.params.id));
 			return OK;
+		}
+	},
+
+	// Issue #44: one cover job per saved recipe that has no cover.
+	{
+		method: 'POST',
+		path: '/covers/backfill',
+		run: (db, req) => {
+			const limit = Number(req.query.get('limit') ?? BACKFILL_LIMIT);
+			if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('limit must be 1 to 200.');
+			return { queued: backfillCovers(db, limit) };
 		}
 	},
 

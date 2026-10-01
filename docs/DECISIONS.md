@@ -7,7 +7,7 @@ ADR-024 to ADR-032, and the ADRs they amend carry a dated note. A third pass
 on 2026-07-30, after the four prototypes were settled, closed the questions
 the prototypes and the first review left open; those are ADR-033 to ADR-040.
 ADR-041 and ADR-042 came with the iOS port's first two features after parity
-(2026-09-30). Referenced from [SPEC.md](./SPEC.md) as
+(2026-09-30), and ADR-043 with the third. Referenced from [SPEC.md](./SPEC.md) as
 `ADR-nn`. Evidence for the technical claims is in
 [research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
 
@@ -1463,6 +1463,70 @@ lengths. One call per generation, so the daily cap counts it like a capture.
 **Consequence.** Migration 002 rebuilds the `job` table for the new kind, the
 first migration since the schema. The web shows a generation card but sends
 the cook to the phone to choose (web support is out of scope for #41).
+
+---
+
+## ADR-043: Covers come from the source page, else an image search
+
+**Question.** Issue #44: most recipes arrive without a photo the household
+took, so browse is a wall of pot tiles. Where does a cover come from, how is
+a found image told apart from a household photo, and when does the work run?
+
+**Options.**
+
+- **A. Brave Search API, image endpoint.** About $5 per 1000 queries, inside
+  the monthly $5 free credit at this household's volume. Plain GET with a
+  subscription token.
+- **B. Google Custom Search JSON API.** Closed to new customers and being
+  shut down.
+- **C. SerpApi.** Scrapes Google Images; the free tier is 100 searches a
+  month, and past that it is a monthly subscription.
+- **D. No search.** Only the source page's own photo; pasted text, cookbook
+  photos and generations stay coverless.
+
+**Decision: the source page first, then A.**
+
+**Why.** The page's own photo is the right picture by construction: Recipe
+JSON-LD `image`, then `og:image`, then `twitter:image`, collected from the
+HTML the phone rendered (ADR-041) or, failing that, a server fetch. D leaves
+every non-URL capture coverless, which is most of what the issue is about. B
+is not available to sign up for, and C's free tier is a month of one busy
+evening. A search hit can be the wrong dish, a person or a logo, so one
+Claude vision call over at most four 512 px thumbnails picks the photograph
+of this dish or none. A nonsense title gets no cover, not a random one.
+
+**Marking.** A nullable `image.source_url` column, not a new `role`. Adding
+a role means rebuilding `image` to change its CHECK, and `recipe.cover_image_id`
+references `image` with `ON DELETE SET NULL`, so the rebuild's DROP would null
+every cover. `role` stays `'photo'`; a non-null `source_url` says "fetched,
+not taken", which is what the phone needs to let a household photo take over
+the cover.
+
+**When.** A follow-up `cover` job after a successful extraction or a pick,
+so a draft is ready exactly as fast as before. The job writes
+`cover_image_id` into the draft's `input_json`; it never touches the
+extraction. If the cook saved first, the image goes to the recipe if it still
+has no cover; if they discarded, it is soft-deleted.
+
+**Copyright and privacy.** Found images go into the private bucket behind
+presigned URLs (ADR-026), seen by the two people who cook from them, never
+republished. The only thing that leaves the server is the recipe title, to
+Brave.
+
+**Where the fetch happens.** On the server, under the page fetch's SSRF rules
+(public addresses only, every redirect hop checked). A CDN that blocks the
+server costs the source step, and the search step covers it. Fetching image
+bytes on the phone, as ADR-041 does for pages, is deferred until that turns
+out to matter.
+
+**Consequence.** Migration 003 adds the column and rebuilds `job` for the
+`cover` kind. Each search-step cover is one Claude call against the daily cap
+(ADR-027) on a smaller model, `COVER_MODEL`, default Sonnet. Without
+`BRAVE_SEARCH_API_KEY` the search step is skipped and logged once.
+`POST /api/v1/covers/backfill` gives existing recipes the same treatment.
+
+**Revisit if** the source step fails for most captures (move the image fetch
+to the phone), or Brave's pricing changes.
 
 ---
 

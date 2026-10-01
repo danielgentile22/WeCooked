@@ -47,6 +47,27 @@ export function deriveClaude(full: Buffer): Promise<Buffer> {
 		.toBuffer();
 }
 
+/** ADR-043: a found image as a normalised full, the shape a client upload
+ *  has: rotated, long edge at most 3000, q90. Decoding it here proves the
+ *  bytes are an image before anything is stored. */
+export function normaliseFound(buf: Buffer) {
+	return sharp(buf, opts)
+		.rotate()
+		.resize(3000, 3000, { fit: 'inside', withoutEnlargement: true })
+		.jpeg({ quality: 90 })
+		.toBuffer({ resolveWithObject: true });
+}
+
+/** ADR-043: the small copy a cover pick sends Claude. Choosing a dish
+ *  photo needs no detail, and four candidates ride one call. */
+export function deriveThumb(buf: Buffer): Promise<Buffer> {
+	return sharp(buf, opts)
+		.rotate()
+		.resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+		.jpeg({ quality: 80 })
+		.toBuffer();
+}
+
 /** Pixel dimensions as displayed, i.e. with EXIF orientation applied. */
 export async function orientedDims(buf: Buffer): Promise<{ width: number; height: number }> {
 	const m = await sharp(buf, opts).metadata();
@@ -59,11 +80,13 @@ export type UploadedImage = { id: string; url: string; width: number; height: nu
 /**
  * Store one photo: full + display to R2, row with recipe_id NULL until a save
  * claims it (ADR-024). Returns what the review form needs to show the thumb.
+ * source_url marks a found cover (ADR-043): an image fetched from the web.
  */
 export async function saveImage(
 	db: Database,
 	upload: Buffer,
-	role: 'photo' | 'capture' = 'photo'
+	role: 'photo' | 'capture' = 'photo',
+	found: { source_url?: string } = {}
 ): Promise<UploadedImage> {
 	const id = ulid();
 	const file = await normaliseFull(upload);
@@ -74,8 +97,8 @@ export async function saveImage(
 	await putObject(keyFull, file);
 	await putObject(keyDisplay, display.data);
 	db.prepare(
-		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
-		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`
-	).run(id, keyFull, keyDisplay, width, height, role, new Date().toISOString());
+		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, source_url, created_at)
+		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+	).run(id, keyFull, keyDisplay, width, height, role, found.source_url ?? null, new Date().toISOString());
 	return { id, url: presignGet(keyDisplay), width, height };
 }

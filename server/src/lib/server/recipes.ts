@@ -399,6 +399,7 @@ export type RecipeImage = {
 	r2_key_display: string;
 	width: number;
 	height: number;
+	source_url: string | null;
 };
 
 /**
@@ -491,7 +492,7 @@ export function getRecipe(db: Database, id: string, variationId?: string): Recip
 	).map((m) => m.meal_type);
 	const images = db
 		.prepare(
-			`SELECT id, r2_key_full, r2_key_display, width, height FROM image
+			`SELECT id, r2_key_full, r2_key_display, width, height, source_url FROM image
 			 WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY created_at`
 		)
 		.all(id) as RecipeImage[];

@@ -54,7 +54,7 @@ describe('migrate', () => {
 	it('applies the real schema', () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		expect(version(db)).toBe(2);
+		expect(version(db)).toBe(3);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 			.all()
@@ -92,6 +92,38 @@ describe('migrate', () => {
 		insert.run('gen', 'generate');
 		expect(() => insert.run('bad', 'bogus')).toThrow(/CHECK/);
 		expect(db.prepare('SELECT id FROM job ORDER BY id').all()).toEqual([{ id: 'gen' }, { id: 'old' }]);
+		expect(
+			db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job'`).all()
+		).toContainEqual({ name: 'job_pending' });
+	});
+
+	it('003 adds image.source_url and the cover kind without touching covers', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'mig-'));
+		for (const f of ['001_schema.sql', '002_generate_kind.sql'])
+			copyFileSync(`migrations/${f}`, join(dir, f));
+		const db = new Database(':memory:');
+		db.pragma('foreign_keys = ON');
+		migrate(db, dir);
+		db.prepare(
+			`INSERT INTO recipe (id, title, yield_unit, source_units, effort, damage, created_at, updated_at)
+			 VALUES ('r', 'Soup', 'servings', 'metric', 'quick', 'tidy', '2026', '2026')`
+		).run();
+		db.prepare(
+			`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+			 VALUES ('i', 'r', 'f', 'd', 1, 1, 'photo', '2026')`
+		).run();
+		db.prepare(`UPDATE recipe SET cover_image_id = 'i' WHERE id = 'r'`).run();
+		const insert = db.prepare(
+			`INSERT INTO job (id, kind, status, input_json, created_at) VALUES (?, ?, 'queued', '{}', '2026')`
+		);
+		expect(() => insert.run('early', 'cover')).toThrow(/CHECK/);
+
+		copyFileSync('migrations/003_cover.sql', join(dir, '003_cover.sql'));
+		migrate(db, dir);
+		expect(version(db)).toBe(3);
+		insert.run('c', 'cover');
+		expect(db.prepare(`SELECT cover_image_id FROM recipe WHERE id = 'r'`).get()).toEqual({ cover_image_id: 'i' });
+		expect(db.prepare(`SELECT source_url FROM image WHERE id = 'i'`).get()).toEqual({ source_url: null });
 		expect(
 			db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job'`).all()
 		).toContainEqual({ name: 'job_pending' });
