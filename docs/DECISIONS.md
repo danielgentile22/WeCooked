@@ -179,6 +179,13 @@ next".
 leaving the recipe: `sessionStorage` keyed by variation id, so a locked phone
 mid-cook does not lose them (ADR-036). Still per device, still never synced.
 
+**Amended 2026-09-30.** The ingredient bar pins only while the ingredient
+list is on screen (issue #45). Pinned for the whole recipe, it cost a strip
+of an already tight phone screen through every step and note, and the owner
+prefers the space. "Was it 2 eggs or 3" is a scroll up again, the cost
+option A had. A navigation bar shortcut back to the ingredients was
+considered and not built; it waits for a real complaint.
+
 ---
 
 ## ADR-006: Text search plus Claude-assigned tags

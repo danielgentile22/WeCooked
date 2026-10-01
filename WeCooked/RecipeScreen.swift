@@ -4,7 +4,7 @@ import WeCookedKit
 /// The cooking screen: 95 percent of use, so it gets the layout that reads at
 /// arm's length with wet hands. Type scale 19 to 20 pt via Dynamic Type
 /// (`.title3` body, not fixed points), tap a line to strike it, wake lock,
-/// sticky ingredients while steps scroll.
+/// an ingredients bar pinned while the list is on screen.
 ///
 /// Data path (three files): this view -> `RecipeModel.display` (WeCookedKit/
 /// RecipeModel.swift) -> `Resource<RecipeResponse>` (WeCookedKit/Store.swift).
@@ -78,13 +78,16 @@ struct CookingBody: View {
 			ScrollView {
 				LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
 					header
+					// Only the ingredients live in the section, so the pinned
+					// bar scrolls off with the last ingredient instead of
+					// staying through the steps (ADR-005, 2026-09-30).
 					Section {
 						if ingredientsOpen { ingredients }
-						steps
-						notes
 					} header: {
 						ingredientsBar(proxy: proxy)
 					}
+					steps
+					notes
 				}
 				.padding(.horizontal)
 				.padding(.bottom, 40)

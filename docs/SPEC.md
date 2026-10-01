@@ -885,8 +885,10 @@ Layout, top to bottom:
 - **Unit toggle**: US / metric, remembered per device, with a small "as written"
   marker on whichever body carries `is_source`, which means the body a human
   last authored; the other is always machine-converted (ADR-028).
-- Ingredients: a **collapsible sticky block** that stays reachable while
-  scrolling the steps. Scroll position is never lost.
+- Ingredients: a **collapsible block with a pinned heading**. The heading
+  stays at the top while the list is on screen and scrolls off with it, so
+  steps and notes get the full height (ADR-005 amendment, 2026-09-30).
+  Scroll position is never lost.
 - Steps.
 - Notes.
 - Image strip, including the original cookbook captures.

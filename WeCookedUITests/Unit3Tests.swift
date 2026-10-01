@@ -96,31 +96,35 @@ final class Unit3Tests: PortUITest {
 		for _ in 0..<3 { app.swipeUp() }
 		XCTAssertFalse(app.staticTexts["Sunday ragù"].isHittable, "scrolled past the header")
 		XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Shred the beef'")).firstMatch.isHittable, "last step rendered")
-		XCTAssertFalse(app.buttons["Ingredients"].isHittable, "ingredients bar scrolled off with the list")
-		snap("pinned")
+		snap("last-step")
 	}
 
-	/// Row 26, the pinned bar's extent. The bar pins only while the
+	/// Row 26, where the pinned bar ends. The bar pins only while the
 	/// ingredient list is on screen, so by the last step it has scrolled off.
-	/// Expanding from the bar still brings the list into view.
-	func testRow26IngredientsBarExtent() {
-		launch()
+	/// At the default size the whole ragù fits on two screens and the last
+	/// ingredient never leaves, so this runs at an accessibility type size.
+	func testRow26IngredientsBarUnpinsAfterList() {
+		launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"])
 		openRecipe("Sunday ragù")
 		let bar = app.buttons["Ingredients"]
-		let lastStep = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Shred the beef'")).firstMatch
-		for _ in 0..<8 where !lastStep.isHittable { app.swipeUp() }
-		XCTAssertTrue(lastStep.isHittable, "last step rendered")
-		XCTAssertFalse(bar.isHittable, "ingredients bar scrolled off with the list")
+		let onions = app.buttons["2 onions, finely diced"]
+		reveal(app.buttons["2 bay leaves"])
+		XCTAssertFalse(app.staticTexts["Sunday ragù"].isHittable, "scrolled past the header")
+		XCTAssertTrue(bar.isHittable, "ingredients bar pinned while the list is on screen")
+		reveal(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Shred the beef'")).firstMatch)
 		snap("bar-gone")
-		for _ in 0..<8 where !bar.isHittable { app.swipeDown() }
+		XCTAssertFalse(bar.isHittable, "ingredients bar scrolled off with the list")
+		reveal(onions, down: false)
 		XCTAssertTrue(bar.isHittable, "ingredients bar back")
 		bar.tap()
 		XCTAssertEqual(bar.value as? String, "collapsed")
-		XCTAssertFalse(app.buttons["2 onions, finely diced"].exists, "list collapsed")
-		bar.tap()
+		XCTAssertFalse(onions.exists, "list collapsed")
+		app.swipeUp()
+		XCTAssertFalse(bar.isHittable, "collapsed bar scrolls off like a row")
+		reveal(bar, down: false).tap()
 		XCTAssertEqual(bar.value as? String, "expanded")
-		XCTAssertTrue(app.buttons["2 onions, finely diced"].waitForExistence(timeout: 3), "list back after expanding")
-		XCTAssertTrue(app.buttons["2 onions, finely diced"].isHittable, "expanding scrolled the list into view")
+		XCTAssertTrue(onions.waitForExistence(timeout: 3), "list back after expanding")
+		XCTAssertTrue(onions.wait(for: \.isHittable, toEqual: true, timeout: 3), "expanding scrolled the list into view")
 	}
 
 	func testRow27Strike() {

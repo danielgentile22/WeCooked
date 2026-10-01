@@ -32,7 +32,7 @@ column is ticked by the owner on a device.
 | 23 | Recipe | Stale hand-edited: Recalculate (confirmed) and Keep mine | x | |
 | 24 | Recipe | Unit toggle with "as written" marker, remembered per device, default metric | x | |
 | 25 | Recipe | Reconvert pending and failed banners on the non-source units, with retry | x | |
-| 26 | Recipe | Sticky collapsible ingredients with group headings, numbered steps, notes, photo strip | x | |
+| 26 | Recipe | Collapsible ingredients with a heading pinned only while the list is on screen, group headings, numbered steps, notes, photo strip | x | |
 | 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | x | |
 | 28 | Recipe | Screen stays awake while the recipe is visible | x | |
 | 29 | Recipe | Edit opens the editor for the viewed variation | x | |
