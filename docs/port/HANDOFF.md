@@ -218,7 +218,11 @@ was not confirmed this session.
 `make ios-upload` archives and uploads; `make ios-archive` and
 `make ios-export` are its two halves. Bump `CURRENT_PROJECT_VERSION` in
 `project.yml` before each upload; build 1 shipped on 2026-09-30, build 3 is the phone-side fetch (#43),
-build 4 is recipe generation (#41) on top of server release v19, build 5 lowers the minimum to iOS 17 for the second tester's phone.
+build 4 is recipe generation (#41) on top of server release v19, build 5 lowers the minimum to iOS 17 for the second tester's phone,
+build 6 is cover images and "Find another photo" (#44) on top of server
+release v23. Test notes are set per build with
+`node scripts/testflight-notes.mjs <build> Config/TestFlightNotes.txt`,
+which waits for Apple's processing and writes the en-US "What to Test".
 
 Deploy the server (`fly deploy` in `server/`) before any app build that
 depends on a contract change, and confirm the machine is on the new
@@ -273,9 +277,8 @@ issues are the spec; the bullets below are the original wording.
   DOM as `html`; the server reduces it at ingest (`pageContent`) and only
   fetches itself when `html` is missing (ADR-041). Rows 71
   to 75 on the parity checklist are the owner's device checks; only a
-  device proves the extension's Keychain read. The TestFlight test notes
-  still say the extension does nothing and need rewriting on the next
-  upload.
+  device proves the extension's Keychain read. Build 6's test notes
+  describe the extension as it is.
 - **Wegmans export.** Built on 2026-09-30 (issue #40): the Shopping
   toolbar share button sends the list as plain text through the system
   sheet. Research on the owner's phone the same day: the Wegmans app's AI
