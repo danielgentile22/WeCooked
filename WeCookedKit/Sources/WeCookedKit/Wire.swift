@@ -497,6 +497,9 @@ public struct RecipeDetail: Codable, Hashable, Sendable, Identifiable {
 	public var variations: [VariationChip]
 	public var bodies: Bodies
 	public var reconvert: PendingWork?
+	/// The cover job still looking for this recipe's cover, directly or
+	/// through the draft it was saved from. Watched like `DraftView.coverJobId`.
+	public var coverJobId: JobID?
 	/// Strike keys are positional, so they are only valid for one content
 	/// version of one variation. `DeviceState` stores this beside them.
 	public let contentVersion: Int

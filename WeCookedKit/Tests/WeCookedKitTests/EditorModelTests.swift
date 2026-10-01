@@ -218,7 +218,7 @@ struct EditorModelTests {
 	@Test func anUncachedRecipeIsFetchedOnAppear() async throws {
 		let server = FakeServer(["GET \(Self.recipePath)": FakeServer.fixture("recipe-get")])
 		let model = EditorModel(origin: .recipe(Self.recipe, nil), env: try Self.env(server, cachingRecipe: false))
-		await model.appear()
+		await Self.appear(model) { !model.form.title.isEmpty }
 		#expect(model.form.title == (try EditorPayloadTests.loadedForm()).title)
 		#expect(model.issues.isEmpty)
 	}
@@ -617,6 +617,110 @@ struct EditorModelTests {
 		f.removePhoto("found")
 		#expect(f.coverImageId == nil)
 		#expect(f.images.isEmpty)
+	}
+
+	// MARK: Find another photo
+
+	static let coverDraft: JobID = "01TEST00000000000000000045"
+
+	static func found(_ id: ImageID) -> RecipeImage {
+		RecipeImage(
+			id: id, url: URL(string: "https://example.com/\(id).jpg")!, width: 40, height: 30,
+			sourceUrl: URL(string: "https://site.example/\(id).jpg"))
+	}
+
+	@Test func findAnotherPhotoShowsOnlyOverAMissingOrFoundCover() throws {
+		let env = try Self.env(FakeServer())
+		#expect(!EditorModel(origin: .manual, env: env).canFindCover, "never for a new recipe")
+		#expect(!EditorModel(origin: .recipe(Self.recipe, nil), env: env).canFindCover, "a household cover stays")
+
+		let recipe = env.store.resource(.recipe(Self.recipe, variation: nil))
+		recipe.mutate { $0.recipe.coverImageId = nil }
+		#expect(EditorModel(origin: .recipe(Self.recipe, nil), env: env).canFindCover)
+		recipe.mutate {
+			$0.recipe.images.append(Self.found("found"))
+			$0.recipe.coverImageId = "found"
+		}
+		#expect(EditorModel(origin: .recipe(Self.recipe, nil), env: env).canFindCover)
+
+		env.store.resource(.draft(Self.coverDraft)).replace(try Self.lookup("draft-get-cover"))
+		let draft = EditorModel(origin: .draft(Self.coverDraft), env: env)
+		#expect(draft.phase == .editing)
+		#expect(draft.canFindCover)
+		draft.form.addPhoto(DraftImage(id: "mine", url: URL(string: "https://example.com/m.jpg")!))
+		#expect(!draft.canFindCover, "the cook's own photo is now the cover")
+	}
+
+	@Test func findingAnotherPhotoPostsAndWaitsOnTheCoverJob() async throws {
+		let draftPath = "/api/v1/drafts/\(Self.coverDraft)"
+		let looking = String(decoding: try Fixtures.data("draft-get-cover"), as: UTF8.self)
+			.replacingOccurrences(of: #""cover_job_id": null"#, with: #""cover_job_id": "01TEST00000000000000000099""#)
+		let server = FakeServer([
+			"POST \(draftPath)/cover": FakeServer.json(#"{"job_id":"01TEST00000000000000000099"}"#),
+			"GET \(draftPath)": FakeServer.json(looking),
+		])
+		let env = try Self.env(server)
+		let resource = env.store.resource(.draft(Self.coverDraft))
+		resource.replace(try Self.lookup("draft-get-cover"))
+		let model = EditorModel(origin: .draft(Self.coverDraft), env: env)
+		#expect(model.coverSearch == .idle)
+		await model.findAnotherCover()
+		#expect(server.requests.filter { !$0.contains("/jobs/") } == ["POST \(draftPath)/cover", "GET \(draftPath)"])
+		#expect(model.coverSearch == .pending)
+		guard case .draft(let d) = resource.value else { Issue.record("not a draft"); return }
+		#expect(d.coverJobId == "01TEST00000000000000000099")
+		#expect(resource.value?.watchedJobs == ["01TEST00000000000000000099"], "the Store waits on it")
+	}
+
+	@Test func aRefusedSearchShowsTheServerText() async throws {
+		let server = FakeServer([
+			"POST \(Self.recipePath)/cover": (400, Data(#"{"error":"Already looking for a photo."}"#.utf8))
+		])
+		let env = try Self.env(server)
+		env.store.resource(.recipe(Self.recipe, variation: nil)).mutate { $0.recipe.coverImageId = nil }
+		let model = EditorModel(origin: .recipe(Self.recipe, nil), env: env)
+		await model.findAnotherCover()
+		#expect(model.coverSearch == .failed("Already looking for a photo."))
+		#expect(model.issues.isEmpty)
+	}
+
+	@Test func aNewFoundCoverReplacesTheOldOneOnAnEditedForm() async throws {
+		let env = try Self.env(FakeServer())
+		let resource = env.store.resource(.recipe(Self.recipe, variation: nil))
+		let household = try #require(resource.value?.recipe.images.first)
+		resource.mutate {
+			$0.recipe.images = [household, Self.found("old")]
+			$0.recipe.coverImageId = "old"
+			$0.recipe.coverJobId = "01TEST00000000000000000099"
+		}
+		let model = EditorModel(origin: .recipe(Self.recipe, nil), env: env)
+		#expect(model.coverSearch == .pending, "a search already running shows as one")
+		model.form.title = "Edited while it looked"
+		let task = Task { await model.appear() }
+
+		resource.mutate {
+			$0.recipe.images = [household, Self.found("new")]
+			$0.recipe.coverImageId = "new"
+			$0.recipe.coverJobId = nil
+		}
+		for _ in 0..<200 where model.form.coverImageId != "new" { try await Task.sleep(for: .milliseconds(10)) }
+		#expect(model.form.images.map(\.id) == [household.id, "new"], "the old found photo leaves the strip")
+		#expect(model.form.coverImageId == "new")
+		#expect(model.form.title == "Edited while it looked")
+		#expect(model.coverSearch == .idle)
+
+		model.form.coverImageId = household.id
+		resource.mutate {
+			$0.recipe.images = [household, Self.found("newer")]
+			$0.recipe.coverImageId = "newer"
+		}
+		for _ in 0..<200 where !model.form.images.contains(where: { $0.id == "newer" }) {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(model.form.images.map(\.id) == [household.id, "newer"])
+		#expect(model.form.coverImageId == household.id, "the cook's own photo keeps the cover")
+		task.cancel()
+		await task.value
 	}
 
 	@Test func linesMoveWithinBounds() {

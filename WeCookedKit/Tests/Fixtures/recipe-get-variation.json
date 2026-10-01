@@ -35,6 +35,7 @@
     "content_version": 2,
     "cook_minutes": 30,
     "cover_image_id": "01TEST00000000000000000002",
+    "cover_job_id": null,
     "cuisine": "middle-eastern",
     "damage": "messy",
     "effort": "weeknight",

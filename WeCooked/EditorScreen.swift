@@ -262,6 +262,9 @@ private struct EditorFields: View {
 				Label("Add photos", systemImage: "camera")
 			}
 			.buttonStyle(.borderless)
+			if model.canFindCover {
+				findCoverButton
+			}
 			if !model.uploads.isEmpty {
 				let n = model.uploads.count
 				HStack(spacing: 8) {
@@ -270,6 +273,30 @@ private struct EditorFields: View {
 				}
 				.foregroundStyle(.secondary)
 			}
+		}
+	}
+
+	@ViewBuilder private var findCoverButton: some View {
+		let pending = model.coverSearch == .pending
+		Button {
+			Task { await model.findAnotherCover() }
+		} label: {
+			if pending {
+				HStack(spacing: 8) {
+					ProgressView()
+					Text("Finding a photo…")
+				}
+			} else {
+				Label("Find another photo", systemImage: "magnifyingglass")
+			}
+		}
+		.buttonStyle(.borderless)
+		.disabled(pending)
+		.accessibilityIdentifier("editor.findCover")
+		if case .failed(let text) = model.coverSearch {
+			Text(text)
+				.font(.footnote)
+				.foregroundStyle(.secondary)
 		}
 	}
 

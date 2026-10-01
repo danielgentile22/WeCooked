@@ -203,6 +203,14 @@ extension APIClient {
 		let _: OK = try await send("POST", "drafts/\(id)/retry")
 	}
 
+	/// "Find another photo". The server refuses while one is already looking.
+	public func findCover(draft id: JobID) async throws -> JobReply {
+		try await send("POST", "drafts/\(id)/cover")
+	}
+	public func findCover(recipe id: RecipeID) async throws -> JobReply {
+		try await send("POST", "recipes/\(id)/cover")
+	}
+
 	public func generate(_ request: GenerateRequest) async throws -> JobID {
 		let r: JobReply = try await send("POST", "generations", body: json(request)); return r.jobId
 	}

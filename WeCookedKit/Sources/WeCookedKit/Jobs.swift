@@ -109,12 +109,13 @@ public protocol WatchesJobs {
 }
 
 extension RecipeResponse: WatchesJobs {
-	/// Calculate, stale refresh and reconvert, while pending.
+	/// Calculate, stale refresh, reconvert and cover, while pending.
 	public var watchedJobs: [JobID] {
 		var ids: [JobID] = []
 		if let c = calcJob, c.status == .pending { ids.append(c.jobId) }
 		if let r = refresh, r.status == .pending, let j = r.jobId { ids.append(j) }
 		if let r = recipe.reconvert, r.status == .pending, let j = r.jobId { ids.append(j) }
+		if let c = recipe.coverJobId { ids.append(c) }
 		return ids
 	}
 }

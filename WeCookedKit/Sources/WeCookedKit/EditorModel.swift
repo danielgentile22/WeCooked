@@ -176,6 +176,14 @@ public final class EditorModel {
 		case removed
 	}
 
+	/// "Find another photo". Pending while the server's cover job for this
+	/// draft or recipe runs, whoever started it.
+	public enum CoverSearch: Equatable, Sendable {
+		case idle
+		case pending
+		case failed(String)
+	}
+
 	public let origin: Origin
 	public private(set) var phase: Phase
 	public private(set) var issues: [EditorIssue] = []
@@ -189,6 +197,7 @@ public final class EditorModel {
 	/// leaves this list and joins `form.images`; a failed one leaves it and
 	/// sets an issue.
 	public private(set) var uploads: [PendingPhoto] = []
+	public private(set) var coverSearch: CoverSearch = .idle
 	/// Every change is written through `device.saveEditorDraft` (debounced), and
 	/// restored silently on reopen. "Start over" needs a second tap.
 	public var form: EditorForm { didSet { persistDraft() } }
@@ -213,7 +222,7 @@ public final class EditorModel {
 			if let cached = env.store.resource(.draft(job)).value { apply(cached, job: job) }
 		case .recipe(let id, let v):
 			phase = .editing
-			if let cached = env.store.resource(.recipe(id, variation: v)).value { adopt(recipe: cached) }
+			if let cached = env.store.resource(.recipe(id, variation: v)).value { apply(cached) }
 		case .manual:
 			phase = .editing
 			adopt(.blank(units: env.device.units), key: .manual)
@@ -232,8 +241,9 @@ public final class EditorModel {
 	/// Start over, and the form used is `saved.rebased(onto: fresh)` so the
 	/// payload rule diffs against what the server holds now.
 	///
-	/// For a draft this runs until the task is cancelled (the screen's
-	/// `.task`), so a retried extraction is followed without another call.
+	/// Draft and recipe run until the task is cancelled (the screen's
+	/// `.task`), so a retried extraction or a found cover is followed
+	/// without another call.
 	public func appear() async {
 		switch origin {
 		case .draft(let job):
@@ -248,10 +258,12 @@ public final class EditorModel {
 		case .recipe(let id, let v):
 			let resource = env.store.resource(.recipe(id, variation: v))
 			await resource.revalidate()
-			if let r = resource.value {
-				adopt(recipe: r)
-			} else if case .failed(let e) = resource.phase {
+			if resource.value == nil, case .failed(let e) = resource.phase {
 				issues = [.server(e.message)]
+			}
+			// The Store refetches the recipe when its watched cover job ends.
+			for await r in changes(of: { resource.value }) {
+				if let r { apply(r) }
 			}
 		case .manual:
 			break
@@ -314,6 +326,40 @@ public final class EditorModel {
 			await env.store.resource(.recipe(id, variation: v)).revalidate()
 		} catch {
 			issues = [.server(APIError.wrapping(error).message)]
+		}
+	}
+
+	/// Shown for a draft or a saved recipe whose cover is missing or found,
+	/// never over a photo the household took.
+	public var canFindCover: Bool {
+		if case .manual = origin { return false }
+		switch phase {
+		case .editing, .saving: break
+		case .extracting, .extractionFailed, .choosing, .saved, .removed: return false
+		}
+		guard let cover = form.coverImageId else { return true }
+		return form.images.first { $0.id == cover }?.sourceUrl != nil
+	}
+
+	/// Each tap is a paid search, so the server refuses a second while one
+	/// runs. The refetched reply names the job, and the reply after it ends
+	/// carries the new photo.
+	public func findAnotherCover() async {
+		guard canFindCover, coverSearch != .pending else { return }
+		coverSearch = .pending
+		do {
+			switch origin {
+			case .draft(let job):
+				_ = try await env.api.findCover(draft: job)
+				await env.store.resource(.draft(job)).revalidate()
+			case .recipe(let id, let v):
+				_ = try await env.api.findCover(recipe: id)
+				await env.store.resource(.recipe(id, variation: v)).revalidate()
+			case .manual:
+				return
+			}
+		} catch {
+			coverSearch = .failed(APIError.wrapping(error).message)
 		}
 	}
 
@@ -465,11 +511,10 @@ public final class EditorModel {
 			let seed = { EditorForm(seed: d.initial ?? DraftSeed(images: []), units: self.env.device.units) }
 			switch d.status {
 			case .done:
+				let previous = fresh
 				adopt(seed(), key: .draft(job))
-				if let cover = d.initial?.coverImageId,
-				   let image = d.initial?.images.first(where: { $0.id == cover }) {
-					form.adoptFoundCover(image, over: d.initial?.images ?? [])
-				}
+				syncFoundCover(images: d.initial?.images ?? [], coverImageId: d.initial?.coverImageId, previous: previous)
+				trackCoverJob(d.coverJobId)
 				phase = .editing
 			case .failed, .timeout:
 				adopt(seed(), key: .draft(job))
@@ -480,8 +525,50 @@ public final class EditorModel {
 		}
 	}
 
-	private func adopt(recipe r: RecipeResponse) {
+	private func apply(_ r: RecipeResponse) {
+		switch phase {
+		case .saving, .saved, .removed: return
+		case .extracting, .extractionFailed, .choosing, .editing: break
+		}
+		let previous = fresh
 		adopt(EditorForm(recipe: r.recipe, units: env.device.units), key: .recipe(r.recipe.variationId))
+		syncFoundCover(
+			images: r.recipe.images.map { DraftImage(id: $0.id, url: $0.url, sourceUrl: $0.sourceUrl) },
+			coverImageId: r.recipe.coverImageId, previous: previous)
+		trackCoverJob(r.recipe.coverJobId)
+	}
+
+	/// An edited form keeps its own images, so a cover job's result is merged
+	/// in: a replaced found cover is gone from the server and leaves the strip,
+	/// and a newly found one joins it. `previous` is the server copy before this
+	/// reply; a found cover already in it was seen, so a refetch neither re-adds
+	/// one the cook removed nor takes the cover back.
+	private func syncFoundCover(images: [DraftImage], coverImageId: ImageID?, previous: EditorForm?) {
+		let live = Set(images.map(\.id))
+		let replaced = Set(form.images.filter { $0.sourceUrl != nil && !live.contains($0.id) }.map(\.id))
+		if !replaced.isEmpty {
+			form.images.removeAll { replaced.contains($0.id) }
+			if let cover = form.coverImageId, replaced.contains(cover) { form.coverImageId = nil }
+		}
+		guard let coverImageId, let image = images.first(where: { $0.id == coverImageId }),
+			image.sourceUrl != nil, previous?.images.contains(where: { $0.id == coverImageId }) != true
+		else { return }
+		// A saved recipe's own photos are all in `images`, so the seed rule in
+		// `adoptFoundCover` cannot tell that the cook picked one meanwhile.
+		if let previous, let cover = form.coverImageId, cover != previous.coverImageId,
+			form.images.first(where: { $0.id == cover })?.sourceUrl == nil {
+			form.images.append(image)
+		} else {
+			form.adoptFoundCover(image, over: images)
+		}
+	}
+
+	private func trackCoverJob(_ job: JobID?) {
+		if job != nil {
+			coverSearch = .pending
+		} else if coverSearch == .pending {
+			coverSearch = .idle
+		}
 	}
 
 	/// Take `next` as what the server holds. The working form is the autosave

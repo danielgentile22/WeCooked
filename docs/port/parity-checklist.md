@@ -88,3 +88,4 @@ column is ticked by the owner on a device.
 | 79 | Capture | A capture with a nonsense title ends with no cover and the pot tile | | |
 | 80 | Editor | The found cover can be removed (pot tile) or replaced; adding a household photo makes it the cover | | |
 | 81 | Recipes | Existing coverless recipes get a cover after the backfill | | |
+| 82 | Editor | "Find another photo" replaces a found cover with a new search hit, shows progress meanwhile, and is hidden when a household photo is the cover | | |
