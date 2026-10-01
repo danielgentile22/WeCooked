@@ -468,13 +468,17 @@ Conversion rules that apply everywhere a `BodyPair` is produced:
 1. Convert quantities **ingredient-aware**: a cup of flour is about 120 g, a cup
    of honey is about 340 g. Never apply a generic volume-to-weight ratio.
 2. Convert **inside step text** too, not just the ingredient list.
-3. Convert **oven temperatures**, rounding to real oven settings (375°F becomes
-   190°C, not 190.6°C).
+3. Convert **every temperature**: oven, internal, oil, sugar. Round oven
+   temperatures to real oven settings (375°F becomes 190°C, not 190.6°C) and
+   other temperatures to the nearest whole degree.
 4. Convert **pan and tin sizes** (9 inch becomes 23 cm).
-5. Convert **nothing else**: leave ingredient names, technique, and phrasing
+5. **Each body uses only its own units.** When the source gives both, as in
+   "225°F (110°C)" or "1 lb (450 g)", keep only the matching one. This
+   overrides faithful transcription.
+6. Convert **nothing else**: leave ingredient names, technique, and phrasing
    identical between the two bodies. The two versions must read as the same
    recipe.
-6. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups" and
+7. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups" and
    "500 g" over "497 g".
 
 ### 5.4 `extract`

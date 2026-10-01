@@ -77,7 +77,7 @@ describe('reconvert handler (SPEC 5.6, ADR-019)', () => {
 
 		const call = vi.mocked(claudeCall).mock.calls[0][1];
 		expect(call.system).toBe(RECONVERT_SYSTEM);
-		expect(call.system).toContain('oven temperatures'); // shared conversion rules
+		expect(call.system).toContain('Convert every temperature'); // shared conversion rules
 		const content = call.messages[0].content as string;
 		expect(content).toContain('from metric to US units');
 		expect(content).toContain('400 g tinned chickpeas');
