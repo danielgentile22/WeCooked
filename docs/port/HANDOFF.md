@@ -272,8 +272,13 @@ issues are the spec; the bullets below are the original wording.
   device proves the extension's Keychain read. The TestFlight test notes
   still say the extension does nothing and need rewriting on the next
   upload.
-- **Wegmans export.** Start with sharing the list as plain text into the
-  Wegmans app, then investigate a URL scheme or list import.
+- **Wegmans export.** Built on 2026-09-30 (issue #40): the Shopping
+  toolbar share button sends the list as plain text through the system
+  sheet. Research on the owner's phone the same day: the Wegmans app's AI
+  assistant (powered by Cooklist) takes pasted text in any format and adds
+  the items to the in-app shopping list, so copy, switch, paste into the
+  assistant is the whole integration. No URL scheme or list import is
+  needed; no second share action is planned.
 - **Recipe generation.** Built on 2026-09-30 (issue #41, ADR-042): a
   `generate` job kind holds the description, yield and three candidates in
   one row; a pick records the index on that row and it reads as a draft
