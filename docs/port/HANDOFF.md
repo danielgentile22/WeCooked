@@ -307,7 +307,13 @@ issues are the spec; the bullets below are the original wording.
   without it the step logs once and skips, so pasted-text and generated
   recipes stay coverless until the key is set. `server/scripts/cover-probe.mjs`
   shows what the job would accept for a URL or a title. Rows 77 to 81 are
-  the owner's device checks.
+  the owner's device checks. Server release v21 carries it. The first
+  backfill ran on 2026-10-01 over the 12 coverless recipes and found
+  nothing: the six with a source URL are blogs that answer the server's
+  fetch with a block (the same wall as ADR-041, from home too), and the
+  search step was off. Set the key, then
+  `POST /api/v1/covers/backfill` again; recipes whose job found nothing
+  are retried, ones whose cover the cook removed are not.
 - **Widgets and push.** A shopping list widget, and an APNs push when a
   capture is ready to review, which also gives the share extension its way
   back into the app.
