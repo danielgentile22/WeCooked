@@ -22,33 +22,39 @@ public struct ShoppingSection: Equatable, Sendable, Identifiable {
 }
 
 public enum ShoppingLayout {
-	/// Sections in the server's order (unknown sections after known ones), items
-	/// generated-first then manual, each by `position`. `pending` is laid over
-	/// the server's `ticked` at this boundary; nothing else in the app knows an
+	/// Sections in `ordered`'s order. `pending` is laid over the server's
+	/// `ticked` here and in `ShoppingSnapshot`; nothing else in the app knows an
 	/// outbox exists.
 	public static func sections(
 		items: [ShoppingItem], order: [Section], units: UnitSystem,
 		pending: [ShoppingItemID: Bool]
 	) -> [ShoppingSection] {
+		ordered(items, by: order).map { section, items in
+			let rows = items.map { item -> ShoppingRow in
+				let alt = item.text(units.other)
+				var parts: [String] = []
+				if item.isManual { parts.append("added by hand") } else {
+					if alt != item.text(units) { parts.append("about \(alt)") }
+					if !item.fromTitles.isEmpty { parts.append(item.fromTitles.joined(separator: ", ")) }
+				}
+				return ShoppingRow(
+					id: item.id, primary: item.text(units),
+					secondary: parts.isEmpty ? nil : parts.joined(separator: " · "),
+					ticked: pending[item.id] ?? item.ticked)
+			}
+			return ShoppingSection(section: section, rows: rows)
+		}
+	}
+
+	/// The tab's order, shared with the widget's `ShoppingSnapshot`: sections
+	/// in `order`, unknown ones after by name, generated items before manual,
+	/// each by `position`. Empty sections are left out.
+	static func ordered(_ items: [ShoppingItem], by order: [Section]) -> [(Section, [ShoppingItem])] {
 		let grouped = Dictionary(grouping: items, by: \.section)
 		let known = order.filter { grouped[$0] != nil }
 		let extra = grouped.keys.filter { !order.contains($0) }.sorted { $0.wire < $1.wire }
 		return (known + extra).map { section in
-			let rows = grouped[section]!
-				.sorted { ($0.isManual ? 1 : 0, $0.position) < ($1.isManual ? 1 : 0, $1.position) }
-				.map { item -> ShoppingRow in
-					let alt = item.text(units.other)
-					var parts: [String] = []
-					if item.isManual { parts.append("added by hand") } else {
-						if alt != item.text(units) { parts.append("about \(alt)") }
-						if !item.fromTitles.isEmpty { parts.append(item.fromTitles.joined(separator: ", ")) }
-					}
-					return ShoppingRow(
-						id: item.id, primary: item.text(units),
-						secondary: parts.isEmpty ? nil : parts.joined(separator: " · "),
-						ticked: pending[item.id] ?? item.ticked)
-				}
-			return ShoppingSection(section: section, rows: rows)
+			(section, grouped[section]!.sorted { ($0.isManual ? 1 : 0, $0.position) < ($1.isManual ? 1 : 0, $1.position) })
 		}
 	}
 

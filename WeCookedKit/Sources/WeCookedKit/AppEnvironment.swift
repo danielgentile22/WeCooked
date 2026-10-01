@@ -34,15 +34,24 @@ public final class AppEnvironment {
 	@ObservationIgnored public let store: Store
 	@ObservationIgnored public let device: DeviceState
 	@ObservationIgnored public let images: ImageStore
+	/// This install's `DeviceIdentity`, already on every request `api` sends.
+	@ObservationIgnored public let deviceID: String
+	/// Kept in step with the shopping list for the widget; see `feedWidget`.
+	@ObservationIgnored public let widgetSnapshot: SnapshotFile
+	/// Called after each write or removal of `widgetSnapshot`. The app sets it
+	/// to reload the widget's timelines; the package knows nothing of WidgetKit.
+	@ObservationIgnored public var onSnapshotWritten: @MainActor @Sendable () -> Void = {}
 
 	public init(
 		config: AppConfig, tokens: any TokenStore, defaults: any KeyValueStore,
 		cachesDirectory: URL, session: URLSession = .shared
 	) {
 		let (unauthorized, signal) = AsyncStream<Void>.makeStream()
+		let deviceID = DeviceIdentity.id(in: defaults)
 		let api = APIClient(
-			baseURL: config.baseURL, tokens: tokens, session: session,
+			baseURL: config.baseURL, tokens: tokens, deviceID: deviceID, session: session,
 			onUnauthorized: { signal.yield() })
+		self.deviceID = deviceID
 		self.config = config
 		self.tokens = tokens
 		self.api = api
@@ -51,9 +60,34 @@ public final class AppEnvironment {
 			poller: JobPoller(api: api))
 		self.device = DeviceState(store: defaults)
 		self.images = ImageStore(directory: cachesDirectory.appending(path: "images"))
+		self.widgetSnapshot = SnapshotFile(appGroup: config.appGroup)
 		self.isSignedIn = tokens.read() != nil
 		Task { [weak self] in
 			for await _ in unauthorized { self?.signOut() }
+		}
+		feedWidget()
+	}
+
+	/// Rewrites the widget's file whenever the shopping reply, the section
+	/// order, the unit system or the outbox changes, so the widget shows what
+	/// the tab would. Nothing is written before the first reply (an absent
+	/// file and an empty list read differently) or while signed out; the
+	/// second check runs at write time because a value read just before
+	/// `signOut` can still be waiting in the stream.
+	private func feedWidget() {
+		let inputs = changes { [weak self] () -> ShoppingSnapshot? in
+			guard let self, isSignedIn, let reply = store.resource(.shopping).value else { return nil }
+			return ShoppingSnapshot(
+				items: reply.list.items,
+				order: store.resource(.vocabulary).value?.sectionOrder ?? Section.known,
+				units: device.units, pending: device.pendingTicks, now: .now)
+		}
+		Task { [weak self] in
+			for await snapshot in inputs {
+				guard let self, let snapshot, isSignedIn else { continue }
+				widgetSnapshot.write(snapshot)
+				onSnapshotWritten()
+			}
 		}
 	}
 
@@ -66,6 +100,8 @@ public final class AppEnvironment {
 		tokens.clear()
 		store.wipe()
 		device.wipe()
+		widgetSnapshot.remove()
+		onSnapshotWritten()
 		isSignedIn = false
 	}
 

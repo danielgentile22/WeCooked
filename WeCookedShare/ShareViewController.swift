@@ -12,10 +12,12 @@ final class ShareViewController: UIViewController {
 		let info = Bundle.main.infoDictionary ?? [:]
 		let tokens = KeychainTokenStore.automatic(accessGroup: info["WCKeychainGroup"] as? String)
 		let baseURL = URL(string: info["WCBaseURL"] as! String)!
+		let appGroup = info["WCAppGroup"] as? String
+		let deviceID = DeviceIdentity.id(in: DefaultsStore(suiteName: appGroup))
 		let model = ShareModel(
-			client: APIClient(baseURL: baseURL, tokens: tokens),
+			client: APIClient(baseURL: baseURL, tokens: tokens, deviceID: deviceID),
 			hasToken: tokens.read() != nil,
-			appGroup: info["WCAppGroup"] as? String,
+			appGroup: appGroup,
 			context: extensionContext
 		)
 		let host = UIHostingController(rootView: ShareSheet(model: model))

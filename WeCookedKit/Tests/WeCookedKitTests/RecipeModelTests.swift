@@ -12,6 +12,7 @@ final class FakeServer: Sendable {
 	let host = UUID().uuidString.lowercased() + ".test"
 	private let routes: [String: Reply]
 	private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
+	private let last = OSAllocatedUnfairLock<(headers: [String: String], body: Data)>(initialState: ([:], Data()))
 
 	init(_ routes: [String: Reply] = [:]) {
 		self.routes = routes
@@ -19,13 +20,28 @@ final class FakeServer: Sendable {
 	}
 
 	var requests: [String] { log.withLock { $0 } }
+	var lastHeaders: [String: String] { last.withLock { $0.headers } }
+	var lastBody: Data { last.withLock { $0.body } }
 
 	fileprivate func answer(_ request: URLRequest) -> Reply {
 		let url = request.url!
 		let key = "\(request.httpMethod ?? "GET") \(url.path())" + (url.query().map { "?\($0)" } ?? "")
 		log.withLock { $0.append(key) }
+		last.withLock { $0 = (request.allHTTPHeaderFields ?? [:], Self.body(of: request)) }
 		if url.path().contains("/jobs/") { return (200, try! Fixtures.data("job-get-queued")) }
 		return routes[key] ?? (404, try! Fixtures.data("error"))
+	}
+
+	/// URLSession hands a protocol the body as a stream, not `httpBody`.
+	private static func body(of request: URLRequest) -> Data {
+		if let data = request.httpBody { return data }
+		guard let stream = request.httpBodyStream else { return Data() }
+		stream.open()
+		defer { stream.close() }
+		var data = Data()
+		var buffer = [UInt8](repeating: 0, count: 4096)
+		while case let n = stream.read(&buffer, maxLength: buffer.count), n > 0 { data.append(buffer, count: n) }
+		return data
 	}
 
 	static func json(_ s: String) -> Reply { (200, Data(s.utf8)) }

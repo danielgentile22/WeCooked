@@ -16,6 +16,7 @@ struct FixtureDecodingTests {
 		"captures": JobReply.self,
 		"captures-url": JobReply.self,
 		"covers-backfill": CoverBackfillReply.self,
+		"devices-register": OK.self,
 		"draft-get-failed": DraftLookup.self,
 		"draft-cover-refresh": JobReply.self,
 		"draft-get-cover": DraftLookup.self,

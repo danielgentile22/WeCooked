@@ -898,5 +898,15 @@ public struct UploadedImage: Codable, Hashable, Sendable {
 	public let width: Int
 	public let height: Int
 }
+/// Which Apple push service issued the token: Xcode debug installs get
+/// sandbox tokens, TestFlight and App Store installs production ones.
+public enum PushEnvironment: String, Codable, Sendable { case sandbox, production }
+
+/// Body of `POST /devices`.
+struct PushRegistration: Encodable, Sendable {
+	let deviceId: String
+	let pushToken: String
+	let environment: PushEnvironment
+}
 public struct ErrorBody: Codable, Sendable { public let error: String }
 public struct OK: Codable, Sendable { public let ok: Bool }

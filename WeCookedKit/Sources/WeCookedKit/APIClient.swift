@@ -41,20 +41,25 @@ public enum APIError: Error, Sendable, Hashable {
 }
 
 /// The only type that speaks HTTP. A value: the base URL, the token store, a
-/// `URLSession`, and what to do on 401. Copy it freely; it is `Sendable`.
+/// `URLSession`, this install's `DeviceIdentity`, and what to do on 401. Copy
+/// it freely; it is `Sendable`.
 ///
 /// `baseURL` ends in `/api/v1/`. Paths below are relative to it.
 public struct APIClient: Sendable {
 	public let baseURL: URL
+	/// Sent as `X-Device-Id` so the server can push to the phone that queued a
+	/// capture. Nil sends no header.
+	public let deviceID: String?
 	private let tokens: any TokenStore
 	private let session: URLSession
 	private let onUnauthorized: @Sendable () -> Void
 
 	public init(
-		baseURL: URL, tokens: any TokenStore, session: URLSession = .shared,
+		baseURL: URL, tokens: any TokenStore, deviceID: String? = nil, session: URLSession = .shared,
 		onUnauthorized: @escaping @Sendable () -> Void = {}
 	) {
 		self.baseURL = baseURL
+		self.deviceID = deviceID
 		self.tokens = tokens
 		self.session = session
 		self.onUnauthorized = onUnauthorized
@@ -70,7 +75,8 @@ public struct APIClient: Sendable {
 	private static let encoder = Wire.makeEncoder()
 
 	/// The single request path. Everything below is a one-line caller.
-	///  - adds `Authorization: Bearer` when a token exists;
+	///  - adds `Authorization: Bearer` when a token exists, `X-Device-Id` when
+	///    the client has one;
 	///  - stores `X-Session-Token` from any reply that carries one;
 	///  - 401: clears the token, calls `onUnauthorized`, throws `.unauthorized`;
 	///  - other non-2xx: decodes `{error}` into a typed `APIError`;
@@ -85,6 +91,7 @@ public struct APIClient: Sendable {
 		if let token = tokens.read() {
 			request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 		}
+		if let deviceID { request.setValue(deviceID, forHTTPHeaderField: "X-Device-Id") }
 		switch body {
 		case .none: break
 		case .json(let d):
@@ -241,6 +248,14 @@ extension APIClient {
 	}
 	public func restoreVariation(_ id: VariationID) async throws -> RestoreReply {
 		try await send("POST", "trash/variations/\(id)/restore")
+	}
+
+	/// Idempotent: the server upserts by device id, so the app calls this on
+	/// every launch with whatever token the system hands it.
+	public func registerDevice(token: String, environment: PushEnvironment) async throws {
+		guard let deviceID else { preconditionFailure("registerDevice needs a client built with a device id") }
+		let body = PushRegistration(deviceId: deviceID, pushToken: token, environment: environment)
+		let _: OK = try await send("POST", "devices", body: json(body))
 	}
 
 	public func job(_ id: JobID) async throws -> JobPoll { try await send("GET", "jobs/\(id)") }
