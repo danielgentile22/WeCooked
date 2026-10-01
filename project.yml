@@ -29,7 +29,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "5"
+    CURRENT_PROJECT_VERSION: "6"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     # The server the app talks to; read from Info.plist as WCBaseURL.
     WC_BASE_URL: https://wecooked.kitchen/api/v1/

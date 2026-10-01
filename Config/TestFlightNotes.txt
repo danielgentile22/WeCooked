@@ -1,0 +1,9 @@
+Build 6: recipe covers.
+
+Every recipe now gets a photo. A link shared from Safari uses the page's own picture; pasted text, cookbook photos and generated recipes get a photo of the dish found online. The review form shows it last in the photo strip with the cover star, so you can remove it or swap it before saving. A photo you take yourself always wins the cover.
+
+New in the editor: "Find another photo" under the photos. It looks for a different picture of the dish and swaps it in when found. Hidden when your own photo is the cover.
+
+Share sheet: sharing a link, text or screenshots from another app to We Cooked queues a draft; the app opens it the next time it comes to the front.
+
+What to check: open a few recipes and see that the covers look like the dish; try Find another photo on one; take a photo in the editor and confirm it becomes the cover.
