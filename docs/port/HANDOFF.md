@@ -291,6 +291,23 @@ issues are the spec; the bullets below are the original wording.
   `make ios-ui-test-unit9` proves the deck and the pick from a generation
   that `server/scripts/unit9-prep.mjs` forges (no Claude call); the prompt
   itself is unproven until the owner spends one call from the phone.
+- **Cover images.** Built on 2026-10-01 (issue #44, ADR-043): a `cover`
+  job follows every successful capture and every generation pick. It takes
+  the page's own photo first (Recipe JSON-LD `image`, `og:image`,
+  `twitter:image`, kept as `image_urls` on the capture at ingest), else runs
+  a Brave image search on the title and lets one small Claude vision call
+  pick the dish photo among up to four hits, else leaves the pot tile. The
+  found image is a `photo` row with `source_url` set; the draft carries it
+  as its last image and `cover_image_id`, the editor shows it with the same
+  star and remove button, and a household photo added later takes the cover
+  over from it (`EditorForm.addPhoto`). Migration 003 adds the column and
+  rebuilds `job` for the kind, so a dev server restarts after pulling it.
+  `POST /api/v1/covers/backfill` queues a cover job per coverless recipe.
+  The search step needs `BRAVE_SEARCH_API_KEY` (Fly secret and `.env`);
+  without it the step logs once and skips, so pasted-text and generated
+  recipes stay coverless until the key is set. `server/scripts/cover-probe.mjs`
+  shows what the job would accept for a URL or a title. Rows 77 to 81 are
+  the owner's device checks.
 - **Widgets and push.** A shopping list widget, and an APNs push when a
   capture is ready to review, which also gives the share extension its way
   back into the app.
