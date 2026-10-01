@@ -1,12 +1,7 @@
 {
-  "calcJob": {
-    "error_text": null,
-    "job_id": "01TEST00000000000000000012",
-    "status": "pending",
-    "to_count": 8
-  },
+  "calcJob": null,
   "recipe": {
-    "based_on_content_version": 2,
+    "based_on_content_version": 1,
     "bodies": {
       "metric": {
         "ingredients": [
@@ -25,7 +20,7 @@
           }
         ],
         "steps": [
-          "Fry the onion slowly.",
+          "Fry the onion.",
           "Add everything else and simmer."
         ]
       },
@@ -51,21 +46,21 @@
         ]
       }
     },
-    "content_version": 2,
+    "content_version": 1,
     "cook_minutes": 30,
-    "cover_image_id": "01TEST00000000000000000002",
-    "cuisine": "middle-eastern",
+    "cover_image_id": "01TEST00000000000000000050",
+    "cuisine": "french",
     "damage": "messy",
-    "effort": "weeknight",
-    "hand_edited": true,
-    "id": "01TEST00000000000000000003",
+    "effort": "quick",
+    "hand_edited": false,
+    "id": "01TEST00000000000000000007",
     "images": [
       {
-        "height": 30,
-        "id": "01TEST00000000000000000002",
-        "source_url": null,
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000002/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a1bc04a1c0cc88573d6e17285970da21ab91886e8ae0b9e5a91dce4fc8b0e8b9",
-        "width": 40
+        "height": 600,
+        "id": "01TEST00000000000000000050",
+        "source_url": "https://images.example.com/omelette.jpg",
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000050/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=83c589cd5c33f1886499a077fb71a2d6621e0c7477043cc0222b1a99e741ccb5",
+        "width": 800
       }
     ],
     "ingredients": [
@@ -89,25 +84,22 @@
     ],
     "notes": "Better the next day.",
     "prep_minutes": 10,
-    "protein": "beans",
-    "reconvert": {
-      "job_id": "01TEST00000000000000000011",
-      "status": "pending"
-    },
+    "protein": "egg",
+    "reconvert": null,
     "scaling_note": null,
     "source_text": "Ottolenghi, Simple, p.112",
     "source_units": "metric",
     "source_url": null,
     "stale": false,
     "steps": [
-      "Fry the onion slowly.",
+      "Fry the onion.",
       "Add everything else and simmer."
     ],
-    "title": "Chickpea stew",
-    "variation_id": "01TEST00000000000000000004",
+    "title": "Quick omelette",
+    "variation_id": "01TEST00000000000000000008",
     "variations": [
       {
-        "id": "01TEST00000000000000000004",
+        "id": "01TEST00000000000000000008",
         "is_original": true,
         "stale": false,
         "yield_count": 4

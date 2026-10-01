@@ -114,7 +114,7 @@ public struct EditorForm: Codable, Hashable, Sendable {
 		protein = recipe.protein
 		effort = recipe.effort
 		damage = recipe.damage
-		images = recipe.images.map { DraftImage(id: $0.id, url: $0.url) }
+		images = recipe.images.map { DraftImage(id: $0.id, url: $0.url, sourceUrl: $0.sourceUrl) }
 		coverImageId = recipe.coverImageId
 		shownUnits = recipe.sourceUnits
 		shown = source
@@ -154,7 +154,7 @@ public struct EditorForm: Codable, Hashable, Sendable {
 		effort = seed.effort
 		damage = seed.damage
 		images = seed.images
-		coverImageId = seed.images.first?.id
+		coverImageId = seed.coverImageId ?? seed.images.first?.id
 		applyDevicePreference(units)
 	}
 
@@ -274,10 +274,22 @@ public struct EditorForm: Codable, Hashable, Sendable {
 		guard shown.steps.indices.contains(from), shown.steps.indices.contains(to) else { return }
 		shown.steps.swapAt(from, to)
 	}
-	/// The first photo becomes the cover.
+	/// A household photo becomes the cover when there is none or the cover is
+	/// a found one: their own picture of the dish beats a stranger's.
 	public mutating func addPhoto(_ image: DraftImage) {
+		let coverIsFound = images.first { $0.id == coverImageId }?.sourceUrl != nil
 		images.append(image)
-		if coverImageId == nil { coverImageId = image.id }
+		if coverImageId == nil || coverIsFound { coverImageId = image.id }
+	}
+	/// The cover job finishes after the extraction, so the found cover can
+	/// arrive on a form already open (or edited). It joins the strip once and
+	/// takes the cover unless the cook has already chosen a photo of their own.
+	public mutating func adoptFoundCover(_ image: DraftImage, over seedImages: [DraftImage]) {
+		if !images.contains(where: { $0.id == image.id }) { images.append(image) }
+		// A photo the cook added since (one the server's seed never had) keeps
+		// the cover; a capture page or nothing gives way, as at seed time.
+		let cookChose = coverImageId.map { id in !seedImages.contains { $0.id == id } } ?? false
+		if !cookChose { coverImageId = image.id }
 	}
 	/// Removing the cover moves it to the first remaining photo.
 	public mutating func removePhoto(_ id: ImageID) {

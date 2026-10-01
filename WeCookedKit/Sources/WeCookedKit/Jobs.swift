@@ -127,10 +127,12 @@ extension BrowseResponse: WatchesJobs {
 }
 
 extension DraftLookup: WatchesJobs {
+	/// The extraction while it runs, then the cover job while it looks.
 	public var watchedJobs: [JobID] {
 		switch self {
 		case .draft(let d) where !d.status.isFinished: [d.id]
-		case .draft, .choosing, .saved: []
+		case .draft(let d): d.coverJobId.map { [$0] } ?? []
+		case .choosing, .saved: []
 		}
 	}
 }

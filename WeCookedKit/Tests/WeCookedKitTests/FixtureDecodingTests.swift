@@ -15,7 +15,9 @@ struct FixtureDecodingTests {
 	static let table: [String: any (Codable & Sendable).Type] = [
 		"captures": JobReply.self,
 		"captures-url": JobReply.self,
+		"covers-backfill": CoverBackfillReply.self,
 		"draft-get-failed": DraftLookup.self,
+		"draft-get-cover": DraftLookup.self,
 		"draft-get-ready": DraftLookup.self,
 		"draft-get-saved": DraftLookup.self,
 		"draft-get-choosing": DraftLookup.self,
@@ -32,6 +34,7 @@ struct FixtureDecodingTests {
 		"recipe-calculate-job": JobReply.self,
 		"recipe-create": CreatedRecipe.self,
 		"recipe-get-busy": RecipeResponse.self,
+		"recipe-get-cover": RecipeResponse.self,
 		"recipe-get-variation": RecipeResponse.self,
 		"recipe-get": RecipeResponse.self,
 		"recipe-update": UpdatedRecipe.self,

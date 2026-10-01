@@ -58,6 +58,7 @@
       {
         "height": 30,
         "id": "01TEST00000000000000000002",
+        "source_url": null,
         "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000002/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a1bc04a1c0cc88573d6e17285970da21ab91886e8ae0b9e5a91dce4fc8b0e8b9",
         "width": 40
       }

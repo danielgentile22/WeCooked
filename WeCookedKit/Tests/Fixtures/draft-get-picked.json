@@ -1,4 +1,5 @@
 {
+  "cover_job_id": "01TEST00000000000000000040",
   "damage_reasoning": "1 baking tray + 1 mixing bowl + board and knife 1 = 3 points, messy.",
   "error_text": null,
   "id": "01TEST00000000000000000039",
@@ -30,6 +31,7 @@
         "Whisk the mustard and vinegar into the tray juices and spoon over the cabbage to serve."
       ]
     },
+    "cover_image_id": null,
     "cuisine": "central-european",
     "damage": "messy",
     "effort": "weeknight",

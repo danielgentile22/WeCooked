@@ -2,7 +2,7 @@
   "cover_job_id": null,
   "damage_reasoning": "One bowl and a tin.",
   "error_text": null,
-  "id": "01TEST00000000000000000021",
+  "id": "01TEST00000000000000000045",
   "initial": {
     "cook_minutes": 45,
     "counterpart": {
@@ -19,15 +19,15 @@
         "Bake."
       ]
     },
-    "cover_image_id": null,
+    "cover_image_id": "01TEST00000000000000000047",
     "cuisine": "british",
     "damage": "tidy",
     "effort": "project",
     "images": [
       {
-        "id": "01TEST00000000000000000020",
-        "source_url": null,
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000020/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=542ea2b5dd1981fa26299fd95cfc321249a89c1682578b50e572e8a09211e439"
+        "id": "01TEST00000000000000000047",
+        "source_url": "https://www.example.com/hero.jpg",
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000047/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5bd67783d2fb5aeac9aa031a0cb2773bd5b34011f1713eaaac560a275af9a538"
       }
     ],
     "ingredients": [
@@ -46,7 +46,7 @@
     "protein": null,
     "source_text": "Grandma, handwritten card",
     "source_units": "metric",
-    "source_url": null,
+    "source_url": "https://www.example.com/toast",
     "steps": [
       "Bake."
     ],

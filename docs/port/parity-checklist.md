@@ -83,3 +83,8 @@ column is ticked by the owner on a device.
 | 74 | Share | Share signed out: "Sign in to We Cooked first" with Close | | |
 | 75 | Share | Share in airplane mode: "Could not reach We Cooked. Try again." with Close, no draft left behind | | |
 | 76 | Shopping | Share the list as text: toolbar share opens the system sheet with unticked items one per line then unticked staples under "Check you have"; disabled while building, empty, or all ticked | x | |
+| 77 | Capture | A shared recipe link produces a draft whose cover is the page's own photo, shown on the review form | | |
+| 78 | Capture | A pasted-text capture or a picked generation gets one found photo of the dish as its cover | | |
+| 79 | Capture | A capture with a nonsense title ends with no cover and the pot tile | | |
+| 80 | Editor | The found cover can be removed (pot tile) or replaced; adding a household photo makes it the cover | | |
+| 81 | Recipes | Existing coverless recipes get a cover after the backfill | | |

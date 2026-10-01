@@ -561,6 +561,64 @@ struct EditorModelTests {
 		#expect(f.coverImageId == nil)
 	}
 
+	@Test func aCoverFoundAfterTheFormOpenedJoinsItOnce() throws {
+		let page = DraftImage(id: "page", url: URL(string: "https://example.com/p.jpg")!)
+		let found = DraftImage(id: "found", url: URL(string: "https://example.com/f.jpg")!, sourceUrl: URL(string: "https://site.example/f.jpg"))
+		var f = EditorForm(seed: DraftSeed(images: [page]), units: .metric)
+		f.title = "Edited before the cover arrived"
+		f.adoptFoundCover(found, over: [page, found])
+		#expect(f.images.map(\.id) == ["page", "found"])
+		#expect(f.coverImageId == "found", "a found photo beats a cookbook page")
+		f.adoptFoundCover(found, over: [page, found])
+		#expect(f.images.map(\.id) == ["page", "found"], "the same reply twice adds nothing")
+
+		var g = EditorForm(seed: DraftSeed(images: []), units: .metric)
+		g.addPhoto(DraftImage(id: "mine", url: URL(string: "https://example.com/m.jpg")!))
+		g.adoptFoundCover(found, over: [found])
+		#expect(g.images.map(\.id) == ["mine", "found"])
+		#expect(g.coverImageId == "mine", "a photo the cook added keeps the cover")
+	}
+
+	@Test func aFoundCoverSeedsTheCoverAndGivesWayToAHouseholdPhoto() throws {
+		let json = Data("""
+			{"images": [
+				{"id": "photo", "url": "https://example.com/p.jpg", "source_url": null},
+				{"id": "found", "url": "https://example.com/f.jpg", "source_url": "https://site.example/f.jpg"}
+			], "cover_image_id": "found"}
+			""".utf8)
+		let seed = try Wire.makeDecoder().decode(DraftSeed.self, from: json)
+		#expect(seed.images.map(\.sourceUrl) == [nil, URL(string: "https://site.example/f.jpg")])
+		var f = EditorForm(seed: seed, units: .metric)
+		#expect(f.coverImageId == "found", "the server's found cover, not the first image")
+		f.addPhoto(DraftImage(id: "mine", url: URL(string: "https://example.com/m.jpg")!))
+		#expect(f.coverImageId == "mine", "a household photo replaces a found cover")
+		f.addPhoto(DraftImage(id: "mine2", url: URL(string: "https://example.com/m2.jpg")!))
+		#expect(f.coverImageId == "mine", "a household cover stays")
+	}
+
+	@Test func aHouseholdCoverIsNotReplacedByANewPhoto() throws {
+		let seed = try Wire.makeDecoder().decode(
+			DraftSeed.self, from: Data(#"{"images": [{"id": "a", "url": "https://example.com/a.jpg"}]}"#.utf8))
+		#expect(seed.coverImageId == nil)
+		var f = EditorForm(seed: seed, units: .metric)
+		#expect(f.coverImageId == "a", "without a found cover the first image is the cover")
+		f.addPhoto(DraftImage(id: "b", url: URL(string: "https://example.com/b.jpg")!))
+		#expect(f.coverImageId == "a")
+	}
+
+	@Test func removingAFoundCoverLeavesNoCover() {
+		var f = EditorForm(
+			seed: DraftSeed(
+				images: [DraftImage(
+					id: "found", url: URL(string: "https://example.com/f.jpg")!,
+					sourceUrl: URL(string: "https://site.example/f.jpg"))],
+				coverImageId: "found"),
+			units: .metric)
+		f.removePhoto("found")
+		#expect(f.coverImageId == nil)
+		#expect(f.images.isEmpty)
+	}
+
 	@Test func linesMoveWithinBounds() {
 		var f = EditorForm.blank(units: .metric)
 		f.shown = BodyText(ingredients: [.init(heading: nil, items: ["a", "b"])], steps: ["1", "2"])

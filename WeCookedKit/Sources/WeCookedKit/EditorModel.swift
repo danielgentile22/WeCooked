@@ -317,7 +317,7 @@ public final class EditorModel {
 		}
 	}
 
-	/// Role `photo`. The first photo becomes the cover (`EditorForm.addPhoto`).
+	/// Role `photo`. Cover rules live in `EditorForm.addPhoto`.
 	public func upload(photo jpeg: Data) async {
 		let pending = PendingPhoto(state: .uploading)
 		uploads.append(pending)
@@ -466,6 +466,10 @@ public final class EditorModel {
 			switch d.status {
 			case .done:
 				adopt(seed(), key: .draft(job))
+				if let cover = d.initial?.coverImageId,
+				   let image = d.initial?.images.first(where: { $0.id == cover }) {
+					form.adoptFoundCover(image, over: d.initial?.images ?? [])
+				}
 				phase = .editing
 			case .failed, .timeout:
 				adopt(seed(), key: .draft(job))

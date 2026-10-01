@@ -442,6 +442,8 @@ public struct RecipeImage: Codable, Hashable, Sendable {
 	public let url: URL
 	public let width: Int
 	public let height: Int
+	/// Where a found cover was fetched from; nil for a photo the household took.
+	public let sourceUrl: URL?
 }
 
 public struct VariationChip: Codable, Hashable, Sendable, Identifiable {
@@ -609,6 +611,8 @@ public struct Vocabulary: Codable, Hashable, Sendable {
 public struct DraftImage: Codable, Hashable, Sendable {
 	public let id: ImageID
 	public let url: URL
+	/// Where a found cover was fetched from; nil for a photo the household took.
+	public var sourceUrl: URL? = nil
 }
 
 /// The `initial` block of a draft. On success it carries a full prefill; on a
@@ -617,6 +621,7 @@ public struct DraftImage: Codable, Hashable, Sendable {
 public struct DraftSeed: Codable, Hashable, Sendable {
 	public var sourceUrl: String?
 	public var images: [DraftImage]
+	public var coverImageId: ImageID?
 	public var title: String?
 	public var yieldCount: Double?
 	public var yieldUnit: String?
@@ -642,6 +647,9 @@ public struct DraftView: Codable, Hashable, Sendable {
 	public var errorText: String?
 	public var sourceText: String?
 	public var initial: DraftSeed?
+	/// The cover job still looking for this draft's cover; watched so the
+	/// draft is re-read when it ends and the found cover joins the form.
+	public var coverJobId: JobID?
 	public var warnings: [String]
 	public var damageReasoning: String?
 }
@@ -829,6 +837,7 @@ public struct RestoreReply: Codable, Hashable, Sendable {
 
 public struct TokenReply: Codable, Sendable { public let token: String }
 public struct JobReply: Codable, Sendable { public let jobId: JobID }
+public struct CoverBackfillReply: Codable, Sendable { public let queued: Int }
 
 /// The body of `POST /captures`. One primary input. With a URL, `html` is the
 /// page as the phone rendered it (sites that 403 a bare server fetch still
