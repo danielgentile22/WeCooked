@@ -311,16 +311,16 @@ issues are the spec; the bullets below are the original wording.
   rebuilds `job` for the kind, so a dev server restarts after pulling it.
   `POST /api/v1/covers/backfill` queues a cover job per coverless recipe.
   The search step needs `BRAVE_SEARCH_API_KEY` (Fly secret and `.env`);
-  without it the step logs once and skips, so pasted-text and generated
-  recipes stay coverless until the key is set. `server/scripts/cover-probe.mjs`
-  shows what the job would accept for a URL or a title. Rows 77 to 81 are
-  the owner's device checks. Server release v21 carries it. The first
-  backfill ran on 2026-10-01 over the 12 coverless recipes and found
-  nothing: the six with a source URL are blogs that answer the server's
-  fetch with a block (the same wall as ADR-041, from home too), and the
-  search step was off. Set the key, then
-  `POST /api/v1/covers/backfill` again; recipes whose job found nothing
-  are retried, ones whose cover the cook removed are not. "Find another
+  without it the step logs once and skips. The key is set in both places.
+  `server/scripts/cover-probe.mjs` shows what the job would accept for a
+  URL or a title. The first backfill on 2026-10-01 ran before the key was
+  set and found nothing (the six recipes with a source URL are blogs that
+  block the server's fetch, the same wall as ADR-041); the rerun with the
+  key covered every recipe, and the production database shows 14 recipes,
+  none coverless, after 25 done cover jobs. `POST /api/v1/covers/backfill`
+  retries recipes whose job found nothing and skips ones whose cover the
+  cook removed. Rows 77 to 82 passed on the owner's phone with build 6 on
+  server release v23, and issue #44 is closed. "Find another
   photo" (`POST /api/v1/drafts/:id/cover` and `/recipes/:id/cover`) queues a
   replace-mode cover job that skips the source page and searches past every
   image already found, one at a time per draft or recipe. The new image takes
