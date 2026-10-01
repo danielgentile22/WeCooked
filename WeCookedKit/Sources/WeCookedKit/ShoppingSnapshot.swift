@@ -91,6 +91,8 @@ public struct ShoppingSnapshot: Codable, Hashable, Sendable {
 /// as nil, which the widget treats like a list it has not seen yet.
 public struct SnapshotFile: Sendable {
 	public static let fileName = "shopping-widget.json"
+	/// The widget's kind, which the app names when it asks WidgetKit to reload.
+	public static let widgetKind = "ShoppingWidget"
 	let url: URL
 
 	/// Nil (tests, previews) puts the file in a fresh temporary directory, so

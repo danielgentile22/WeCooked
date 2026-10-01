@@ -55,6 +55,8 @@ targets:
         product: WeCookedKit
       - target: WeCookedShare
         embed: true
+      - target: WeCookedWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: kitchen.wecooked.ios
@@ -87,6 +89,8 @@ targets:
       properties:
         com.apple.security.application-groups: [group.kitchen.wecooked]
         keychain-access-groups: [$(AppIdentifierPrefix)kitchen.wecooked.shared]
+        # App Store export rewrites this to production from the profile.
+        aps-environment: development
 
   # Drives the app on the simulator against the local dev server; each unit's
   # interaction rows in docs/port/parity-checklist.md get a test here.
@@ -143,6 +147,38 @@ targets:
       properties:
         com.apple.security.application-groups: [group.kitchen.wecooked]
         keychain-access-groups: [$(AppIdentifierPrefix)kitchen.wecooked.shared]
+
+  # The home screen shopping widget. It shares the app group only (the
+  # snapshot file the app writes), never the Keychain group, so it can never
+  # hold the session token.
+  WeCookedWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WeCookedWidget
+        excludes: ["*.entitlements"]
+    dependencies:
+      - package: WeCookedKit
+        product: WeCookedKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: kitchen.wecooked.ios.widget
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: WeCookedWidget/Info.plist
+      properties:
+        CFBundleDisplayName: We Cooked
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WCAppGroup: group.kitchen.wecooked
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WeCookedWidget/WeCookedWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.kitchen.wecooked]
 
 schemes:
   WeCooked:

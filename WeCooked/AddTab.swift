@@ -8,6 +8,7 @@ import WeCookedKit
 struct AddTab: View {
 	@State var model: CaptureModel
 	@Environment(Router.self) private var router
+	@Environment(PushCoordinator.self) private var push
 
 	var body: some View {
 		Form {
@@ -68,6 +69,7 @@ struct AddTab: View {
 		Button {
 			Task {
 				guard let job = await model.extract() else { return }
+				push.askIfNeeded()
 				router.tab = .recipes
 				router.recipesPath = [.draft(job)]
 			}

@@ -40,6 +40,7 @@ DerivedData/
 # XcodeGen output (generated from project.yml) and personal signing overrides
 WeCooked/Info.plist
 WeCookedShare/Info.plist
+WeCookedWidget/Info.plist
 *.entitlements
 Config/Local.xcconfig
 build/

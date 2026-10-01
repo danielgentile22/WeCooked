@@ -60,13 +60,16 @@ final class Router {
 	}
 
 	/// Extension hand-off: the extension writes `pendingLink` (a URL string) in
-	/// the app-group defaults; consumed once.
-	func consumePendingLink(from env: AppEnvironment) {
+	/// the app-group defaults; consumed once. Returns the link it opened.
+	@discardableResult
+	func consumePendingLink(from env: AppEnvironment) -> DeepLink? {
 		guard let group = env.config.appGroup, let defaults = UserDefaults(suiteName: group),
 			let raw = defaults.string(forKey: DeepLink.pendingLinkKey)
-		else { return }
+		else { return nil }
 		defaults.removeObject(forKey: DeepLink.pendingLinkKey)
-		if let url = URL(string: raw), let link = DeepLink(url: url) { open(link) }
+		guard let url = URL(string: raw), let link = DeepLink(url: url) else { return nil }
+		open(link)
+		return link
 	}
 }
 
