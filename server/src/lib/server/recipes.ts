@@ -370,6 +370,8 @@ export type RecipeDetail = {
 	ingredients: IngredientGroup[];
 	steps: string[];
 	cover_image_id: string | null;
+	/** Bumped by substantive edits; the web editor's autosave records it as its baseline. */
+	content_version: number;
 	images: RecipeImage[];
 	/** The cover job looking for this recipe's cover, if any (issue #44). */
 	cover_job_id: string | null;
@@ -434,7 +436,6 @@ export function getRecipe(db: Database, id: string, variationId?: string): Recip
 	> & {
 		hand_edited: number;
 		is_original: number;
-		content_version: number;
 		based_on_content_version: number;
 	};
 	let r: Row | undefined;

@@ -1,3 +1,4 @@
 # We Cooked
 
-- **The iOS app is the product.** The SvelteKit web app in `server/` is retired. `server/` is now the backend (`/api/v1`, jobs, storage) and an archive of the old web app. Don't change or extend the web pages to match iOS work; change `server/` only for backend behavior.
+- **Two clients, one backend.** The iOS app (`WeCooked/`, `WeCookedKit/`) is the phone client. The SvelteKit web app in `server/` is the laptop client, used propped on the kitchen counter while cooking, and `server/` is also the backend (`/api/v1`, jobs, storage). A behaviour added to one client is added to the other unless it is platform-bound (share extension, widget, push).
+- **The web app is laptop-first.** Phones use the native app, so web layout decisions favour a 1100 to 1400px content area (docs/UI.md D12). It must still degrade on a phone, but phone polish is not a goal.

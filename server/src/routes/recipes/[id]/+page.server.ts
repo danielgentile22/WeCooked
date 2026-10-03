@@ -1,7 +1,7 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
-import { retryReconvert, deleteVariation } from '$lib/server/recipes';
+import { retryReconvert, deleteVariation, deleteRecipe } from '$lib/server/recipes';
 import { keepMine, recalcVariation, requestScale, retryScale } from '$lib/server/scale';
 import { recipeView } from '$lib/server/views';
 
@@ -63,5 +63,11 @@ export const actions: Actions = {
 			});
 		}
 		return { ok: true };
+	},
+	// D10: behind the More control with a confirm; same soft delete as the
+	// trash page's delete_recipe, Trash is the safety net.
+	deleteRecipe: async ({ params }) => {
+		deleteRecipe(db, params.id);
+		redirect(303, '/');
 	}
 };

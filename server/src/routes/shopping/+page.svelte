@@ -9,6 +9,7 @@
 		Minus,
 		Pencil,
 		Plus,
+		Share,
 		ShoppingCart,
 		Trash2
 	} from '@lucide/svelte';
@@ -52,30 +53,80 @@
 	}
 
 	// ---- shared ticks (SPEC 7.6, ADR-033) ----
-	let ticksInFlight = 0;
+	// Ticks go through a per-device outbox of target states, kept in
+	// localStorage and replayed on every poll, so a tick made offline is sent
+	// later instead of being undone by the next poll. A queued target wins over
+	// the server's value until it is sent (DeviceState.queueTick on iOS).
+	const OUTBOX_KEY = 'shoppingOutbox';
+	let outbox = $state<Record<string, boolean>>({});
+	function saveOutbox() {
+		try {
+			localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
+		} catch {
+			// storage blocked: the outbox still lives for this page
+		}
+	}
+	const items = $derived(
+		list.items.map((i) => (i.id in outbox ? { ...i, ticked: outbox[i.id] } : i))
+	);
+
 	function tick(item: ShoppingItem) {
-		item.ticked = !item.ticked; // optimistic
-		ticksInFlight++;
-		fetch(`/api/shopping-list/items/${item.id}`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ ticked: item.ticked }),
-			// A hung POST must not stall the shared-tick poll for the session.
-			signal: AbortSignal.timeout(8000)
-		}).finally(() => ticksInFlight--);
+		outbox[item.id] = !item.ticked;
+		saveOutbox();
+		flush();
+	}
+
+	// One send loop at a time; ticks queued during it are picked up before it
+	// ends. The first failure stops it and the next poll retries.
+	let flushing: Promise<void> | null = null;
+	let settled = 0;
+	function flush() {
+		flushing ??= send().finally(() => (flushing = null));
+		return flushing;
+	}
+	async function send() {
+		for (let batch = Object.entries(outbox); batch.length; batch = Object.entries(outbox)) {
+			for (const [id, ticked] of batch) {
+				const ok = await fetch(`/api/v1/shopping/items/${id}`, {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ ticked }),
+					signal: AbortSignal.timeout(8000)
+				}).then(
+					(r) => r.ok,
+					() => false
+				);
+				if (!ok) return;
+				const sent = list.items.find((i) => i.id === id);
+				if (sent) sent.ticked = ticked;
+				// A second tap made while this one was in flight stays queued.
+				if (outbox[id] === ticked) delete outbox[id];
+				saveOutbox();
+				settled++;
+			}
+		}
 	}
 
 	// 5 s visibility-aware poll; refetch immediately on return to visible.
 	async function refresh() {
-		if (document.visibilityState !== 'visible' || ticksInFlight > 0) return;
+		if (document.visibilityState !== 'visible') return;
+		await flush();
+		const before = settled;
 		try {
-			const res = await fetch('/api/shopping-list');
-			if (res.ok) list = await res.json();
+			const res = await fetch('/api/v1/shopping');
+			// A reply that raced a settling tick may predate it; the next poll is fresh.
+			if (res.ok && settled === before) list = (await res.json()).list;
 		} catch {
 			// offline blip: the next poll tries again
 		}
 	}
 	$effect(() => {
+		try {
+			outbox = JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '{}');
+		} catch {
+			outbox = {};
+		}
+		flush();
 		const t = setInterval(refresh, 5000);
 		document.addEventListener('visibilitychange', refresh);
 		return () => {
@@ -83,6 +134,37 @@
 			document.removeEventListener('visibilitychange', refresh);
 		};
 	});
+
+	// ---- share (iOS ShoppingLayout.shareText) ----
+	// Unticked items one per line, then unticked staples under "Check you have".
+	const shareText = $derived.by(() => {
+		const open = (s: string) =>
+			sectionItems(s)
+				.filter((i) => !i.ticked)
+				.map(primary);
+		const staplesLeft = open('staples');
+		return [
+			Object.keys(SECTION_LABELS).flatMap(open),
+			staplesLeft.length ? ['Check you have', ...staplesLeft] : []
+		]
+			.filter((b) => b.length)
+			.map((b) => b.join('\n'))
+			.join('\n\n');
+	});
+	let shareStatus = $state('');
+	async function share() {
+		if (navigator.share) {
+			await navigator.share({ text: shareText }).catch(() => {});
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(shareText);
+			shareStatus = 'Copied';
+		} catch {
+			shareStatus = 'Could not copy';
+		}
+		setTimeout(() => (shareStatus = ''), 2500);
+	}
 
 	// Rebuild banner (SPEC 7.6): naming any reset ticks, shown once per device
 	// per build. sessionStorage marks the build seen, so the banner survives a
@@ -139,11 +221,11 @@
 	let retryForm = $state<HTMLFormElement>();
 
 	const totals = $derived({
-		total: list.items.length,
-		ticked: list.items.filter((i) => i.ticked).length
+		total: items.length,
+		ticked: items.filter((i) => i.ticked).length
 	});
 	const sectionItems = (section: string) =>
-		list.items
+		items
 			.filter((i) => i.section === section)
 			.sort((a, b) => Number(a.is_manual) - Number(b.is_manual) || a.position - b.position);
 	const staples = $derived(sectionItems('staples'));
@@ -165,39 +247,51 @@
 
 <main>
 	<header>
-		<h1>{mode === 'pick' ? 'New shopping list' : 'Shopping'}</h1>
-		<p class="sub" aria-live="polite">
-			{#if mode === 'pick'}Pick recipes and portions{:else if building}Building…{:else if hasList}{totals.ticked}
-				of {totals.total} ticked · ticks sync to both phones{/if}
-		</p>
+		<div>
+			<h1>{mode === 'pick' ? 'New shopping list' : 'Shopping'}</h1>
+			<p class="sub" aria-live="polite">
+				{#if mode === 'pick'}Pick recipes and portions{:else if building}Building…{:else if hasList}{totals.ticked}
+					of {totals.total} ticked · ticks sync to both phones{/if}
+			</p>
+		</div>
+		{#if mode === 'list' && hasList}
+			<div class="share">
+				<button type="button" class="btn secondary" disabled={building || !shareText} onclick={share}>
+					<Share aria-hidden="true" />Share list
+				</button>
+				<span class="status" role="status">{shareStatus}</span>
+			</div>
+		{/if}
 	</header>
 
 	{#if mode === 'pick'}
 		{#if data.recipes.length === 0}
 			<p class="empty">No recipes yet. <a href="/add">Add one first.</a></p>
 		{:else}
-			{#each data.recipes as r (r.id)}
-				<div class="pickrow">
-					<input type="checkbox" id="sel-{r.id}" bind:checked={selected[r.id]} />
-					<label class="name" for="sel-{r.id}">
-						{r.title}
-						<small>written for {r.yield_count} {r.yield_unit}</small>
-					</label>
-					<div class="stepper">
-						<button
-							type="button"
-							onclick={() => step(r.id, -1)}
-							aria-label="Fewer {r.yield_unit} of {r.title}"><Minus /></button
-						>
-						<output>{yields[r.id]}<small>{r.yield_unit}</small></output>
-						<button
-							type="button"
-							onclick={() => step(r.id, 1)}
-							aria-label="More {r.yield_unit} of {r.title}"><Plus /></button
-						>
+			<div class="picks">
+				{#each data.recipes as r (r.id)}
+					<div class="pickrow">
+						<input type="checkbox" id="sel-{r.id}" bind:checked={selected[r.id]} />
+						<label class="name" for="sel-{r.id}">
+							{r.title}
+							<small>written for {r.yield_count} {r.yield_unit}</small>
+						</label>
+						<div class="stepper">
+							<button
+								type="button"
+								onclick={() => step(r.id, -1)}
+								aria-label="Fewer {r.yield_unit} of {r.title}"><Minus /></button
+							>
+							<output>{yields[r.id]}<small>{r.yield_unit}</small></output>
+							<button
+								type="button"
+								onclick={() => step(r.id, 1)}
+								aria-label="More {r.yield_unit} of {r.title}"><Plus /></button
+							>
+						</div>
 					</div>
-				</div>
-			{/each}
+				{/each}
+			</div>
 			<div class="pickactions">
 				<form
 					method="POST"
@@ -241,7 +335,7 @@
 				<input type="hidden" name="list_id" value={list.list_id} />
 				<Banner
 					text={list.build.error_text ?? 'The build failed.'}
-					action="Tap to retry"
+					action="Retry"
 					onaction={() => retryForm?.requestSubmit()}
 				/>
 			</form>
@@ -258,49 +352,23 @@
 				</button>
 			</div>
 		{:else}
-			{#each Object.keys(SECTION_LABELS) as section (section)}
-				{@const its = sectionItems(section)}
-				{#if its.length > 0}
-					<section>
-						<h2>{SECTION_LABELS[section]}</h2>
-						<ul class="items">
-							{#each its as item (item.id)}
-								<li class:ticked={item.ticked}>
-									<label>
-										<input
-											type="checkbox"
-											checked={item.ticked}
-											onchange={() => tick(item)}
-										/>
-										<span class="txt">
-											{primary(item)}
-											<span class="meta">{meta(item)}</span>
-										</span>
-									</label>
-								</li>
-							{/each}
-						</ul>
-					</section>
-				{/if}
-			{/each}
+			<div class="sections">
+				{#each Object.keys(SECTION_LABELS) as section (section)}
+					{@const its = sectionItems(section)}
+					{#if its.length > 0}
+						<section>
+							<h2>{SECTION_LABELS[section]}</h2>
+							{@render rows(its)}
+						</section>
+					{/if}
+				{/each}
+			</div>
 
 			{#if staples.length > 0}
 				<!-- Staples are separated, never dropped (SPEC 7.6), collapsed at the bottom. -->
 				<details class="staples">
 					<summary>Check you have ({staples.length}) <ChevronDown aria-hidden="true" /></summary>
-					<ul class="items">
-						{#each staples as item (item.id)}
-							<li class:ticked={item.ticked}>
-								<label>
-									<input type="checkbox" checked={item.ticked} onchange={() => tick(item)} />
-									<span class="txt">
-										{primary(item)}
-										<span class="meta">{meta(item)}</span>
-									</span>
-								</label>
-							</li>
-						{/each}
-					</ul>
+					{@render rows(staples)}
 				</details>
 			{/if}
 
@@ -317,21 +385,24 @@
 				<button type="submit"><Plus aria-hidden="true" />Add</button>
 			</form>
 
-			<div class="unitsrow">
-				<span id="unitslabel">Show amounts in</span>
-				<div class="seg" role="group" aria-labelledby="unitslabel">
-					<button type="button" aria-pressed={units === 'metric'} onclick={() => setUnits('metric')}>
-						{#if units === 'metric'}<Check aria-hidden="true" />{/if}Metric
-					</button>
-					<button type="button" aria-pressed={units === 'us'} onclick={() => setUnits('us')}>
-						{#if units === 'us'}<Check aria-hidden="true" />{/if}US
-					</button>
+			<!-- After the list in reading order; wide screens lift it into the header row. -->
+			<div class="tools">
+				<div class="unitsrow">
+					<span id="unitslabel">Show amounts in</span>
+					<div class="seg" role="group" aria-labelledby="unitslabel">
+						<button type="button" aria-pressed={units === 'metric'} onclick={() => setUnits('metric')}>
+							{#if units === 'metric'}<Check aria-hidden="true" />{/if}Metric
+						</button>
+						<button type="button" aria-pressed={units === 'us'} onclick={() => setUnits('us')}>
+							{#if units === 'us'}<Check aria-hidden="true" />{/if}US
+						</button>
+					</div>
 				</div>
-			</div>
-
-			<div class="donezone">
+				<button type="button" class="btn secondary editbtn" onclick={openPick}>
+					<Pencil aria-hidden="true" />Add or remove recipes
+				</button>
 				{#if !confirming}
-					<button type="button" class="btn secondary" onclick={() => (confirming = true)}>
+					<button type="button" class="btn secondary donebtn" onclick={() => (confirming = true)}>
 						<Trash2 aria-hidden="true" />Done shopping
 					</button>
 				{:else}
@@ -353,18 +424,55 @@
 					</div>
 				{/if}
 			</div>
-			<button type="button" class="btn secondary editbtn" onclick={openPick}>
-				<Pencil aria-hidden="true" />Add or remove recipes
-			</button>
 		{/if}
 	{/if}
 </main>
+
+{#snippet rows(its: ShoppingItem[])}
+	<ul class="items">
+		{#each its as item (item.id)}
+			<li class:ticked={item.ticked}>
+				<label>
+					<input type="checkbox" checked={item.ticked} onchange={() => tick(item)} />
+					<span class="txt">
+						{primary(item)}
+						<span class="meta">{meta(item)}</span>
+					</span>
+				</label>
+			</li>
+		{/each}
+	</ul>
+{/snippet}
 
 <style>
 	main {
 		max-width: 44rem;
 		margin: 0 auto;
 		padding: 1rem 1rem calc(6rem + env(safe-area-inset-bottom));
+	}
+	header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 0.75rem;
+	}
+	.share {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex: none;
+	}
+	.share .status {
+		font-size: 0.85rem;
+		color: var(--muted);
+	}
+	.share .btn {
+		min-height: 2.75rem;
+		padding: 0.5rem 0.9rem;
+	}
+	.btn.secondary:disabled {
+		color: var(--muted);
+		cursor: default;
 	}
 	h1 {
 		font-size: 1.4rem;
@@ -667,10 +775,13 @@
 		height: 1em;
 	}
 
-	.donezone {
-		margin-top: 1.4rem;
-		border-top: 1px solid var(--line);
-		padding-top: 1rem;
+	.tools {
+		display: grid;
+		gap: 0.5rem;
+		margin-top: 1.1rem;
+	}
+	.donebtn {
+		margin-top: 0.9rem;
 	}
 	.confirm {
 		background: var(--card);
@@ -686,7 +797,141 @@
 		grid-template-columns: 1fr 1fr;
 		gap: 0.5rem;
 	}
-	.editbtn {
-		margin-top: 0.5rem;
+
+	/* ---- laptop: the shell's sidebar takes the left, the list uses the rest ---- */
+	@media (min-width: 900px) {
+		main {
+			max-width: 76rem;
+			padding: 2rem 2.5rem 3rem;
+			display: grid;
+			grid-template-columns: 1fr auto;
+			column-gap: 1.5rem;
+			align-items: start;
+		}
+		main > :global(*) {
+			grid-column: 1 / -1;
+		}
+		main > header {
+			grid-column: 1;
+			grid-row: 1;
+		}
+		.tools {
+			grid-column: 2;
+			grid-row: 1;
+			margin: 0;
+			display: flex;
+			flex-wrap: wrap;
+			justify-content: flex-end;
+			align-items: center;
+			gap: 0.6rem;
+		}
+		.tools .btn {
+			width: auto;
+		}
+		.unitsrow {
+			margin: 0;
+		}
+		.donebtn {
+			margin: 0;
+		}
+		.confirm {
+			max-width: 26rem;
+		}
+		.confirm .btn {
+			width: 100%;
+		}
+		header {
+			justify-content: flex-start;
+			align-items: center;
+			gap: 1.25rem;
+		}
+		/* the Metric and US words carry it; the label stays for screen readers */
+		#unitslabel {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+		}
+		h1 {
+			font-size: 1.9rem;
+		}
+		.sub {
+			white-space: nowrap;
+			font-size: 1rem;
+		}
+		.share .btn {
+			width: auto;
+		}
+
+		.sections {
+			columns: 2;
+			column-gap: 1.25rem;
+		}
+		section {
+			break-inside: avoid;
+			background: var(--card);
+			border: 1px solid var(--line);
+			border-radius: 1rem;
+			padding: 0.4rem 1rem 0.8rem;
+			margin-bottom: 1.25rem;
+		}
+		section h2 {
+			font-size: 0.9rem;
+			margin: 0.7rem 0 0.4rem;
+		}
+		section ul.items label {
+			border: 0;
+			border-bottom: 1px solid var(--line);
+			border-radius: 0;
+			padding: 0.6rem 0.2rem;
+		}
+		section ul.items li {
+			margin: 0;
+		}
+		section ul.items li:last-child label {
+			border-bottom: 0;
+		}
+		ul.items label {
+			min-height: 3.6rem;
+			gap: 0.9rem;
+		}
+		ul.items input[type='checkbox'] {
+			width: 2rem;
+			height: 2rem;
+		}
+		.txt {
+			font-size: 1.2rem;
+		}
+		.meta {
+			font-size: 0.9rem;
+		}
+		details.staples summary {
+			font-size: 0.9rem;
+		}
+		details.staples ul.items {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			column-gap: 1.25rem;
+		}
+		.addrow {
+			max-width: 36rem;
+		}
+
+		.picks {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 0.75rem;
+		}
+		.pickrow {
+			margin: 0;
+			padding: 0.8rem 1rem;
+		}
+		.pickrow .name {
+			font-size: 1.1rem;
+		}
+		.pickactions {
+			grid-template-columns: repeat(2, minmax(0, 18rem));
+		}
 	}
 </style>

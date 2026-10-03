@@ -1,12 +1,29 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Search, CookingPot, LoaderCircle, TriangleAlert, ClipboardCheck } from '@lucide/svelte';
+	import {
+		Search,
+		CookingPot,
+		LoaderCircle,
+		TriangleAlert,
+		ClipboardCheck,
+		Layers
+	} from '@lucide/svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { pollJob } from '$lib/jobs';
 	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 
 	let { data } = $props();
+
+	// D7: every draft status is a word plus a glyph (mirrors iOS DraftCardStatus).
+	type DraftStatus = (typeof data.drafts)[number]['status'];
+	const draftStatus: Record<DraftStatus, { line: string; icon: typeof Layers; working?: true }> = {
+		extracting: { line: 'Extracting…', icon: LoaderCircle, working: true },
+		generating: { line: 'Generating…', icon: LoaderCircle, working: true },
+		choosing: { line: 'Choose a recipe', icon: Layers },
+		ready: { line: 'Ready to review', icon: ClipboardCheck },
+		failed: { line: 'Failed: open to fix', icon: TriangleAlert }
+	};
 
 	// Watch running extractions so their cards flip without a manual refresh
 	// (SPEC 6.3 polling; survives a locked phone because the job does).
@@ -84,77 +101,62 @@
 		<h1>Recipes</h1>
 	</header>
 
-	<div class="search">
-		<Search aria-hidden="true" />
-		<input
-			type="search"
-			placeholder="Search recipes"
-			aria-label="Search recipes"
-			bind:value={q}
-			oninput={onSearch}
-		/>
-	</div>
+	<div class="toolbar">
+		<div class="search">
+			<Search aria-hidden="true" />
+			<input
+				type="search"
+				placeholder="Search recipes"
+				aria-label="Search recipes"
+				bind:value={q}
+				oninput={onSearch}
+			/>
+		</div>
 
-	<div class="filters" bind:this={filterBar}>
-		<div class="catbar" role="group" aria-label="Tag filters">
+		<div class="filters" bind:this={filterBar}>
+			<div class="catbar" role="group" aria-label="Tag filters">
+				{#each groups as g (g.key)}
+					<button
+						type="button"
+						class="cat"
+						aria-expanded={open === g.key}
+						onclick={() => (open = open === g.key ? null : g.key)}
+					>
+						{g.label}{selected[g.key].length ? ` · ${selected[g.key].length}` : ''}
+					</button>
+				{/each}
+			</div>
 			{#each groups as g (g.key)}
-				<button
-					type="button"
-					class="cat"
-					aria-expanded={open === g.key}
-					onclick={() => (open = open === g.key ? null : g.key)}
-				>
-					{g.label}{selected[g.key].length ? ` · ${selected[g.key].length}` : ''}
-				</button>
+				{#if open === g.key}
+					<div class="options">
+						{#each g.values as v (v)}
+							<Chip
+								label={v}
+								selected={selected[g.key].includes(v)}
+								onclick={() => toggle(g.key, v)}
+							/>
+						{/each}
+					</div>
+				{/if}
 			{/each}
 		</div>
-		{#each groups as g (g.key)}
-			{#if open === g.key}
-				<div class="options">
-					{#each g.values as v (v)}
-						<Chip
-							label={v}
-							selected={selected[g.key].includes(v)}
-							onclick={() => toggle(g.key, v)}
-						/>
-					{/each}
-				</div>
-			{/if}
-		{/each}
 	</div>
 
 	{#if data.drafts.length > 0}
 		<!-- D7: drafts are ordinary rows with a status line instead of tag chips. -->
 		<ul class="list">
 			{#each data.drafts as d (d.id)}
+				{@const st = draftStatus[d.status]}
 				<li>
-					{#if d.status === 'extracting' || d.status === 'generating'}
-						<span class="draftrow">
-							<span class="thumb tile" aria-hidden="true"><LoaderCircle class="spin" /></span>
-							<span class="drafttext">
-								<span class="title">{d.title}</span>
-								<span class="status">
-									{d.status === 'generating' ? 'Generating…' : 'Extracting…'}
-								</span>
-							</span>
+					<a href="/drafts/{d.id}">
+						<span class="thumb tile" aria-hidden="true">
+							<st.icon class={st.working ? 'spin' : undefined} />
 						</span>
-					{:else}
-						<a href="/drafts/{d.id}">
-							<span class="thumb tile" aria-hidden="true">
-								{#if d.status === 'failed'}<TriangleAlert />{:else}<ClipboardCheck />{/if}
-							</span>
-							<span class="drafttext">
-								<span class="title">{d.title}</span>
-								<span class="status">
-									{d.status === 'failed'
-										? 'Failed: tap to fix'
-										: d.status === 'choosing'
-											? 'Waiting for a pick on the phone'
-											: 'Ready to review'}
-								</span>
-							</span>
-						</a>
-					{/if}
+						<span class="drafttext">
+							<span class="title">{d.title}</span>
+							<span class="status">{st.line}</span>
+						</span>
+					</a>
 				</li>
 			{/each}
 		</ul>
@@ -314,14 +316,6 @@
 		gap: 0.3rem;
 		flex: none;
 	}
-	.draftrow {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		min-height: 3.4rem;
-		padding: 0.5rem 0.2rem;
-		border-bottom: 1px solid var(--line);
-	}
 	.drafttext {
 		flex: 1;
 		display: flex;
@@ -350,5 +344,91 @@
 		color: var(--muted);
 		font-size: 0.9rem;
 		font-weight: 600;
+	}
+
+	/* Laptop (sidebar shell): search and filters share one row, and the list
+	   becomes a card grid with the cover on top. */
+	@media (min-width: 900px) {
+		main {
+			max-width: 72rem;
+			padding: 1.5rem 2rem 3rem;
+		}
+		.toolbar {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 0.5rem 0.75rem;
+		}
+		.search {
+			flex: 1 1 12rem;
+			max-width: 24rem;
+		}
+		.filters {
+			display: contents;
+		}
+		.catbar {
+			flex: none;
+		}
+		.options {
+			flex-basis: 100%;
+			padding-top: 0;
+		}
+		.list {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+			gap: 1rem;
+			margin-top: 1.25rem;
+		}
+		.list li {
+			display: flex;
+		}
+		.list a {
+			flex: 1;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0;
+			padding: 0;
+			border: 1px solid var(--line);
+			border-radius: 0.8rem;
+			background: var(--card);
+			overflow: hidden;
+		}
+		.list a:hover {
+			border-color: var(--muted);
+		}
+		.thumb {
+			width: 100%;
+			height: auto;
+			aspect-ratio: 3 / 2;
+			border-radius: 0;
+		}
+		.tile {
+			border: 0;
+			border-bottom: 1px solid var(--line);
+			background: var(--bg);
+		}
+		.tile :global(svg) {
+			width: 2.25rem;
+			height: 2.25rem;
+		}
+		.title {
+			flex: none;
+			padding: 0.7rem 0.85rem 0;
+		}
+		.rowchips {
+			padding: 0.5rem 0.85rem 0.85rem;
+			margin-top: auto;
+		}
+		.drafttext {
+			gap: 0.2rem;
+			padding-bottom: 0.85rem;
+		}
+		.status {
+			padding: 0 0.85rem;
+		}
+		/* The sidebar carries Trash on wide screens (D1). */
+		.trashlink {
+			display: none;
+		}
 	}
 </style>

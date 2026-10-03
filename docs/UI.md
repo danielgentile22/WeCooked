@@ -94,10 +94,18 @@ checkbox per row, then a yield stepper per picked recipe, then Build. Reuses
 the browse list wholesale. Pick-mode visual details are settled in the
 shopping list prototype.
 
-## D12. Desktop
+## D12. Laptop
 
-Single centered column, max-width about 44rem, same components. No
-desktop-specific layout in v1. Phone is the primary device.
+Revised 2026-10-03 (ADR-045). The phone runs the native app, so the web app
+is the laptop client and is laid out for a 1100 to 1400px content area. At
+`min-width: 900px` the bottom tab bar becomes a fixed left sidebar (14rem,
+app name on top, the three items as rows, Trash at the bottom) and pages keep
+their own max-width inside the offset content area. Browse is a card grid,
+Shopping is a two-column grid of section cards, and the cooking screen is two
+columns: ingredients pinned on the left, numbered steps on the right, lists at
+1.4rem with step numbers in the accent, the cover beside the title rather
+than a banner. Forms stay in a single 44rem column. Below 900px the old
+phone layout remains and must keep working, but it is not polished further.
 
 ## D13. Empty states
 

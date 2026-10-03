@@ -1,9 +1,23 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { Plus, X, ArrowUp, ArrowDown, Minus, Camera, Star, LoaderCircle } from '@lucide/svelte';
+	import { invalidateAll } from '$app/navigation';
+	import {
+		Plus,
+		X,
+		ArrowUp,
+		ArrowDown,
+		Minus,
+		Camera,
+		Star,
+		Search,
+		CircleAlert,
+		LoaderCircle
+	} from '@lucide/svelte';
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
+	import { pollJob } from '$lib/jobs';
 	import {
 		MEAL_TYPES,
 		CUISINES,
@@ -11,6 +25,7 @@
 		EFFORTS,
 		DAMAGES,
 		cleanBody,
+		cleanIngredients,
 		otherUnits,
 		type BodyText,
 		type RecipeInput,
@@ -19,13 +34,22 @@
 
 	let {
 		initial = null as Partial<RecipeInput> | null,
-		draftKey, // ADR-038: sessionStorage key; recipe id when editing, fixed for manual
+		draftKey, // ADR-038: localStorage key; variation id when editing, job id for a draft, fixed for manual
 		error = null as string | null,
 		action = '', // form action; the drafts page posts to a named action
 		// True when the body's unit system is already fixed (saved recipe, done
 		// extraction). A failed URL draft seeds initial = { source_url } and must
 		// NOT count: the user is about to type the body and picks the system.
 		editing = initial !== null,
+		// The server copy's content_version, stored with the autosave so a
+		// restore can tell the recipe changed meanwhile. Null where nothing
+		// versions the copy (drafts, a new recipe).
+		baseline = null as number | null,
+		// The cover job still looking for a photo, if any (issue #44): followed
+		// here, and its result merged into the open form.
+		coverJobId = null as string | null,
+		// Whether the host has a ?/findCover action ("Find another photo").
+		findCover = false,
 		// The counterpart body's regeneration state (ADR-028), edit page only.
 		reconvert = null as { status: 'pending' | 'failed' } | null,
 		onretry = undefined as (() => void) | undefined,
@@ -72,7 +96,13 @@
 	function fromInitial(): FormState {
 		const { counterpart, ...rest } = initial ?? {};
 		const seeded = { ...empty(), ...rest };
-		return { ...seeded, shown_units: seeded.source_units, other: counterpart ?? null };
+		return {
+			...seeded,
+			// A capture's pages with no found cover: the first page is the cover.
+			cover_image_id: seeded.cover_image_id ?? seeded.images[0]?.id ?? null,
+			shown_units: seeded.source_units,
+			other: counterpart ?? null
+		};
 	}
 
 	const swapBodies = (s: FormState, u: UnitSystem): void => {
@@ -97,26 +127,108 @@
 
 	// What the server holds right now, for edited-body detection at submit:
 	// whichever body diverges from this is the one the human authored.
-	// svelte-ignore state_referenced_locally
-	const loaded = fromInitial();
-	const loadedSource = JSON.stringify(
-		cleanBody({ ingredients: loaded.ingredients, steps: loaded.steps })
+	const loaded = $derived(fromInitial());
+	const loadedSource = $derived(
+		JSON.stringify(cleanBody({ ingredients: loaded.ingredients, steps: loaded.steps }))
 	);
-	const loadedOther = loaded.other ? JSON.stringify(cleanBody(loaded.other)) : null;
+	const loadedOther = $derived(loaded.other ? JSON.stringify(cleanBody(loaded.other)) : null);
+	// The server copy as the form would open it: the autosave is measured
+	// against it and Start over returns to it.
+	const fresh = $derived(withDevicePref(fromInitial()));
 
-	// Restore a draft silently if one exists, else seed from the recipe being
-	// edited (ADR-038). Deliberately reads props once, before first render; the
-	// edit page re-keys the component when the recipe changes.
-	// svelte-ignore state_referenced_locally
-	const stored = typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem(draftKey);
-	// svelte-ignore state_referenced_locally
-	let draft = $state<FormState>(
-		stored ? { ...fromInitial(), ...JSON.parse(stored) } : withDevicePref(fromInitial())
-	);
+	// Equality for "differs from the server copy". Display URLs are presigned
+	// per day, so only image ids count.
+	const key = (s: FormState) => JSON.stringify({ ...s, images: s.images.map((i) => i.id) });
 
-	// Written on every change, cleared on Save (ADR-038).
+	// The autosave (ADR-038): per device, 7 days, stamped, and holding only
+	// work that differs from the server copy (iOS DeviceState / persistDraft).
+	type Autosave = { savedAt: number; baseline: number | null; form: FormState };
+	const AUTOSAVE_LIFETIME = 7 * 24 * 3600_000;
+	const AUTOSAVE_DELAY = 400;
+	function readAutosave(): Autosave | null {
+		if (typeof localStorage === 'undefined') return null;
+		try {
+			const raw = localStorage.getItem(draftKey);
+			const saved = raw ? (JSON.parse(raw) as Autosave) : null;
+			return saved && Date.now() - saved.savedAt < AUTOSAVE_LIFETIME ? saved : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Merge a server copy's photos into the open form (iOS syncFoundCover +
+	 * adoptFoundCover). A found cover the server replaced leaves the strip; a
+	 * found cover not seen before joins it and takes the cover unless the cook
+	 * chose a photo of their own meanwhile. `previous` is the server copy this
+	 * form last saw; null when restoring an autosave.
+	 */
+	function syncImages(form: FormState, server: FormState, previous: FormState | null) {
+		const live = new Map(server.images.map((i) => [i.id, i]));
+		form.images = form.images
+			.filter((i) => i.source_url === null || live.has(i.id))
+			.map((i) => live.get(i.id) ?? i); // fresh display URLs
+		if (form.cover_image_id && !form.images.some((i) => i.id === form.cover_image_id))
+			form.cover_image_id = null;
+		const cover = server.cover_image_id ? live.get(server.cover_image_id) : undefined;
+		if (!cover || cover.source_url === null) return;
+		if (previous?.images.some((i) => i.id === cover.id)) return;
+		if (!form.images.some((i) => i.id === cover.id)) form.images.push(cover);
+		const current = form.images.find((i) => i.id === form.cover_image_id);
+		const cookChose =
+			current !== undefined &&
+			(!server.images.some((i) => i.id === current.id) ||
+				(previous !== null &&
+					current.id !== previous.cover_image_id &&
+					current.source_url === null));
+		if (!cookChose) form.cover_image_id = cover.id;
+	}
+
+	// Restore an autosave silently if one exists, else open the server copy
+	// (ADR-038). A restored form is rebased onto what the server holds now:
+	// the body diff runs against `loaded`, and photos the autosave never saw
+	// (a found cover) are merged in. Props are read once here; the edit page
+	// re-keys the component when the recipe changes.
+	// svelte-ignore state_referenced_locally
+	const stored = readAutosave();
+	function restore(saved: Autosave): FormState {
+		const form = { ...fromInitial(), ...saved.form };
+		syncImages(form, fresh, null);
+		return form;
+	}
+	// svelte-ignore state_referenced_locally
+	let draft = $state<FormState>(stored ? restore(stored) : structuredClone(fresh));
+	// svelte-ignore state_referenced_locally
+	let recipeChanged = $state(stored !== null && stored.baseline !== baseline);
+
+	// Debounced. Equal to the server copy means nothing to restore, so opening
+	// and leaving an editor leaves nothing behind.
 	$effect(() => {
-		sessionStorage.setItem(draftKey, JSON.stringify(draft));
+		const snapshot = key(draft);
+		const same = snapshot === key(fresh);
+		const record: Autosave = { savedAt: Date.now(), baseline, form: $state.snapshot(draft) };
+		const t = setTimeout(() => {
+			if (same) localStorage.removeItem(draftKey);
+			else localStorage.setItem(draftKey, JSON.stringify(record));
+		}, AUTOSAVE_DELAY);
+		return () => clearTimeout(t);
+	});
+
+	// A new server copy (a found cover, an edit elsewhere) replaces an
+	// untouched form; an edited one keeps its work and merges the photos.
+	// svelte-ignore state_referenced_locally
+	let seen = { form: fresh, baseline };
+	$effect(() => {
+		const next = { form: fresh, baseline };
+		if (next.form === seen.form) return;
+		untrack(() => {
+			if (key(draft) === key(seen.form)) draft = structuredClone(next.form);
+			else {
+				if (next.baseline !== seen.baseline) recipeChanged = true;
+				syncImages(draft, next.form, seen.form);
+			}
+			seen = next;
+		});
 	});
 
 	// The escape hatch from a stale draft (ADR-038's Discard for this form).
@@ -127,8 +239,10 @@
 			confirmReset = true;
 			return;
 		}
-		sessionStorage.removeItem(draftKey);
-		draft = withDevicePref(fromInitial());
+		localStorage.removeItem(draftKey);
+		draft = structuredClone(fresh);
+		recipeChanged = false;
+		issues = [];
 		confirmReset = false;
 	}
 
@@ -147,46 +261,69 @@
 	}
 
 	/**
-	 * The save payload (SPEC 7.2, ADR-028). The submitted body is the one the
-	 * human edited, and source_units names it; the counterpart rides along only
+	 * Which body is submitted, in which units, and whether the other rides
+	 * along (SPEC 7.2, ADR-028). The submitted body is the one the human
+	 * edited, and source_units names it; the counterpart rides along only
 	 * while it is known-good (nothing changed), else it is null and the server
 	 * queues a reconvert. If both bodies were edited, the visible one wins as
 	 * "last authored". The server re-diffs, so a false positive here cannot
 	 * move is_source.
 	 */
+	function selection(): { source_units: UnitSystem; body: BodyText; counterpart: BodyText | null } {
+		const shown: BodyText = { ingredients: draft.ingredients, steps: draft.steps };
+		if (!editing) return { source_units: draft.source_units, body: shown, counterpart: null };
+		const bodyFor = (u: UnitSystem) => (u === draft.shown_units ? shown : draft.other);
+		const src = bodyFor(loaded.source_units)!;
+		const oth = bodyFor(otherUnits(loaded.source_units));
+		const srcChanged = JSON.stringify(cleanBody(src)) !== loadedSource;
+		const othChanged =
+			oth !== null && loadedOther !== null && JSON.stringify(cleanBody(oth)) !== loadedOther;
+		if (srcChanged && othChanged) return { source_units: draft.shown_units, body: shown, counterpart: null };
+		if (othChanged)
+			return { source_units: otherUnits(loaded.source_units), body: oth!, counterpart: null };
+		return { source_units: loaded.source_units, body: src, counterpart: srcChanged ? null : oth };
+	}
+
 	function payload(): string {
 		const { other, shown_units, images, ...rest } = draft;
-		const shown: BodyText = { ingredients: draft.ingredients, steps: draft.steps };
-		let source_units = draft.source_units;
-		let body = shown;
-		let counterpart: BodyText | null = null;
-		if (editing) {
-			const bodyFor = (u: UnitSystem) => (u === draft.shown_units ? shown : draft.other);
-			const src = bodyFor(loaded.source_units)!;
-			const oth = bodyFor(otherUnits(loaded.source_units));
-			const srcChanged = JSON.stringify(cleanBody(src)) !== loadedSource;
-			const othChanged =
-				oth !== null && loadedOther !== null && JSON.stringify(cleanBody(oth)) !== loadedOther;
-			if (srcChanged && othChanged) {
-				source_units = draft.shown_units;
-				body = shown;
-			} else if (othChanged) {
-				source_units = otherUnits(loaded.source_units);
-				body = oth!;
-			} else {
-				source_units = loaded.source_units;
-				body = src;
-				if (!srcChanged) counterpart = oth;
-			}
-		}
+		const sel = selection();
 		return JSON.stringify({
 			...rest,
-			source_units,
-			ingredients: body.ingredients,
-			steps: body.steps,
-			counterpart,
+			source_units: sel.source_units,
+			ingredients: sel.body.ingredients,
+			steps: sel.body.steps,
+			counterpart: sel.counterpart,
 			image_ids: images.map((i) => i.id)
 		});
+	}
+
+	// Client-side validation, all at once and inline under the section each is
+	// about. Messages match lib/server/recipes.ts validateInput, which decides.
+	type Issue = 'title' | 'yield' | 'ingredients' | 'effort' | 'damage';
+	const ISSUE_TEXT: Record<Issue, string> = {
+		title: 'Title is required.',
+		yield: 'Yield must be a positive number.',
+		ingredients: 'At least one ingredient line is required.',
+		effort: 'Effort is required.',
+		damage: 'Damage is required.'
+	};
+	const ISSUE_ANCHOR: Record<Issue, string> = {
+		title: 'sec-title',
+		yield: 'sec-yield',
+		ingredients: 'ingredients',
+		effort: 'sec-tags',
+		damage: 'sec-tags'
+	};
+	let issues = $state<Issue[]>([]);
+	function problems(): Issue[] {
+		const found: Issue[] = [];
+		if (!draft.title.trim()) found.push('title');
+		const rounded = Math.round(Number(draft.yield_count) * 10) / 10;
+		if (!Number.isFinite(rounded) || rounded <= 0) found.push('yield');
+		if (cleanIngredients(selection().body.ingredients).length === 0) found.push('ingredients');
+		if (draft.effort === null) found.push('effort');
+		if (draft.damage === null) found.push('damage');
+		return found;
 	}
 
 	function move<T>(arr: T[], i: number, delta: number) {
@@ -219,8 +356,11 @@
 		for (const file of files) {
 			try {
 				const img = await uploadPhoto(file);
+				// The household's own picture of the dish beats a stranger's: it
+				// takes the cover when there is none or the cover is a found one.
+				const coverIsFound = coverImage()?.source_url != null;
 				draft.images.push(img);
-				draft.cover_image_id ??= img.id; // first photo becomes the cover
+				if (draft.cover_image_id === null || coverIsFound) draft.cover_image_id = img.id;
 			} catch {
 				uploadError = 'Could not upload a photo. Check the connection and try again.';
 			}
@@ -230,6 +370,34 @@
 	function removeImage(id: string) {
 		draft.images = draft.images.filter((i) => i.id !== id);
 		if (draft.cover_image_id === id) draft.cover_image_id = draft.images[0]?.id ?? null;
+	}
+	const coverImage = () => draft.images.find((i) => i.id === draft.cover_image_id);
+
+	// "Find another photo" (issue #44): shown for a missing or found cover,
+	// never over a photo the household took. Each tap is a paid search, so the
+	// server refuses a second while one runs; the refusal shows inline.
+	const canFindCover = $derived.by(() => {
+		const cover = coverImage();
+		return findCover && (cover === undefined || cover.source_url !== null);
+	});
+	type CoverSearch = { status: 'idle' | 'pending' } | { status: 'failed'; text: string };
+	let coverSearch = $state<CoverSearch>({ status: 'idle' });
+	$effect(() => {
+		if (coverJobId) {
+			coverSearch = { status: 'pending' };
+			let live = true;
+			pollJob(coverJobId).then(() => {
+				if (live) invalidateAll();
+			});
+			return () => {
+				live = false;
+			};
+		}
+		if (untrack(() => coverSearch.status) === 'pending') coverSearch = { status: 'idle' };
+	});
+
+	function scrollTo(id: string) {
+		document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 
 	// Tag groups longer than CUTOFF collapse behind a "show all" toggle, but a
@@ -242,27 +410,57 @@
 	}
 </script>
 
+{#snippet problemsIn(which: Issue[])}
+	{#each issues.filter((i) => which.includes(i)) as i (i)}
+		<p class="issue" role="alert"><CircleAlert aria-hidden="true" /> {ISSUE_TEXT[i]}</p>
+	{/each}
+{/snippet}
+
+<!-- novalidate: the browser's one-at-a-time bubbles would pre-empt the inline issues. -->
 <form
 	method="POST"
 	{action}
-	use:enhance={() =>
-		async ({ result, update }) => {
-			if (result.type === 'redirect') sessionStorage.removeItem(draftKey);
+	novalidate
+	use:enhance={({ action, cancel }) => {
+		if (action.search === '?/findCover') {
+			coverSearch = { status: 'pending' };
+			return async ({ result, update }) => {
+				if (result.type === 'failure')
+					coverSearch = { status: 'failed', text: String(result.data?.error ?? 'Could not look for a photo.') };
+				else await update({ reset: false });
+			};
+		}
+		issues = problems();
+		if (issues.length > 0) {
+			cancel();
+			scrollTo(ISSUE_ANCHOR[issues[0]]);
+			return;
+		}
+		return async ({ result, update }) => {
+			if (result.type === 'redirect') localStorage.removeItem(draftKey);
 			await update();
-		}}
+		};
+	}}
 >
 	<input type="hidden" name="payload" value={payload()} />
 	{#if variationId}<input type="hidden" name="variation_id" value={variationId} />{/if}
 
-	<section>
+	{#if recipeChanged}
+		<div class="top">
+			<Banner text="This recipe changed since you started editing." />
+		</div>
+	{/if}
+
+	<section id="sec-title">
 		<label class="fld" for="title">Title</label>
-		<input id="title" type="text" bind:value={draft.title} required />
+		<input id="title" type="text" bind:value={draft.title} />
+		{@render problemsIn(['title'])}
 	</section>
 
 	<section>
 		<h2 class="sec">Photos</h2>
 		{#if draft.images.length > 0}
-			<div class="strip" role="group" aria-label="Photos; tap one to make it the cover">
+			<div class="strip" role="group" aria-label="Photos; choose one to make it the cover">
 				{#each draft.images as img (img.id)}
 					<div class="thumbwrap">
 						<button
@@ -297,9 +495,28 @@
 			bind:this={fileInput}
 			onchange={onPickFiles}
 		/>
-		<button type="button" class="addbtn" onclick={() => fileInput?.click()}>
-			<Camera aria-hidden="true" /> Add photos
-		</button>
+		<div class="actions">
+			<button type="button" class="addbtn" onclick={() => fileInput?.click()}>
+				<Camera aria-hidden="true" /> Add photos
+			</button>
+			{#if canFindCover}
+				<button
+					type="submit"
+					class="addbtn"
+					formaction="?/findCover"
+					disabled={coverSearch.status === 'pending'}
+				>
+					{#if coverSearch.status === 'pending'}
+						<LoaderCircle class="spin" aria-hidden="true" /> Finding a photo…
+					{:else}
+						<Search aria-hidden="true" /> Find another photo
+					{/if}
+				</button>
+			{/if}
+		</div>
+		{#if coverSearch.status === 'failed'}
+			<p class="hint" role="status">{coverSearch.text}</p>
+		{/if}
 		{#if uploading > 0}
 			<p class="hint" role="status">Uploading {uploading} photo{uploading > 1 ? 's' : ''}…</p>
 		{/if}
@@ -308,7 +525,7 @@
 		{/if}
 	</section>
 
-	<section>
+	<section id="sec-yield">
 		<h2 class="sec">Yield</h2>
 		<div class="row">
 			<div class="stepper">
@@ -335,6 +552,7 @@
 				bind:value={draft.yield_unit}
 			/>
 		</div>
+		{@render problemsIn(['yield'])}
 	</section>
 
 	<section>
@@ -377,7 +595,7 @@
 			{:else}
 				<Banner
 					text="Couldn't update from your edit."
-					action={onretry ? 'Tap to retry' : null}
+					action={onretry ? 'Retry' : null}
 					onaction={onretry}
 				/>
 			{/if}
@@ -448,6 +666,7 @@
 				<Plus aria-hidden="true" /> Add group
 			</button>
 		</div>
+		{@render problemsIn(['ingredients'])}
 	</section>
 
 	<section id="steps">
@@ -495,7 +714,7 @@
 		</button>
 	</section>
 
-	<section>
+	<section id="sec-tags">
 		<h2 class="sec">Tags</h2>
 
 		<p class="fld">Meal type</p>
@@ -549,6 +768,7 @@
 				<Chip label={v} selected={draft.damage === v} onclick={() => (draft.damage = v)} />
 			{/each}
 		</div>
+		{@render problemsIn(['effort', 'damage'])}
 	</section>
 
 	<section>
@@ -575,7 +795,7 @@
 		{/if}
 		<button type="submit" class="save">Save recipe</button>
 		<button type="button" class="reset" onclick={startOver}>
-			{confirmReset ? 'Really start over? Tap again to discard your edits' : 'Start over'}
+			{confirmReset ? 'Really start over? Press again to discard your edits' : 'Start over'}
 		</button>
 	</section>
 </form>
@@ -611,6 +831,37 @@
 		font-size: 0.85rem;
 		color: var(--muted);
 		margin: 0 0 0.5rem;
+	}
+	.top {
+		margin: 0.6rem 0.75rem;
+	}
+	/* Icon plus words, never colour alone. */
+	.issue {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin: 0.5rem 0 0;
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--danger);
+	}
+	.issue :global(svg) {
+		flex: none;
+		width: 1.1em;
+		height: 1.1em;
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	.addbtn :global(.spin) {
+		animation: spin 1.2s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	input[type='text'],
 	input[type='url'],
@@ -749,8 +1000,35 @@
 		color: inherit;
 		cursor: pointer;
 	}
-	.ctlbtn:disabled {
+	.ctlbtn:disabled,
+	.addbtn:disabled {
 		opacity: 0.35;
+		cursor: default;
+	}
+	@media (hover: hover) {
+		.ctlbtn:not(:disabled):hover,
+		.addbtn:not(:disabled):hover,
+		.thumb:hover {
+			border-color: var(--accent);
+		}
+	}
+	/* Laptop: the move/remove controls sit beside the line, not under it. */
+	@media (min-width: 40rem) {
+		.linewrap {
+			display: flex;
+			gap: 0.35rem;
+			align-items: flex-start;
+		}
+		.linewrap > :first-child {
+			flex: 1;
+			min-width: 0;
+		}
+		.ctl {
+			margin-top: 0;
+		}
+		.ctl .sp {
+			display: none;
+		}
 	}
 	.addbtn {
 		margin-top: 0.25rem;

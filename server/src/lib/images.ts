@@ -17,7 +17,8 @@ export async function normalise(file: File): Promise<Blob> {
 	);
 }
 
-export type FormImage = { id: string; url: string };
+/** source_url is set on a found cover (issue #44): fetched, not taken. */
+export type FormImage = { id: string; url: string; source_url: string | null };
 
 /** Normalise then upload one photo; resolves to what the form strip needs. */
 export async function uploadPhoto(file: File, role: 'photo' | 'capture' = 'photo'): Promise<FormImage> {
@@ -25,5 +26,5 @@ export async function uploadPhoto(file: File, role: 'photo' | 'capture' = 'photo
 	const res = await fetch(`/api/images?role=${role}`, { method: 'POST', body: blob });
 	if (!res.ok) throw new Error('Upload failed.');
 	const { id, url } = await res.json();
-	return { id, url };
+	return { id, url, source_url: null };
 }

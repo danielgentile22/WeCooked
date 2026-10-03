@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { BookOpen, Plus, ShoppingCart } from '@lucide/svelte';
+	import { BookOpen, Plus, ShoppingCart, Trash2 } from '@lucide/svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
@@ -21,16 +21,25 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{@render children()}
+<div class:withnav={showTabs}>
+	{@render children()}
+</div>
 
 {#if showTabs}
 	<nav aria-label="Main">
+		<span class="brand">We Cooked</span>
 		{#each tabs as tab (tab.href)}
 			<a href={tab.href} aria-current={active(tab.href) ? 'page' : undefined}>
 				<tab.icon aria-hidden="true" />
 				<span>{tab.label}</span>
 			</a>
 		{/each}
+		<!-- D1: phones keep Trash as a link under the browse list; wide screens
+		     have room for it at the foot of the sidebar. -->
+		<a class="trash" href="/trash" aria-current={active('/trash') ? 'page' : undefined}>
+			<Trash2 aria-hidden="true" />
+			<span>Trash</span>
+		</a>
 	</nav>
 {/if}
 
@@ -110,5 +119,67 @@
 	a :global(svg) {
 		width: 1.5rem;
 		height: 1.5rem;
+	}
+	.brand,
+	.trash {
+		display: none;
+	}
+
+	/* Laptop: the tab bar becomes a fixed left sidebar. Pages keep their own
+	   max-width and padding inside the offset content area. */
+	@media (min-width: 900px) {
+		.withnav {
+			padding-left: 14rem;
+		}
+		nav {
+			top: 0;
+			right: auto;
+			width: 14rem;
+			box-sizing: border-box;
+			flex-direction: column;
+			gap: 0.15rem;
+			padding: 1.25rem 0.75rem calc(1rem + env(safe-area-inset-bottom));
+			border-top: 0;
+			border-right: 1px solid var(--line);
+		}
+		.brand {
+			display: block;
+			padding: 0 0.75rem 1rem;
+			font-size: 1.15rem;
+			font-weight: 700;
+			letter-spacing: -0.01em;
+		}
+		a {
+			flex: none;
+			flex-direction: row;
+			gap: 0.7rem;
+			padding: 0.55rem 0.75rem;
+			border-radius: 0.6rem;
+			font-size: 0.95rem;
+			color: var(--ink);
+		}
+		a:hover {
+			background: color-mix(in srgb, var(--line) 50%, transparent);
+		}
+		a[aria-current='page'] {
+			background: color-mix(in srgb, var(--accent) 12%, transparent);
+		}
+		a[aria-current='page']::after {
+			top: 50%;
+			left: 0;
+			transform: translateY(-50%);
+			width: 3px;
+			height: 1.4rem;
+			border-radius: 0 3px 3px 0;
+		}
+		a :global(svg) {
+			width: 1.25rem;
+			height: 1.25rem;
+		}
+		.trash {
+			display: flex;
+			margin-top: auto;
+			color: var(--muted);
+		}
 	}
 </style>

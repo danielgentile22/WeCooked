@@ -28,6 +28,9 @@
 			draftKey="wc-draft:recipe:{data.recipe.variation_id}"
 			action="?/save"
 			error={form?.error ?? null}
+			baseline={data.recipe.content_version}
+			coverJobId={data.recipe.cover_job_id}
+			findCover
 			reconvert={data.recipe.reconvert}
 			onretry={() => retryForm?.requestSubmit()}
 			variationId={data.recipe.is_original ? null : data.recipe.variation_id}

@@ -11,10 +11,11 @@ export const actions: Actions = {
 		// SPEC 7.1: one box, text or URL. A lone link takes the URL path;
 		// anything else is recipe text.
 		const url = asUrl(text);
-		if (url) createJob(db, 'extract_url', { url });
-		else createJob(db, 'extract_paste', { text });
-		// The job card on browse is the draft (SPEC 6.5); nothing to wait for here.
-		redirect(303, '/');
+		const id = url
+			? createJob(db, 'extract_url', { url })
+			: createJob(db, 'extract_paste', { text });
+		// The draft page shows the extraction as it runs (AddTab.extractButton).
+		redirect(303, `/drafts/${id}`);
 	},
 
 	// SPEC 7.1 photo path: images are already uploaded (recipe_id NULL,
@@ -34,8 +35,7 @@ export const actions: Actions = {
 			return fail(400, { photoError: 'Add at least one photo first.' });
 		// SPEC 5.8 headroom: one recipe never spans this many pages, and a cap
 		// bounds the sharp fan-out and the request Claude sees.
-		if (image_ids.length > 8) return fail(400, { photoError: 'At most 8 pages per recipe.' });
-		createJob(db, 'extract_photos', { image_ids });
-		redirect(303, '/');
+		if (image_ids.length > 10) return fail(400, { photoError: 'At most 10 pages per recipe.' });
+		redirect(303, `/drafts/${createJob(db, 'extract_photos', { image_ids })}`);
 	}
 };

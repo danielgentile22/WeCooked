@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Camera, Keyboard, LoaderCircle, Sparkles, X } from '@lucide/svelte';
+	import { Camera, Keyboard, LoaderCircle, Sparkles, WandSparkles, X } from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
 
@@ -45,7 +45,7 @@
 	</header>
 
 	<!-- D3: paste box first. -->
-	<section>
+	<section class="paste">
 		<form
 			method="POST"
 			action="?/paste"
@@ -73,7 +73,7 @@
 		</form>
 	</section>
 
-	<section>
+	<section class="photos">
 		{#if photos.length > 0}
 			<div class="strip" role="group" aria-label="Cookbook pages, in order">
 				{#each photos as p (p.id)}
@@ -126,8 +126,9 @@
 		{/if}
 	</section>
 
-	<section>
-		<a class="manual" href="/recipes/new"><Keyboard aria-hidden="true" /> Type it in myself</a>
+	<section class="more">
+		<a class="quiet" href="/recipes/new"><Keyboard aria-hidden="true" /> Type it in myself</a>
+		<a class="quiet" href="/add/generate"><WandSparkles aria-hidden="true" /> Describe what you want</a>
 	</section>
 </main>
 
@@ -162,7 +163,7 @@
 		margin-bottom: 0.6rem;
 	}
 	.extract,
-	.manual,
+	.quiet,
 	.photo {
 		display: flex;
 		align-items: center;
@@ -179,17 +180,24 @@
 		text-decoration: none;
 		cursor: pointer;
 	}
-	.photo {
+	.photo,
+	.quiet {
 		background: none;
 		border: 1px solid var(--line);
 		color: var(--ink);
+	}
+	.quiet {
+		font-weight: 600;
+	}
+	.quiet + .quiet {
+		margin-top: 0.6rem;
 	}
 	.extract:disabled,
 	.photo:disabled {
 		opacity: 0.6;
 	}
 	.extract :global(svg),
-	.manual :global(svg),
+	.quiet :global(svg),
 	.photo :global(svg) {
 		width: 1.2em;
 		height: 1.2em;
@@ -241,5 +249,38 @@
 	}
 	.photo + form .extract {
 		margin-top: 0.6rem;
+	}
+
+	/* Laptop: the paste box spans the row and grows tall; photos and the other
+	   ways in sit side by side under it. */
+	@media (min-width: 900px) {
+		main {
+			max-width: 60rem;
+			padding: 1.5rem 2rem 3rem;
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 1rem;
+			align-content: start;
+			align-items: start;
+		}
+		header,
+		.paste {
+			grid-column: 1 / -1;
+		}
+		section {
+			margin-bottom: 0;
+		}
+		.paste textarea {
+			min-height: 16rem;
+		}
+		.more {
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			gap: 0.6rem;
+		}
+		.quiet + .quiet {
+			margin-top: 0;
+		}
 	}
 </style>

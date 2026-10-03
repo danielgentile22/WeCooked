@@ -1176,7 +1176,7 @@ tick.
 - **A. Poll the list while the Shopping tab is visible.**
 - **B. Websockets or SSE.**
 
-**Decision: A.** Poll `GET /api/shopping-list` every 5 s while visible, pause
+**Decision: A.** Poll `GET /api/v1/shopping` every 5 s while visible, pause
 on hidden, refetch immediately on `visibilitychange` back to visible. Ticks
 are per-item POSTs, applied optimistically on the ticking phone. Conflicts
 are last write wins per item; a double tick is idempotent.
@@ -1597,6 +1597,50 @@ the phone queues a capture, never at launch.
 **Revisit if** a lock screen or watch widget is wanted (a second snapshot
 consumer), or if captures start from a third device (the device identifier
 would want to become an account).
+
+---
+
+## ADR-045: The web app is the laptop client, at parity with iOS
+
+**Question.** After the iOS port the web app was marked retired and `server/`
+became "the backend plus an archive". The household cooks from a laptop on
+the counter as well as from a phone. Does the laptop get a native Mac app, a
+Catalyst build, or the web app back?
+
+**Options.**
+
+- **A. Bring the web app back as the laptop client**, at feature parity with
+  iOS minus what is platform-bound, and lay it out for a laptop.
+- **B. Mac Catalyst or "Designed for iPad"** from the existing Xcode project.
+- **C. A native macOS target** sharing WeCookedKit.
+
+**Decision: A.**
+
+**Why.** The web app already exists, runs on the same process as the API,
+and shares every server module with `/api/v1`, so parity is a matter of page
+code, not a second client stack. B gives a phone layout in a window with no
+sidebar, no hover, and no laptop type scale, and still needs App Store or
+notarised distribution for one household. C is a third client to keep in step.
+A browser tab on the kitchen laptop needs nothing installed.
+
+**Shape.** Parity is enforced by rule, not by a shared codebase: CLAUDE.md
+now says a behaviour added to one client is added to the other unless it is
+platform-bound (share extension, widget, push). This round closed the gaps
+found by audit: generation from a description with the candidate deck, found
+covers followed and replaced ("Find another photo"), the editor autosave in
+localStorage for 7 days with a rebase banner, all validation issues inline,
+strikes kept 12 idle hours and dropped on a content change, calculation
+retry and the 5 minute "still working" state, delete from the recipe page,
+share the shopping list as text, and an offline tick outbox. The legacy
+`/api/shopping-list` endpoints are gone; the page polls `/api/v1/shopping`.
+Layout decisions are in UI.md D12.
+
+**Consequence.** Every future feature lands on both clients in the same
+change or names why not. Web verification is Playwright against the dev
+server at 1440x900 and 390 wide; iOS verification is unchanged.
+
+**Revisit if** a third device joins (the parity rule would want a shared
+view model), or if the browser's wake lock proves unreliable on the counter.
 
 ---
 

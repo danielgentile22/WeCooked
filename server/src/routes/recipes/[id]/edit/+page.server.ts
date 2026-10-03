@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
 import { getRecipe, retryReconvert, updateRecipe } from '$lib/server/recipes';
+import { findRecipeCover } from '$lib/server/cover';
 import { presignGet } from '$lib/server/r2';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -9,11 +10,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	// without it, the original.
 	const recipe = getRecipe(db, params.id, url.searchParams.get('v') ?? undefined);
 	if (!recipe) error(404, 'Recipe not found');
-	// The form strip wants {id, url}, not R2 keys.
+	// The form strip wants display URLs, not R2 keys; source_url tells a found
+	// cover from a household photo.
 	return {
 		recipe: {
 			...recipe,
-			images: recipe.images.map((i) => ({ id: i.id, url: presignGet(i.r2_key_display) }))
+			images: recipe.images.map(({ r2_key_full: _full, r2_key_display, ...i }) => ({
+				...i,
+				url: presignGet(r2_key_display)
+			}))
 		}
 	};
 };
@@ -41,6 +46,18 @@ export const actions: Actions = {
 		} catch (e) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Could not retry.' });
 		}
+		return { ok: true };
+	},
+
+	// Issue #44 "Find another photo": a cover job past the found cover.
+	findCover: async ({ params }) => {
+		let jobId: string | null;
+		try {
+			jobId = findRecipeCover(db, params.id);
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Could not look for a photo.' });
+		}
+		if (!jobId) error(404, 'Recipe not found');
 		return { ok: true };
 	}
 };

@@ -980,7 +980,7 @@ List behaviour:
   consequences visible.
 - **Ticking is shared and persisted.** Both phones see the same ticks. This is
   the one piece of state that must sync, and it syncs by polling (ADR-033):
-  while the Shopping tab is visible, the client polls `GET /api/shopping-list`
+  while the Shopping tab is visible, the client polls `GET /api/v1/shopping`
   every 5 s, pauses when the page is hidden, and refetches immediately on
   `visibilitychange` back to visible. A tick is a per-item POST, applied
   optimistically on the ticking phone. Conflicts are last write wins per item;
