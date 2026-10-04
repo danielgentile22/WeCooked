@@ -1,0 +1,30 @@
+name: Behaviour
+description: A new or changed behaviour. It ships on both clients, or names why not.
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Behaviour
+      description: What the household can do afterwards, in one or two sentences.
+    validations:
+      required: true
+  - type: checkboxes
+    id: clients
+    attributes:
+      label: Clients
+      description: Definition of done. Tick iOS and Web, or tick Platform-bound and give the reason below.
+      options:
+        - label: iOS (WeCooked, WeCookedKit)
+        - label: Web (server/src/routes)
+        - label: Platform-bound, one client only
+  - type: input
+    id: platform_reason
+    attributes:
+      label: Platform-bound reason
+      description: Required when Platform-bound is ticked. Name the platform feature (share extension, widget, push, wake lock) and the docs/PARITY.md row.
+  - type: textarea
+    id: parity_rows
+    attributes:
+      label: PARITY.md rows
+      description: Rows to add or change in docs/PARITY.md in the same change.

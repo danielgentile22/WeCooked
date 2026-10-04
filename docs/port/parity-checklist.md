@@ -1,5 +1,9 @@
 # Parity checklist
 
+**Superseded** by `docs/PARITY.md` (2026-10-03), which maps each row to
+its iOS and web code. This file is kept as the record of the iOS port's
+simulator and phone passes.
+
 One row per behaviour the web app has, drawn from `web-inventory.md`. A row
 passes when it works in the native app against the real server. The Sim
 column is ticked by the agent on the simulator with seeded data. The Phone

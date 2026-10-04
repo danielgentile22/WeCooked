@@ -7,7 +7,8 @@ ADR-024 to ADR-032, and the ADRs they amend carry a dated note. A third pass
 on 2026-07-30, after the four prototypes were settled, closed the questions
 the prototypes and the first review left open; those are ADR-033 to ADR-040.
 ADR-041 and ADR-042 came with the iOS port's first two features after parity
-(2026-09-30), and ADR-043 with the third. Referenced from [SPEC.md](./SPEC.md) as
+(2026-09-30), and ADR-043 with the third. ADR-045 and ADR-046 (2026-10-03) bring
+the web app back as the laptop client and make parity a matrix in the repo. Referenced from [SPEC.md](./SPEC.md) as
 `ADR-nn`. Evidence for the technical claims is in
 [research/tech-stack.md](./research/tech-stack.md), which cites primary sources.
 
@@ -1643,6 +1644,50 @@ server at 1440x900 and 390 wide; iOS verification is unchanged.
 view model), or if the browser's wake lock proves unreliable on the counter.
 
 ---
+
+## ADR-046: Parity is a matrix in the repo, checked per change
+
+**Question.** ADR-045 made parity a rule in CLAUDE.md. A rule in prose is
+only as good as the agent's memory of it. How is "both clients, or a named
+reason" enforced without a shared codebase?
+
+**Options.**
+
+- **A. A parity matrix in the repo, plus an issue template.** `docs/PARITY.md`
+  has one row per behaviour and one cell per client, each cell a reference
+  into the code. The Behaviour issue template makes iOS, Web and
+  Platform-bound the definition of done. A `/parity-audit` skill regenerates
+  the gap table and flags stale cells.
+- **B. A shared view model** (a TypeScript model compiled for both, or the web
+  reading the same v1 views as iOS through a generated client), so one change
+  reaches both clients.
+- **C. Nothing beyond the CLAUDE.md line**, and an audit when drift is
+  noticed.
+
+**Decision: A.**
+
+**Why.** B is the right answer at three clients and the wrong one at two: the
+iOS views are SwiftUI over WeCookedKit models and the web pages are Svelte
+over loaders, and a shared model would be a third thing to keep in step. C is
+how the twenty gaps of ADR-045 accumulated. A costs one table row per feature
+and makes the gap visible in review, which is where it is cheapest to close.
+
+**Shape.** `docs/PARITY.md` is the matrix; `docs/port/parity-checklist.md` is
+marked superseded and kept for the device passes. CLAUDE.md tells agents to
+update the row in the same change. The issue template lives at
+`.github/ISSUE_TEMPLATE/behaviour.yml`; the audit prompt is the
+`parity-audit` skill under `.claude/skills/`. Shared rules that are
+duplicated in Swift and Svelte (validation messages, input limits,
+lifetimes, the share text) may move to the server case by case, with no
+visible change to either client; each move is its own small change verified
+on both.
+
+**Consequence.** A change that adds behaviour without a PARITY.md row is
+incomplete. A cell that no longer points at code is a bug the audit reports.
+
+**Revisit if** a third client appears (then B), or if the matrix is routinely
+stale, which would mean the per-change rule is not being followed and a CI
+check that greps the cited files should replace it.
 
 ## Decisions deferred to prototypes
 
