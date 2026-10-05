@@ -90,7 +90,7 @@ Claude API for extraction, scaling, and unit conversion.
 ## Docs
 
 - [PRODUCT.md](./PRODUCT.md): what and why
-- [CONTEXT.md](./CONTEXT.md): the glossary
+- [GLOSSARY.md](./GLOSSARY.md): the glossary
 - [docs/SPEC.md](./docs/SPEC.md): the build contract
 - [docs/DECISIONS.md](./docs/DECISIONS.md): the architecture decision records
 - [docs/UI.md](./docs/UI.md): UI decisions
