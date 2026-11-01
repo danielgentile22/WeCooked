@@ -551,6 +551,24 @@
 					<button
 						type="button"
 						class="ctlbtn"
+						aria-label="Move group up"
+						disabled={gi === 0}
+						onclick={() => move(draft.ingredients, gi, -1)}
+					>
+						<ArrowUp aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="ctlbtn"
+						aria-label="Move group down"
+						disabled={gi === draft.ingredients.length - 1}
+						onclick={() => move(draft.ingredients, gi, 1)}
+					>
+						<ArrowDown aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="ctlbtn"
 						aria-label="Remove group"
 						onclick={() => draft.ingredients.splice(gi, 1)}
 					>
