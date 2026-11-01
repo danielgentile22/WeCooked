@@ -126,5 +126,4 @@ platform-bound note on its row.
 | 50 | iOS shows server validation as a banner at the top of the form; only client-side checks are inline. |
 | 52 | Web has no unit test for the form's payload rule; tests cover `lib/server` and `/api/v1` only. |
 | 60 | Web shows the rebuild banner only when a tick was reset, and "once" is per tab session. |
-| 63 | iOS asks once before Done shopping. |
 | 83 | iOS does not cap the description at 1000 characters; the server does. |
