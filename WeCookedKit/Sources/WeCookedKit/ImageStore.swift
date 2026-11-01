@@ -94,7 +94,10 @@ public enum JPEG {
 
 	public enum Failure: Error, Sendable { case unreadable, encodingFailed }
 
-	public static func normalise(_ data: Data) throws -> Data {
+	public static func normalise(_ data: Data) throws -> Data { try thumbnail(data, maxEdge: maxEdge) }
+
+	/// The same normalisation with a smaller cap, for the suggestion widget's covers.
+	public static func thumbnail(_ data: Data, maxEdge: Int) throws -> Data {
 		guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw Failure.unreadable }
 		let options: [CFString: Any] = [
 			kCGImageSourceCreateThumbnailFromImageAlways: true,

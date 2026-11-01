@@ -38,8 +38,10 @@ public final class AppEnvironment {
 	@ObservationIgnored public let deviceID: String
 	/// Kept in step with the shopping list for the widget; see `feedWidget`.
 	@ObservationIgnored public let widgetSnapshot: SnapshotFile
-	/// Called after each write or removal of `widgetSnapshot`. The app sets it
-	/// to reload the widget's timelines; the package knows nothing of WidgetKit.
+	/// Kept in step with the unfiltered recipe list; see `feedSuggestion`.
+	@ObservationIgnored public let suggestionFile: SuggestionFile
+	/// Called after each write or removal of either widget's files. The app sets
+	/// it to reload the widgets' timelines; the package knows nothing of WidgetKit.
 	@ObservationIgnored public var onSnapshotWritten: @MainActor @Sendable () -> Void = {}
 
 	public init(
@@ -61,11 +63,45 @@ public final class AppEnvironment {
 		self.device = DeviceState(store: defaults)
 		self.images = ImageStore(directory: cachesDirectory.appending(path: "images"))
 		self.widgetSnapshot = SnapshotFile(appGroup: config.appGroup)
+		self.suggestionFile = SuggestionFile(appGroup: config.appGroup)
 		self.isSignedIn = tokens.read() != nil
 		Task { [weak self] in
 			for await _ in unauthorized { self?.signOut() }
 		}
 		feedWidget()
+		feedSuggestion()
+	}
+
+	/// Rewrites the suggestion widget's file whenever the unfiltered recipe
+	/// list changes, then fetches covers for the week's picks so the widget
+	/// never downloads. Same rules as `feedWidget`: nothing before the first
+	/// reply or while signed out, checked again after each await.
+	private func feedSuggestion() {
+		let inputs = changes { [weak self] () -> [BrowseRow]? in
+			guard let self, isSignedIn else { return nil }
+			return store.resource(.recipes()).value?.recipes
+		}
+		Task { [weak self] in
+			for await rows in inputs {
+				guard let self, let rows, isSignedIn else { continue }
+				let snapshot = SuggestionSnapshot(rows: rows, now: .now)
+				suggestionFile.write(snapshot)
+				onSnapshotWritten()
+				let week = snapshot.days(from: .now).compactMap(\.pick)
+				let urls = Dictionary(rows.compactMap { r in r.coverUrl.map { (r.id, $0) } }) { a, _ in a }
+				var added = false
+				for pick in week {
+					guard let name = pick.cover, !suggestionFile.hasCover(named: name),
+						let url = urls[pick.id], let data = await images.data(for: url), isSignedIn
+					else { continue }
+					suggestionFile.writeCover(data, named: name)
+					added = true
+				}
+				guard isSignedIn else { continue }
+				suggestionFile.keepCovers(Set(week.compactMap(\.cover)))
+				if added { onSnapshotWritten() }
+			}
+		}
 	}
 
 	/// Rewrites the widget's file whenever the shopping reply, the section
@@ -101,6 +137,7 @@ public final class AppEnvironment {
 		store.wipe()
 		device.wipe()
 		widgetSnapshot.remove()
+		suggestionFile.remove()
 		onSnapshotWritten()
 		isSignedIn = false
 	}
