@@ -1,5 +1,3 @@
-Build 8: the Cook button on the Tonight widget now shows its label on tinted and clear home screens.
+Build 9: a new app icon. The pot is the same, on a brighter orange tile that matches the rest of the family's apps.
 
-On a tinted or clear home screen the button was a blank pill. It is now a light pill with "Cook" in your tint colour. The default and dark home screens are unchanged.
-
-What to check: with your home screen still tinted, the Tonight widget shows "Cook" on its button, and tapping it opens the recipe.
+What to check: the home screen icon is the new orange one, in light, dark and tinted modes.
