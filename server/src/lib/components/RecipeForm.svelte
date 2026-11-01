@@ -18,16 +18,14 @@
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
 	import { pollJob } from '$lib/jobs';
+	import { loadedBodies, payload, selection, swapBodies, type FormState } from '$lib/recipeForm';
 	import {
 		MEAL_TYPES,
 		CUISINES,
 		PROTEINS,
 		EFFORTS,
 		DAMAGES,
-		cleanBody,
 		cleanIngredients,
-		otherUnits,
-		type BodyText,
 		type RecipeInput,
 		type UnitSystem
 	} from '$lib/tags';
@@ -57,17 +55,7 @@
 		variationId = null as string | null
 	} = $props();
 
-	// Effort and damage start unselected: they are required, scored choices
-	// (SPEC 3.4), and a pre-picked default would ship wrong without the
-	// required-ness ever surfacing. The server rejects a null.
-	type FormState = Omit<RecipeInput, 'effort' | 'damage' | 'image_ids' | 'counterpart'> & {
-		effort: RecipeInput['effort'] | null;
-		damage: RecipeInput['damage'] | null;
-		images: FormImage[]; // ids + presigned display URLs; ids go in the payload
-		shown_units: 'us' | 'metric'; // which body ingredients/steps display
-		other: BodyText | null; // the body not being shown (SPEC 7.2 field 6)
-	};
-
+	// Effort and damage start unselected (FormState, $lib/recipeForm).
 	const empty = (): FormState => ({
 		title: '',
 		yield_count: 4,
@@ -105,14 +93,6 @@
 		};
 	}
 
-	const swapBodies = (s: FormState, u: UnitSystem): void => {
-		const current = { ingredients: s.ingredients, steps: s.steps };
-		s.ingredients = s.other!.ingredients;
-		s.steps = s.other!.steps;
-		s.other = current;
-		s.shown_units = u;
-	};
-
 	// D15: the form opens in the device's preferred system too, when that body
 	// exists. Applied to the draft only, never to the `loaded` snapshot the
 	// edited-body diff runs against.
@@ -125,13 +105,9 @@
 		return s;
 	}
 
-	// What the server holds right now, for edited-body detection at submit:
-	// whichever body diverges from this is the one the human authored.
+	// What the server holds right now, for edited-body detection at submit.
 	const loaded = $derived(fromInitial());
-	const loadedSource = $derived(
-		JSON.stringify(cleanBody({ ingredients: loaded.ingredients, steps: loaded.steps }))
-	);
-	const loadedOther = $derived(loaded.other ? JSON.stringify(cleanBody(loaded.other)) : null);
+	const loadedBase = $derived(loadedBodies(loaded));
 	// The server copy as the form would open it: the autosave is measured
 	// against it and Start over returns to it.
 	const fresh = $derived(withDevicePref(fromInitial()));
@@ -260,43 +236,6 @@
 		swapBodies(draft, u);
 	}
 
-	/**
-	 * Which body is submitted, in which units, and whether the other rides
-	 * along (SPEC 7.2, ADR-028). The submitted body is the one the human
-	 * edited, and source_units names it; the counterpart rides along only
-	 * while it is known-good (nothing changed), else it is null and the server
-	 * queues a reconvert. If both bodies were edited, the visible one wins as
-	 * "last authored". The server re-diffs, so a false positive here cannot
-	 * move is_source.
-	 */
-	function selection(): { source_units: UnitSystem; body: BodyText; counterpart: BodyText | null } {
-		const shown: BodyText = { ingredients: draft.ingredients, steps: draft.steps };
-		if (!editing) return { source_units: draft.source_units, body: shown, counterpart: null };
-		const bodyFor = (u: UnitSystem) => (u === draft.shown_units ? shown : draft.other);
-		const src = bodyFor(loaded.source_units)!;
-		const oth = bodyFor(otherUnits(loaded.source_units));
-		const srcChanged = JSON.stringify(cleanBody(src)) !== loadedSource;
-		const othChanged =
-			oth !== null && loadedOther !== null && JSON.stringify(cleanBody(oth)) !== loadedOther;
-		if (srcChanged && othChanged) return { source_units: draft.shown_units, body: shown, counterpart: null };
-		if (othChanged)
-			return { source_units: otherUnits(loaded.source_units), body: oth!, counterpart: null };
-		return { source_units: loaded.source_units, body: src, counterpart: srcChanged ? null : oth };
-	}
-
-	function payload(): string {
-		const { other, shown_units, images, ...rest } = draft;
-		const sel = selection();
-		return JSON.stringify({
-			...rest,
-			source_units: sel.source_units,
-			ingredients: sel.body.ingredients,
-			steps: sel.body.steps,
-			counterpart: sel.counterpart,
-			image_ids: images.map((i) => i.id)
-		});
-	}
-
 	// Client-side validation, all at once and inline under the section each is
 	// about. Messages match lib/server/recipes.ts validateInput, which decides.
 	type Issue = 'title' | 'yield' | 'ingredients' | 'effort' | 'damage';
@@ -320,7 +259,7 @@
 		if (!draft.title.trim()) found.push('title');
 		const rounded = Math.round(Number(draft.yield_count) * 10) / 10;
 		if (!Number.isFinite(rounded) || rounded <= 0) found.push('yield');
-		if (cleanIngredients(selection().body.ingredients).length === 0) found.push('ingredients');
+		if (cleanIngredients(selection(draft, loadedBase, editing).body.ingredients).length === 0) found.push('ingredients');
 		if (draft.effort === null) found.push('effort');
 		if (draft.damage === null) found.push('damage');
 		return found;
@@ -442,7 +381,7 @@
 		};
 	}}
 >
-	<input type="hidden" name="payload" value={payload()} />
+	<input type="hidden" name="payload" value={JSON.stringify(payload(draft, loadedBase, editing))} />
 	{#if variationId}<input type="hidden" name="variation_id" value={variationId} />{/if}
 
 	{#if recipeChanged}
