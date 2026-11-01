@@ -14,10 +14,14 @@
 	let photos = $state<FormImage[]>([]);
 	let uploading = $state(0);
 	let uploadError = $state<string | null>(null);
+	// The browser picker cannot stop at a count, so pages past the cap are
+	// dropped at pick time with the server's copy, as iOS stops its picker.
+	const MAX_PHOTOS = 10;
 	async function onPickFiles() {
-		const files = [...(fileInput?.files ?? [])];
+		const picked = [...(fileInput?.files ?? [])];
 		if (fileInput) fileInput.value = '';
-		uploadError = null;
+		const files = picked.slice(0, Math.max(0, MAX_PHOTOS - photos.length - uploading));
+		uploadError = files.length < picked.length ? `At most ${MAX_PHOTOS} pages per recipe.` : null;
 		uploading += files.length;
 		for (const file of files) {
 			try {
@@ -97,7 +101,9 @@
 			hidden
 			onchange={onPickFiles}
 		/>
-		<button type="button" class="photo" onclick={() => fileInput?.click()} disabled={uploading > 0}>
+		<button type="button" class="photo" onclick={() => fileInput?.click()}
+			disabled={uploading > 0 || photos.length >= MAX_PHOTOS}
+		>
 			{#if uploading > 0}
 				<LoaderCircle class="spin" aria-hidden="true" /> Uploading…
 			{:else}
