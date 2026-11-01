@@ -57,6 +57,7 @@ struct SuggestionProvider: TimelineProvider {
 
 struct SuggestionWidgetView: View {
 	let entry: SuggestionEntry
+	@Environment(\.widgetRenderingMode) private var renderingMode
 
 	var body: some View {
 		content
@@ -84,14 +85,32 @@ struct SuggestionWidgetView: View {
 					.lineLimit(3)
 					.minimumScaleFactor(0.85)
 					.foregroundStyle(onPhoto ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-				Button(intent: CookRecipeIntent(recipe: pick.id)) {
-					Label("Cook", systemImage: "frying.pan")
-						.font(.subheadline.weight(.semibold))
-						.frame(maxWidth: .infinity)
-				}
+				cookButton(pick.id)
+			}
+		}
+	}
+
+	/// Tinted and clear home screens draw the widget in two layers, default and
+	/// accent, and a prominent button puts its fill and its label in the same
+	/// one, so the label vanishes. There the fill is a faint capsule in the
+	/// default layer and only the label takes the accent.
+	@ViewBuilder
+	private func cookButton(_ id: RecipeID) -> some View {
+		let label = Label("Cook", systemImage: "frying.pan")
+			.font(.subheadline.weight(.semibold))
+			.frame(maxWidth: .infinity)
+		if renderingMode == .fullColor {
+			Button(intent: CookRecipeIntent(recipe: id)) { label }
 				.buttonStyle(.borderedProminent)
 				.buttonBorderShape(.capsule)
+		} else {
+			Button(intent: CookRecipeIntent(recipe: id)) {
+				label
+					.widgetAccentable()
+					.padding(.vertical, 7)
+					.background(Capsule().fill(.white.opacity(0.18)))
 			}
+			.buttonStyle(.plain)
 		}
 	}
 

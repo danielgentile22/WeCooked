@@ -229,7 +229,8 @@ was not confirmed this session.
 build 4 is recipe generation (#41) on top of server release v19, build 5 lowers the minimum to iOS 17 for the second tester's phone,
 build 6 is cover images and "Find another photo" (#44) on top of server
 release v23, build 7 (2026-11-01) is both widgets and the push permission
-prompt (#42, ADR-047) on top of server release v26. Test notes are set per build with
+prompt (#42, ADR-047) on top of server release v26, build 8 shows the
+Cook label on tinted and clear home screens. Test notes are set per build with
 `node scripts/testflight-notes.mjs <build> Config/TestFlightNotes.txt`,
 which waits for Apple's processing and writes the en-US "What to Test".
 

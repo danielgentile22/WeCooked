@@ -1,11 +1,5 @@
-Build 7: home screen widgets and notifications.
+Build 8: the Cook button on the Tonight widget now shows its label on tinted and clear home screens.
 
-Two widgets. Long-press the home screen, tap Edit, then Add Widget, and search for We Cooked. Open the app once after updating, or the search finds nothing.
+On a tinted or clear home screen the button was a blank pill. It is now a light pill with "Cook" in your tint colour. The default and dark home screens are unchanged.
 
-Tonight (small): a recipe from your book, a new one each day. Monday to Thursday it skips big projects. Cook opens that recipe; tapping anywhere else just opens the app.
-
-Shopping list (medium or large): your unticked items. Tapping it opens the Shopping tab.
-
-Notifications: the app asks for permission once, the first time you add a recipe from the Add tab or the share sheet. The notifications themselves are not switched on yet.
-
-What to check: add both widgets and confirm they fill in after you open the app. Tap Cook on Tonight and confirm it opens the recipe. Go back to the list, return to the home screen, tap the widget's photo, and confirm the app opens on the list. Tick an item in Shopping and confirm the shopping widget drops it.
+What to check: with your home screen still tinted, the Tonight widget shows "Cook" on its button, and tapping it opens the recipe.
