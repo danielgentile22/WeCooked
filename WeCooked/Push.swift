@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 		didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
 	) -> Bool {
 		UNUserNotificationCenter.current().delegate = self
+		CookRecipeIntent.open = { [weak self] in self?.open($0) }
 		return true
 	}
 
@@ -106,8 +107,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 		log.error("remote notification registration failed: \(error)")
 	}
 
+	/// A notification tap or the suggestion widget's Cook button.
 	private func open(_ link: DeepLink) {
-		log.info("push tap opens \(String(describing: link))")
+		log.info("outside tap opens \(String(describing: link))")
 		switch wiring {
 		case .attached(_, let router): router.open(link)
 		case .waiting: wiring = .waiting(pending: link)

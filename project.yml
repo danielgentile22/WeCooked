@@ -50,6 +50,8 @@ targets:
     sources:
       - path: WeCooked
         excludes: ["*.entitlements"]
+      # The widget's Cook button runs in the app, so the app compiles it too.
+      - path: WeCookedWidget/CookRecipeIntent.swift
     dependencies:
       - package: WeCookedKit
         product: WeCookedKit

@@ -4,7 +4,10 @@ import WidgetKit
 
 @main
 struct WeCookedWidgetBundle: WidgetBundle {
-	var body: some Widget { ShoppingWidget() }
+	var body: some Widget {
+		ShoppingWidget()
+		SuggestionWidget()
+	}
 }
 
 /// The unticked shopping list, read from the snapshot the app writes into the
