@@ -2,7 +2,9 @@
 
 One row per behaviour, one cell per client, each cell a reference into the
 code that implements it. This is the definition of done for a behaviour:
-both cells point at code, or one says `platform-bound:` and names why.
+both cells point at code, or one says `platform-bound:` and names why: a
+platform feature (share extension, widget, push), or a laptop layout or usage
+choice that UI.md D12 makes for the web.
 Update the row in the same change as the feature (CLAUDE.md). `/parity-audit`
 regenerates the gap table and lists stale cells. Supersedes
 `docs/port/parity-checklist.md`, which keeps the iOS port's device passes.
@@ -25,7 +27,7 @@ in `server/src/lib/server/` are the backend, not a client, and are not cited.
 | 9 | Browse | Ready and failed drafts open the draft screen | `WeCooked/RecipesTab.swift:110 DraftRow`; `WeCooked/Shell.swift:111 Tabs.destination` | `server/src/routes/+page.svelte:151 draft row link` |
 | 10 | Browse | Empty states: "No recipes match." and "Add your first recipe" | `WeCooked/RecipesTab.swift:65 RecipesTab.emptyState` | `server/src/routes/+page.svelte:165 empty states` |
 | 11 | Browse | Trash link at the bottom | `WeCooked/RecipesTab.swift:17 RecipesTab.body` | `server/src/routes/+page.svelte:196 trashlink`; `server/src/routes/+layout.svelte:39 sidebar Trash link` |
-| 12 | Browse | A recipe seen before opens instantly, then refreshes | `WeCookedKit/Sources/WeCookedKit/Store.swift:168 Resource.init`; `WeCookedKit/Sources/WeCookedKit/Store.swift:278 Store.resource`; `WeCooked/Components.swift:281 Loaded` | missing: no client cache of seen recipes, only hover preload (server/src/app.html:23 data-sveltekit-preload-data) |
+| 12 | Browse | A recipe seen before opens instantly, then refreshes | `WeCookedKit/Sources/WeCookedKit/Store.swift:168 Resource.init`; `WeCookedKit/Sources/WeCookedKit/Store.swift:278 Store.resource`; `WeCooked/Components.swift:281 Loaded` | platform-bound: laptop. One recipe stays open for the whole cook, and hover preload covers moving between recipes (server/src/app.html:23 data-sveltekit-preload-data), so the web keeps no cache of seen recipes (issue #51) |
 | 13 | Recipe | Header: title, yield, prep and cook, cover, source line linked when a URL exists | `WeCooked/RecipeScreen.swift:122 CookingBody.header`; `WeCooked/RecipeScreen.swift:174 CookingBody.metaLine`; `WeCooked/RecipeScreen.swift:184 CookingBody.source` | `server/src/routes/recipes/[id]/+page.svelte:259 facts`; `server/src/routes/recipes/[id]/+page.svelte:273 header` |
 | 14 | Recipe | Tag chips in order: meal types, cuisine, protein, effort, damage | `WeCooked/RecipeScreen.swift:192 CookingBody.tags` | `server/src/routes/recipes/[id]/+page.svelte:256 tags`; `server/src/routes/recipes/[id]/+page.svelte:289 tag chips` |
 | 15 | Recipe | Variation chips ascending, original marked, tap switches | `WeCooked/RecipeScreen.swift:198 CookingBody.variationChips`; `WeCookedKit/Sources/WeCookedKit/RecipeModel.swift:220 RecipeModel.show` | `server/src/routes/recipes/[id]/+page.svelte:333 variation chips`; `server/src/routes/recipes/[id]/+page.svelte:54 switchTo` |
@@ -39,7 +41,7 @@ in `server/src/lib/server/` are the backend, not a client, and are not cited.
 | 23 | Recipe | Stale hand-edited: Recalculate (confirmed) and Keep mine | `WeCooked/RecipeScreen.swift:122 CookingBody.header`; `WeCookedKit/Sources/WeCookedKit/RecipeModel.swift:250 RecipeModel.recalculate`; `WeCookedKit/Sources/WeCookedKit/RecipeModel.swift:273 RecipeModel.keepMine` | `server/src/routes/recipes/[id]/+page.svelte:458 Recalculate and Keep mine` |
 | 24 | Recipe | Unit toggle with "as written" marker, remembered per device, default metric | `WeCooked/RecipeScreen.swift:364 CookingBody.toolbar`; `WeCooked/RecipeScreen.swift:384 CookingBody.unitsLabel`; `WeCookedKit/Sources/WeCookedKit/DeviceState.swift:72 DeviceState.units` | `server/src/routes/recipes/[id]/+page.svelte:135 units onMount`; `server/src/routes/recipes/[id]/+page.svelte:211 setUnits`; `server/src/routes/recipes/[id]/+page.svelte:379 unit toggle` |
 | 25 | Recipe | Reconvert pending and failed banners on the non-source units, with retry | `WeCookedKit/Sources/WeCookedKit/RecipeModel.swift:94 RecipeDisplay.make`; `WeCooked/RecipeScreen.swift:276 CookingBody.banner`; `WeCookedKit/Sources/WeCookedKit/RecipeModel.swift:297 RecipeModel.retryReconvert` | `server/src/routes/recipes/[id]/+page.svelte:484 reconvert banners`; `server/src/routes/recipes/[id]/+page.svelte:226 reconvert poll effect` |
-| 26 | Recipe | Collapsible ingredients with a heading pinned only while the list is on screen, group headings, numbered steps, notes, photo strip | `WeCooked/RecipeScreen.swift:76 CookingBody.body`; `WeCooked/RecipeScreen.swift:308 CookingBody.ingredientsBar`; `WeCooked/RecipeScreen.swift:159 CookingBody.photoStrip` | `server/src/routes/recipes/[id]/+page.svelte:519 ingredients details`; `server/src/routes/recipes/[id]/+page.svelte:544 steps notes photos`; `server/src/routes/recipes/[id]/+page.svelte:874 .ing sticky CSS` |
+| 26 | Recipe | Collapsible ingredients with a pinned heading, group headings, numbered steps, notes, photo strip | `WeCooked/RecipeScreen.swift:76 CookingBody.body`; `WeCooked/RecipeScreen.swift:308 CookingBody.ingredientsBar`; `WeCooked/RecipeScreen.swift:159 CookingBody.photoStrip` | `server/src/routes/recipes/[id]/+page.svelte:519 ingredients details`; `server/src/routes/recipes/[id]/+page.svelte:544 steps notes photos`; `server/src/routes/recipes/[id]/+page.svelte:874 .ing sticky CSS`. Laptop layout (UI.md D12): from 900px the whole ingredients column is pinned beside the steps, where iOS pins only the heading while the list is on screen |
 | 27 | Recipe | Tap to strike ingredients and steps, per device, survives unit toggle, kept 12 hours across relaunch (owner decision) | `WeCooked/RecipeScreen.swift:390 StrikableLine`; `WeCookedKit/Sources/WeCookedKit/DeviceState.swift:115 DeviceState.toggleStrike`; `WeCookedKit/Sources/WeCookedKit/DeviceState.swift:108 DeviceState.strikes` | `server/src/routes/recipes/[id]/+page.svelte:199 toggleStrike`; `server/src/routes/recipes/[id]/+page.svelte:169 readStrikes`; `server/src/routes/recipes/[id]/+page.svelte:529 strike toggle` |
 | 28 | Recipe | Screen stays awake while the recipe is visible | `WeCooked/Components.swift:238 ScreenAwakeModifier`; `WeCooked/RecipeScreen.swift:14 RecipeScreen.body` | `server/src/routes/recipes/[id]/+page.svelte:142 wake lock onMount` |
 | 29 | Recipe | Edit opens the editor for the viewed variation | `WeCooked/RecipeScreen.swift:364 CookingBody.toolbar`; `WeCooked/Shell.swift:111 Tabs.destination` | `server/src/routes/recipes/[id]/+page.svelte:297 Edit link` |
@@ -116,8 +118,6 @@ platform-bound note on its row.
 
 | Row | Difference |
 |-----|------------|
-| 12 | Web has no cache of recipes seen before. The nearest thing is hover preloading. |
 | 13 | iOS shows every photo in a strip in the header, with nothing in place of a missing cover. |
-| 26 | Web pins the whole ingredients column from 900px up and only the collapsed block below it. |
 | 46 | Web reorders ingredient lines but not groups. |
 | 50 | iOS shows server validation as a banner at the top of the form; only client-side checks are inline. |
