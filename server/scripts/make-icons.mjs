@@ -7,12 +7,14 @@ import sharp from 'sharp';
 
 const accentLight = '#b45309';
 const accentDark = '#f59e0b';
+// Home screen tile colour, shared with the icon.svg at the repo root.
+const iconFill = '#e8620f';
 const ios = '../WeCooked/Assets.xcassets';
 
 // Glyph is drawn in a 24-unit box (prototype SVG) on a 512 canvas. `scale`
 // sets how much of the canvas it fills: maskable keeps the art inside the
 // central safe zone. No `fill` leaves the background transparent.
-const tile = (scale, { stroke = '#fff', fill = accentLight } = {}) => {
+const tile = (scale, { stroke = '#fff', fill = iconFill } = {}) => {
 	const art = 24 * scale;
 	const off = (512 - art) / 2;
 	return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">${
