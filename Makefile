@@ -73,16 +73,13 @@ ios-archive: ios-generate
 	set -o pipefail; xcodebuild archive -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
 		-destination 'generic/platform=iOS' -archivePath $(ARCHIVE) $(ASC_AUTH) | tail -5
 
-# Export authenticates with the Apple ID signed into Xcode, not the API key: cloud-managed
-# distribution certificates need a key permission ours lacks (set only at key creation).
-# PATH is pinned because Apple's openrsync spawns `rsync` from PATH as its server and the
-# Homebrew rsync rejects its options ("Copy failed").
+# Export signs manually with the App Store profiles and the tvhome-signing keychain, so no
+# Apple ID in Xcode is needed and no keychain prompt stops it; see scripts/ios-export.sh.
 ios-export:
-	sed 's/$$(DEVELOPMENT_TEAM)/$(TEAM)/' Config/ExportOptions.plist > build/ExportOptions.plist
-	set -o pipefail; PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath $(ARCHIVE) \
-		-exportPath build/export -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates | tail -20
+	scripts/ios-export.sh --no-upload
 
-ios-upload: ios-archive ios-export
+ios-upload: ios-archive
+	scripts/ios-export.sh
 
 kit-test:
 	cd WeCookedKit && swift test

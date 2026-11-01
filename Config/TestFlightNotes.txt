@@ -1,9 +1,11 @@
-Build 6: recipe covers.
+Build 7: home screen widgets and notifications.
 
-Every recipe now gets a photo. A link shared from Safari uses the page's own picture; pasted text, cookbook photos and generated recipes get a photo of the dish found online. The review form shows it last in the photo strip with the cover star, so you can remove it or swap it before saving. A photo you take yourself always wins the cover.
+Two widgets. Long-press the home screen, tap Edit, then Add Widget, and search for We Cooked. Open the app once after updating, or the search finds nothing.
 
-New in the editor: "Find another photo" under the photos. It looks for a different picture of the dish and swaps it in when found. Hidden when your own photo is the cover.
+Tonight (small): a recipe from your book, a new one each day. Monday to Thursday it skips big projects. Cook opens that recipe; tapping anywhere else just opens the app.
 
-Share sheet: sharing a link, text or screenshots from another app to We Cooked queues a draft; the app opens it the next time it comes to the front.
+Shopping list (medium or large): your unticked items. Tapping it opens the Shopping tab.
 
-What to check: open a few recipes and see that the covers look like the dish; try Find another photo on one; take a photo in the editor and confirm it becomes the cover.
+Notifications: the app asks for permission once, the first time you add a recipe from the Add tab or the share sheet. The notifications themselves are not switched on yet.
+
+What to check: add both widgets and confirm they fill in after you open the app. Tap Cook on Tonight and confirm it opens the recipe. Go back to the list, return to the home screen, tap the widget's photo, and confirm the app opens on the list. Tick an item in Shopping and confirm the shopping widget drops it.

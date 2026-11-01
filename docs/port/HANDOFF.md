@@ -228,7 +228,8 @@ was not confirmed this session.
 `project.yml` before each upload; build 1 shipped on 2026-09-30, build 3 is the phone-side fetch (#43),
 build 4 is recipe generation (#41) on top of server release v19, build 5 lowers the minimum to iOS 17 for the second tester's phone,
 build 6 is cover images and "Find another photo" (#44) on top of server
-release v23. Test notes are set per build with
+release v23, build 7 (2026-11-01) is both widgets and the push permission
+prompt (#42, ADR-047) on top of server release v26. Test notes are set per build with
 `node scripts/testflight-notes.mjs <build> Config/TestFlightNotes.txt`,
 which waits for Apple's processing and writes the en-US "What to Test".
 
@@ -242,14 +243,20 @@ reason: the app sent `{url, text}` to a server that did not know `text`.
   lives in `~/.appstoreconnect/private_keys/`, owner-only). The key has
   the App Manager role. It can read and update everything but cannot
   create an app record (the API forbids it; the record was made on the
-  site) and cannot use cloud-managed distribution certificates, so the
-  export step authenticates with the Apple ID signed into Xcode instead.
-- Signing needs the login keychain unlocked in the same login session as
-  the build. Over ssh the keychain is locked, `codesign` fails with
-  `errSecInternalComponent`, and an unlock in another terminal does not
-  carry over. Run `security unlock-keychain ~/Library/Keychains/login.keychain-db`
-  in the terminal, then `make ios-upload` in that same terminal, or start
-  Claude Code from that terminal.
+  site), cannot use cloud-managed distribution certificates, and cannot
+  attach an App Group to an App ID (done once on the developer site for
+  `kitchen.wecooked.ios.widget`, 2026-11-01).
+- The export (`scripts/ios-export.sh`, behind `make ios-export` and
+  `make ios-upload`) needs no Apple ID in Xcode. It signs manually with
+  three "We Cooked App Store <bundle id> 2026-11-01" profiles, made through
+  the API and named in `Config/ExportOptions.plist`, and the distribution
+  certificate in the shared `tvhome-signing` keychain (pinned by SHA-1,
+  because an unlisted certificate with the same name sits in the login
+  keychain). `SIGNING_KEYCHAIN_PASSWORD` in `server/.env` unlocks that
+  keychain for the export and the script locks it again; the upload is
+  `altool` with the API key. A new target or capability means new
+  profiles: create them with `POST /v1/profiles` (type `IOS_APP_STORE`,
+  certificate `UYQGSC4FA2`) and update the names.
 - The export pins `PATH` to the system directories because Apple's
   openrsync spawns `rsync` from `PATH` as its server and the Homebrew
   rsync rejects its options; the symptom is `exportArchive Copy failed`.

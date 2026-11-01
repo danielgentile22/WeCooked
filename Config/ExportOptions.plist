@@ -5,14 +5,27 @@
 	<key>method</key>
 	<string>app-store-connect</string>
 	<key>destination</key>
-	<string>upload</string>
+	<string>export</string>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
+	<!-- The distribution certificate in the tvhome-signing keychain, by SHA-1: a second,
+	     unlisted certificate with the same name sits in the login keychain. -->
+	<key>signingCertificate</key>
+	<string>AA3BECD13D7CA3824D87E580A16558F25C33B59A</string>
 	<key>teamID</key>
 	<string>$(DEVELOPMENT_TEAM)</string>
 	<key>uploadSymbols</key>
 	<true/>
 	<key>manageAppVersionAndBuildNumber</key>
-	<true/>
+	<false/>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>kitchen.wecooked.ios</key>
+		<string>We Cooked App Store kitchen.wecooked.ios 2026-11-01</string>
+		<key>kitchen.wecooked.ios.share</key>
+		<string>We Cooked App Store kitchen.wecooked.ios.share 2026-11-01</string>
+		<key>kitchen.wecooked.ios.widget</key>
+		<string>We Cooked App Store kitchen.wecooked.ios.widget 2026-11-01</string>
+	</dict>
 </dict>
 </plist>
