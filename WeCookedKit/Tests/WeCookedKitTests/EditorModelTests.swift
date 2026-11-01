@@ -89,6 +89,18 @@ struct GenerateModelTests {
 		#expect(server.requests.isEmpty)
 	}
 
+	/// The server's limit is 1000 JavaScript (UTF-16) units, as is the web's
+	/// `maxlength`, so an emoji counts two and is never split.
+	@Test func theDescriptionStopsAtTheServersThousandUnits() throws {
+		let model = GenerateModel(env: try Self.env(FakeServer()))
+		model.description = String(repeating: "a", count: 1200)
+		#expect(model.description.utf16.count == 1000)
+		model.description = String(repeating: "a", count: 999) + "🍅🍅"
+		#expect(model.description == String(repeating: "a", count: 999))
+		model.description = String(repeating: "a", count: 998) + "🍅"
+		#expect(model.description.utf16.count == 1000)
+	}
+
 	@Test func theYieldStepsWithinOneToAHundred() throws {
 		let model = GenerateModel(env: try Self.env(FakeServer()))
 		#expect(model.yieldCount == 4)

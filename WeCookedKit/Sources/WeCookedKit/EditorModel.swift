@@ -110,8 +110,17 @@ public final class CaptureModel {
 @MainActor @Observable
 public final class GenerateModel {
 	public static let yieldRange = 1...100
+	/// The server's limit, counted as JavaScript counts it (UTF-16 units).
+	public static let descriptionLimit = 1000
 
-	public var description = ""
+	/// Text past the limit is dropped as it arrives, like the web's `maxlength`.
+	public var description = "" {
+		didSet {
+			guard description.utf16.count > Self.descriptionLimit else { return }
+			var units = 0
+			description = String(description.prefix { units += $0.utf16.count; return units <= Self.descriptionLimit })
+		}
+	}
 	public private(set) var yieldCount = 4
 	public private(set) var error: String?
 	public private(set) var isSubmitting = false
