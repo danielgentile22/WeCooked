@@ -17,7 +17,7 @@ in `server/src/lib/server/` are the backend, not a client, and are not cited.
 | 1 | Login | Wrong password shows "Wrong password." inline | `WeCooked/LoginScreen.swift:80 LoginScreen.copy`; `WeCooked/LoginScreen.swift:67 LoginScreen.signIn` | `server/src/routes/login/+page.server.ts:7 default action`; `server/src/routes/login/+page.svelte:24 error alert` |
 | 2 | Login | Five failures show the 15 minute rate limit message | `WeCooked/LoginScreen.swift:80 LoginScreen.copy`; `WeCookedKit/Sources/WeCookedKit/APIClient.swift:84 APIClient.send` | `server/src/routes/login/+page.server.ts:7 default action`; `server/src/routes/login/+page.svelte:24 error alert` |
 | 3 | Login | Success lands on Recipes, token survives relaunch | `WeCookedKit/Sources/WeCookedKit/AppEnvironment.swift:130 AppEnvironment.logIn`; `WeCookedKit/Sources/WeCookedKit/TokenStore.swift:21 KeychainTokenStore`; `WeCooked/Shell.swift:76 RootView` | `server/src/routes/login/+page.server.ts:12 setSessionCookie redirect` |
-| 4 | Login | A 401 from any call returns to the login screen | `WeCookedKit/Sources/WeCookedKit/APIClient.swift:84 APIClient.send`; `WeCookedKit/Sources/WeCookedKit/AppEnvironment.swift:135 AppEnvironment.signOut`; `WeCooked/Shell.swift:76 RootView` | `server/src/hooks.server.ts:40 handle` |
+| 4 | Login | A 401 from any call returns to the login screen | `WeCookedKit/Sources/WeCookedKit/APIClient.swift:84 APIClient.send`; `WeCookedKit/Sources/WeCookedKit/AppEnvironment.swift:135 AppEnvironment.signOut`; `WeCooked/Shell.swift:76 RootView` | `server/src/hooks.server.ts:40 handle`; `server/src/hooks.client.ts:4 onUnauthorized`; `server/src/lib/unauthorized.ts:5 onUnauthorized` |
 | 5 | Browse | Recipes newest first with thumbnail or pot tile, title, effort and damage chips | `WeCooked/RecipesTab.swift:17 RecipesTab.body`; `WeCooked/RecipesTab.swift:89 RecipeRow`; `WeCooked/Components.swift:147 CachedImage` | `server/src/routes/+page.svelte:174 recipe list`; `server/src/routes/+page.server.ts:5 load` |
 | 6 | Browse | Search filters as you type, prefix matching, debounced | `WeCooked/RecipesTab.swift:17 RecipesTab.body`; `WeCookedKit/Sources/WeCookedKit/Wire.swift:579 BrowseFilters.queryItems` | `server/src/routes/+page.svelte:65 onSearch`; `server/src/routes/+page.svelte:107 search input` |
 | 7 | Browse | Tag filters per group, OR within a group, AND across groups | `WeCooked/RecipesTab.swift:205 FilterSheet`; `WeCooked/RecipesTab.swift:241 TagGroup`; `WeCookedKit/Sources/WeCookedKit/Wire.swift:579 BrowseFilters.queryItems` | `server/src/routes/+page.svelte:77 toggle`; `server/src/routes/+page.svelte:116 tag filter bar` |
@@ -116,7 +116,6 @@ platform-bound note on its row.
 
 | Row | Difference |
 |-----|------------|
-| 4 | Web redirects to login only on page requests. Client-side fetches (job polls, shopping poll, tick) get a 401 and stay on the page. |
 | 12 | Web has no cache of recipes seen before. The nearest thing is hover preloading. |
 | 13 | iOS shows every photo in a strip in the header, with nothing in place of a missing cover. |
 | 26 | Web pins the whole ingredients column from 900px up and only the collapsed block below it. |
