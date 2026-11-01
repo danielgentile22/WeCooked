@@ -88,6 +88,7 @@ struct CookingBody: View {
 					}
 					steps
 					notes
+					photos
 				}
 				.padding(.horizontal)
 				.padding(.bottom, 40)
@@ -120,7 +121,7 @@ struct CookingBody: View {
 	// MARK: Header
 
 	@ViewBuilder private var header: some View {
-		if !detail.images.isEmpty { photoStrip }
+		cover
 		Text(detail.title)
 			.font(.title.bold())
 			.accessibilityAddTraits(.isHeader)
@@ -153,6 +154,25 @@ struct CookingBody: View {
 		if display.isFallback {
 			Text("The \(display.units == .us ? "US" : "metric") version is not ready yet, so this is the recipe as written.")
 				.font(.subheadline).italic().foregroundStyle(.secondary)
+		}
+	}
+
+	/// The phone's header leads with the cover, or the D17 tile when there is
+	/// none (`CachedImage` shows it for a nil URL). The laptop puts the cover
+	/// beside the title instead (UI.md D12); every photo is in `photos`.
+	private var cover: some View {
+		Color.clear
+			.frame(height: 200)
+			.overlay { CachedImage(url: detail.images.first { $0.id == detail.coverImageId }?.url) }
+			.clipShape(.rect(cornerRadius: 12))
+			.accessibilityHidden(true)
+	}
+
+	/// After the notes, as on the web: every photo, the cover included.
+	@ViewBuilder private var photos: some View {
+		if !detail.images.isEmpty {
+			Text("Photos").font(.headline).padding(.top, 8)
+			photoStrip
 		}
 	}
 
