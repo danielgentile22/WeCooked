@@ -167,16 +167,19 @@
 	}
 
 	// Rebuild banner (SPEC 7.6): naming any reset ticks, shown once per device
-	// per build. sessionStorage marks the build seen, so the banner survives a
-	// remount (build finished while this tab was elsewhere) without
-	// resurrecting old history on every later visit.
+	// per build, as on iOS. localStorage marks the build seen, so the banner
+	// survives a remount (build finished while this tab was elsewhere) but a
+	// new tab or a later visit does not raise it again. A new build ends it.
 	let rebuildBanner = $state<string | null>(null);
 	$effect(() => {
 		const b = list.build;
-		if (b?.status === 'pending') watchBuild(b.job_id);
+		if (b?.status === 'pending') {
+			rebuildBanner = null;
+			watchBuild(b.job_id);
+		}
 		if (b?.status !== 'done' || !b.result) return;
-		if (sessionStorage.getItem('shoppingBuildSeen') === b.job_id) return;
-		sessionStorage.setItem('shoppingBuildSeen', b.job_id);
+		if (localStorage.getItem('shoppingBuildSeen') === b.job_id) return;
+		localStorage.setItem('shoppingBuildSeen', b.job_id);
 		const { kept, reset } = b.result;
 		rebuildBanner = reset.length
 			? `${kept} tick${kept === 1 ? '' : 's'} kept. ${reset.length} reset because the line changed: ${reset.join(', ')}.`
