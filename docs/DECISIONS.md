@@ -1689,6 +1689,53 @@ incomplete. A cell that no longer points at code is a bug the audit reports.
 stale, which would mean the per-change rule is not being followed and a CI
 check that greps the cited files should replace it.
 
+## ADR-047: The Tonight widget picks from a file, and Cook is an intent
+
+**Question.** The owner asked for a 2x2 widget that recommends a recipe, with
+a Cook button that opens it while a tap anywhere else opens the app, not the
+recipe. What does it recommend, where does the data come from, and how does a
+small widget get two tap targets?
+
+**Options.**
+
+- **A. A rotation through the book, from a file, with Cook as an App Intent.**
+  The app writes the unfiltered recipe list and the week's covers into the
+  app group, as ADR-044 does for shopping. The widget picks one recipe per
+  day. Cook is a `Button(intent:)` whose intent opens the app and hands the
+  link to the router; the widget has no `widgetURL`.
+- **B. The server recommends** (an endpoint that weighs history or season).
+  The widget would need the token or a snapshot of the answer, and there is
+  no cooking history to weigh.
+- **C. `Link` for Cook and `widgetURL` for the rest.** A small widget ignores
+  `Link`; the whole widget is one target.
+
+**Decision: A.**
+
+**Why.** It keeps ADR-044's rule that a widget never holds the token or
+calls the server, so it works in a shop with no signal. A rotation shows
+every recipe before any repeat, which is the point of a suggestion for a
+two-person book; Monday to Thursday skip `project` recipes when the book has
+anything else. C does not work on the small family, and an interactive
+button is the only second target it has.
+
+**Shape.** `SuggestionSnapshot` and `SuggestionFile` in WeCookedKit
+(`suggestion-widget.json`, `suggestion-covers/<sha256 of the image path>.jpg`,
+600 px). The pick is a pure function of the file and the date, so the widget
+lays out a week of midnight entries without the app. `CookRecipeIntent` is
+compiled into both targets with `openAppWhenRun`, so the system runs it in
+the app, which sets `CookRecipeIntent.open` to the same `AppDelegate.open`
+a notification tap uses (and its replay on a cold launch). The app now
+reloads all widget timelines after any write.
+
+**Consequence.** `SuggestionWidgetTests` adds the widget through SpringBoard
+and proves Cook warm and cold and the plain tap; it needs the seeded dev
+server like the other UI tests, and leaves the widget on the simulator's home
+screen for the next run to reuse.
+
+**Revisit if** cooking history is recorded (then weigh it in `pick`), or the
+deployment target reaches iOS 18, where `OpenURLIntent` could replace the
+router hook.
+
 ## Decisions deferred to prototypes
 
 The owner asked that UI decisions be settled with prototypes rather than prose.

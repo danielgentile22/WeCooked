@@ -356,6 +356,13 @@ issues are the spec; the bullets below are the original wording.
   reads the Keychain, and a tap opens the Shopping tab. The snapshot's
   rendering is a pure function with package tests; the widget itself is
   proven by its previews and the owner's phone.
+- **Tonight widget.** Built on 2026-11-01 (ADR-047). A 2x2 widget in the
+  same `WeCookedWidget` target suggests one recipe a day from a file the app
+  writes (`SuggestionSnapshot`, covers for the week's picks). Cook runs
+  `CookRecipeIntent` in the app and opens the recipe; a tap anywhere else
+  just opens the app. `SuggestionWidgetTests` proves both taps on the
+  simulator, Cook from cold included. On the phone: add it, tap Cook, tap
+  the photo.
 
 ## Running the app locally
 
