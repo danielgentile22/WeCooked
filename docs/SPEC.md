@@ -80,7 +80,7 @@ arrive.
 | Object storage | Cloudflare R2 (photos) | ADR-022 |
 | Host | Fly.io, one machine, region `iad` | ADR-017 |
 | Domain | `wecooked.kitchen`, Cloudflare Registrar, Cloudflare DNS | ADR-018 |
-| LLM | Anthropic Claude Opus 5 (`claude-opus-5`), effort `medium` | ADR-016 |
+| LLM | Anthropic Claude Haiku 5.5 (`claude-haiku-5-5`), effort `medium` | ADR-016, superseded for speed (2026-11-02) |
 | Auth | One shared password, signed `HttpOnly` session cookie | ADR-008 |
 
 ### 2.2 Shape
@@ -415,7 +415,7 @@ is a property of SQLite, not of the runner.
 
 | Setting | Value | Env var |
 |---|---|---|
-| Model | `claude-opus-5` | `CLAUDE_MODEL` |
+| Model | `claude-haiku-5-5` | `CLAUDE_MODEL` |
 | Effort | `medium` | `CLAUDE_EFFORT` |
 | Output | structured outputs via `output_config.format` | |
 | SDK retries | `maxRetries: 1` (SDK default is 2) | |
@@ -1201,11 +1201,11 @@ issuance. Fly terminates TLS itself.
 | `SESSION_SECRET` | Cookie signing key; rotating it logs everyone out |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Object storage |
 | `LITESTREAM_*` | Replica credentials (may reuse the R2 pair) |
-| `CLAUDE_MODEL` | `claude-opus-5` |
+| `CLAUDE_MODEL` | `claude-haiku-5-5` |
 | `CLAUDE_EFFORT` | `medium` |
 | `DAILY_CALL_CAP` | `50` (Claude calls per day, ADR-027) |
 | `BRAVE_SEARCH_API_KEY` | Image search for found covers (ADR-043); unset turns the search off |
-| `COVER_MODEL` | Optional; the cover pick's model, default `claude-sonnet-5-5` |
+| `COVER_MODEL` | Optional; the cover pick's model, default `claude-haiku-5-5` |
 | `APNS_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID` | Apple push: the `.p8` key (PEM, or base64 of it), its key id and the team id (ADR-044); unset turns push off |
 
 All set with `fly secrets set`. Locally they live in `.env`, which is
