@@ -179,7 +179,7 @@ export async function claudePick(db: Database, title: string, thumbs: Buffer[]):
 	]);
 	const { pick } = await claudeCall<{ pick: number; reason: string }>(db, {
 		// `||`: the .env.example line COVER_MODEL= is set but empty.
-		model: env.COVER_MODEL || 'claude-haiku-5-5',
+		model: env.COVER_MODEL || 'claude-sonnet-5-5',
 		max_tokens: 200,
 		system: pickSystem(title),
 		messages: [{ role: 'user', content }],

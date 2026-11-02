@@ -53,14 +53,14 @@ export async function claudeCall<T>(
 	let msg: Anthropic.Message;
 	try {
 		msg = await client().messages.create({
-			model: opts.model || env.CLAUDE_MODEL || 'claude-haiku-5-5',
+			model: opts.model || env.CLAUDE_MODEL || 'claude-sonnet-5-5',
 			max_tokens: opts.max_tokens ?? 16_000,
 			system: opts.system,
 			messages: opts.messages,
 			output_config: {
-				// API default effort on this generation is 'high'; medium must be
+				// API default effort on this generation is 'high'; low must be
 				// explicit (SPEC 5.1).
-				effort: (env.CLAUDE_EFFORT ?? 'medium') as 'low' | 'medium' | 'high',
+				effort: (env.CLAUDE_EFFORT || 'low') as 'low' | 'medium' | 'high',
 				format: { type: 'json_schema', schema: opts.schema }
 			}
 		});
