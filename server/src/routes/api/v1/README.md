@@ -27,10 +27,11 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | DELETE | /variations/:id | | `{ok:true}` (to Trash) | 400 |
 | POST | /captures | `{text}`, `{url, html?, text?}` or `{image_ids}` | `{job_id}`; a successful extraction queues a cover job | 400 |
 | POST | /generations | `{description, yield_count}` | `{job_id}` | 400 empty or over 1000 characters, 400 yield not a whole number from 1 to 100 |
-| GET | /drafts/:id | | `DraftView`, `GenerationView` while a generation waits for a pick, or `{recipe_id}` once saved. `DraftView.initial` carries `images: {id, url, source_url}[]` and `cover_image_id` (the found cover, else null); `DraftView.cover_job_id` is the cover job still running for the draft, else null, so the phone can watch it and re-read the draft | 404 |
+| GET | /drafts/:id | | `DraftView`, `GenerationView` while a generation waits for a pick, or `{recipe_id}` once saved. `DraftView.initial` carries `images: {id, url, source_url}[]` and `cover_image_id` (the found cover, else null); `DraftView.cover_job_id` is the cover job still running for the draft, else null, so the phone can watch it and re-read the draft. `DraftView.counterpart_state` (issue #67) is `{status: 'ready'|'converting'|'failed', job_id}` once there is an extraction, else null: ready means `initial.counterpart` holds the counterpart body; converting names the conversion job to watch | 404 |
 | POST | /drafts/:id/save | `RecipeInput` | `{recipe_id}` | 400 (also before a generation's pick), 404 |
 | POST | /drafts/:id/discard | | `{ok:true}` | 400 while extracting, 404 |
 | POST | /drafts/:id/retry | | `{ok:true}` (requeues a failed draft) | 404 |
+| POST | /drafts/:id/retry-conversion | | `{ok:true}` (requeues a failed conversion, issue #67; a no-op unless failed) | 400 before the extraction is done, 404 |
 | POST | /drafts/:id/cover | | `{job_id}`: "Find another photo" for the draft, as for a recipe | 400 still choosing, not done extracting, or a cover job is already running; 404 |
 | POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |

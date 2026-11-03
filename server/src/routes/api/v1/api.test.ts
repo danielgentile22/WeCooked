@@ -18,7 +18,8 @@ import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import type { JobRow } from '$lib/server/jobs';
 import { getDevice } from '$lib/server/devices';
-import type { GenerateResult, RecipeDraft } from '$lib/extract';
+import type { RecipeDraft } from '$lib/extract';
+import type { GenerateReply } from '$lib/server/generate';
 import candidates from '../../../../fixtures/candidates.json';
 import type { RecipeInput } from '$lib/tags';
 
@@ -173,14 +174,8 @@ const draftResult = (): RecipeDraft => ({
 	source_text: 'Grandma, handwritten card',
 	body: {
 		source_units: 'metric',
-		us: {
-			ingredients: [{ heading: null, items: ['1 cup sugar', '2 lemons'] }],
-			steps: ['Bake.']
-		},
-		metric: {
-			ingredients: [{ heading: null, items: ['200 g sugar', '2 lemons'] }],
-			steps: ['Bake.']
-		}
+		ingredients: [{ heading: null, items: ['200 g sugar', '2 lemons'] }],
+		steps: ['Bake.']
 	},
 	tags: { meal_type: ['dessert'], cuisine: 'british', protein: null, effort: 'project', damage: 'tidy' },
 	damage_reasoning: 'One bowl and a tin.',
@@ -440,6 +435,21 @@ describe('/api/v1', () => {
 			`UPDATE job SET status = 'failed', error_code = 'fetch_blocked', error_text = ?, finished_at = ? WHERE id = ?`
 		).run('This site blocks automated readers.', new Date().toISOString(), urlJob);
 		finishJob(photoJob, draftResult());
+		// Issue #67: the extraction queued its conversion. A fixed id, so no
+		// later fixture's ids shift.
+		const conversion = '01TEST0000000000000000CONV';
+		db.prepare(
+			`INSERT INTO job (id, kind, status, input_json, created_at) VALUES (?, 'reconvert', 'queued', ?, ?)`
+		).run(conversion, JSON.stringify({ draft_id: photoJob, source: draftResult().body }), new Date().toISOString());
+		const converting = fixture('draft-get-converting', await ok('GET', `/drafts/${photoJob}`));
+		expect(converting.counterpart_state).toEqual({ status: 'converting', job_id: conversion });
+		expect(converting.initial.counterpart).toBeNull();
+		db.prepare(`UPDATE job SET status = 'failed', error_code = 'api_error' WHERE id = ?`).run(conversion);
+		const unconverted = fixture('draft-get-conversion-failed', await ok('GET', `/drafts/${photoJob}`));
+		expect(unconverted.counterpart_state).toEqual({ status: 'failed', job_id: conversion });
+		expect(await ok('POST', `/drafts/${photoJob}/retry-conversion`)).toEqual({ ok: true });
+		expect(job(conversion)).toMatchObject({ status: 'queued', error_code: null });
+		finishJob(conversion, { ingredients: [{ heading: null, items: ['1 cup sugar', '2 lemons'] }], steps: ['Bake.'] });
 
 		const browse = fixture('recipes-list', await ok('GET', '/recipes'));
 		expect(browse.drafts.map((d: { status: string }) => d.status)).toEqual(['ready', 'extracting', 'failed']);
@@ -449,7 +459,12 @@ describe('/api/v1', () => {
 		expect((await ok('GET', '/recipes', { query: 'q=stew' })).recipes[0].id).toBe(recipeId);
 
 		const ready = fixture('draft-get-ready', await ok('GET', `/drafts/${photoJob}`));
-		expect(ready).toMatchObject({ status: 'done', warnings: ['Step 3 was cut off in the photo.'] });
+		expect(ready).toMatchObject({
+			status: 'done',
+			warnings: ['Step 3 was cut off in the photo.'],
+			counterpart_state: { status: 'ready', job_id: null }
+		});
+		expect(ready.initial.counterpart.ingredients[0].items).toEqual(['1 cup sugar', '2 lemons']);
 		expect(ready.initial).toMatchObject({ title: 'Lemon drizzle cake', source_url: null });
 		expect(ready.initial.images).toHaveLength(1);
 		const failed = fixture('draft-get-failed', await ok('GET', `/drafts/${urlJob}`));
@@ -583,7 +598,7 @@ describe('/api/v1', () => {
 	// Last so its job ids shift no earlier fixture the Kit pins.
 	it('generations: create, generating, choosing, pick, save, discard (issue #41)', async () => {
 		const description = 'the chicken thighs and half a cabbage, under 40 minutes';
-		const result = candidates as GenerateResult;
+		const result = candidates as GenerateReply;
 		for (const d of [' ', 'x'.repeat(1001), 42])
 			await fails('POST', '/generations', 400, 'Describe what you want to cook.', {
 				body: { description: d, yield_count: 2 }

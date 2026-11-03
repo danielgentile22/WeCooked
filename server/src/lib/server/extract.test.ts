@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import Database from 'better-sqlite3';
-import { asUrl, draftToInput, hasRecipe, type RecipeDraft } from '$lib/extract';
+import { asUrl, draftToInput, hasRecipe, parseDraft, type RecipeDraft } from '$lib/extract';
 import {
 	assertPublicUrl,
+	extractPaste,
 	extractPhotos,
 	extractUrl,
+	RECIPE_DRAFT_SCHEMA,
+	EXTRACT_SYSTEM,
 	fetchPage as realFetchPage,
 	findRecipeJsonLd,
 	pageContent,
@@ -33,14 +36,8 @@ const draft = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
 	source_text: null,
 	body: {
 		source_units: 'metric',
-		us: {
-			ingredients: [{ heading: null, items: ['14 oz tinned tomatoes', '4 eggs'] }],
-			steps: ['Simmer the tomatoes.', 'Crack in the eggs.']
-		},
-		metric: {
-			ingredients: [{ heading: null, items: ['400 g tinned tomatoes', '4 eggs'] }],
-			steps: ['Simmer the tomatoes.', 'Crack in the eggs.']
-		}
+		ingredients: [{ heading: null, items: ['400 g tinned tomatoes', '4 eggs'] }],
+		steps: ['Simmer the tomatoes.', 'Crack in the eggs.']
 	},
 	tags: {
 		meal_type: ['breakfast', 'dinner'],
@@ -73,10 +70,27 @@ describe('draftToInput (SPEC 6.5: result_json seeds the review form)', () => {
 		expect(() => validateInput({ ...input, image_ids: [], cover_image_id: null })).not.toThrow();
 	});
 
-	it('picks the us body when the source is us', () => {
-		const d = draft();
-		d.body.source_units = 'us';
-		expect(draftToInput(d).ingredients![0].items[0]).toBe('14 oz tinned tomatoes');
+	it('has no counterpart for an as-written-only extraction (issue #67)', () => {
+		expect(draftToInput(draft()).counterpart).toBeNull();
+	});
+
+	it('reads a draft stored with both bodies (before issue #67) as source plus counterpart', () => {
+		const legacy = {
+			...draft(),
+			body: {
+				source_units: 'us' as const,
+				us: { ingredients: [{ heading: null, items: ['14 oz tinned tomatoes'] }], steps: ['Simmer.'] },
+				metric: { ingredients: [{ heading: null, items: ['400 g tinned tomatoes'] }], steps: ['Simmer.'] }
+			}
+		};
+		const d = parseDraft(legacy);
+		expect(d.body).toEqual({
+			source_units: 'us',
+			ingredients: [{ heading: null, items: ['14 oz tinned tomatoes'] }],
+			steps: ['Simmer.']
+		});
+		expect(draftToInput(d).counterpart).toEqual(legacy.body.metric);
+		expect(parseDraft(draft())).toEqual(draft());
 	});
 });
 
@@ -274,7 +288,7 @@ describe('stripHtml (SPEC 7.1 step 6)', () => {
 describe('hasRecipe (no_recipe_found detection)', () => {
 	it('rejects a draft whose source body has no ingredient lines', () => {
 		const d = draft();
-		d.body.metric.ingredients = [{ heading: null, items: ['  '] }];
+		d.body.ingredients = [{ heading: null, items: ['  '] }];
 		expect(hasRecipe(d)).toBe(false);
 	});
 
@@ -301,7 +315,7 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 	}
 
 	const jobRow = (image_ids: string[]) =>
-		({ kind: 'extract_photos', input_json: JSON.stringify({ image_ids }) }) as JobRow;
+		({ id: 'photo-job', kind: 'extract_photos', input_json: JSON.stringify({ image_ids }) }) as JobRow;
 
 	it('sends image blocks in input order, then the spread instruction', async () => {
 		const db = photoDb(['b', 'a']);
@@ -325,7 +339,7 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 		const db = photoDb(['a']);
 		vi.mocked(getObject).mockResolvedValue(await tinyJpeg());
 		const empty = draft();
-		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		empty.body.ingredients = [{ heading: null, items: [] }];
 		vi.mocked(claudeCall).mockResolvedValue(empty);
 		await expect(extractPhotos(jobRow(['a']), db)).rejects.toMatchObject({
 			code: 'image_unreadable'
@@ -439,9 +453,10 @@ describe('pageImages (issue #44)', () => {
 
 describe('extract_url fallback (issue #39)', () => {
 	const db = new Database(':memory:');
+	migrate(db, 'migrations');
 	const caption = 'Caption: 2 eggs, fry them.';
 	const jobRow = (input: { url: string; page?: string; text?: string }) =>
-		({ kind: 'extract_url', input_json: JSON.stringify(input) }) as JobRow;
+		({ id: 'url-job', kind: 'extract_url', input_json: JSON.stringify(input) }) as JobRow;
 	const blocked = async (): Promise<string> => {
 		throw new JobError('fetch_blocked');
 	};
@@ -471,7 +486,7 @@ describe('extract_url fallback (issue #39)', () => {
 
 	it('falls back to the text when the page yields no recipe', async () => {
 		const empty = draft();
-		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		empty.body.ingredients = [{ heading: null, items: [] }];
 		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
 		const page = async () => '<p>Log in to see this reel</p>';
 		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
@@ -488,7 +503,7 @@ describe('extract_url fallback (issue #39)', () => {
 
 	it('falls back to the text when the rendered page yields no recipe', async () => {
 		const empty = draft();
-		empty.body.metric.ingredients = [{ heading: null, items: [] }];
+		empty.body.ingredients = [{ heading: null, items: [] }];
 		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
 		const fetchSpy = vi.fn(async () => '<p>server copy</p>');
 		await extractUrl(
@@ -498,5 +513,70 @@ describe('extract_url fallback (issue #39)', () => {
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
+	});
+});
+
+describe('as-written body only (issue #67)', () => {
+	const conversions = (db: Database.Database) =>
+		db
+			.prepare(`SELECT status, variation_id, input_json FROM job WHERE kind = 'reconvert'`)
+			.all() as { status: string; variation_id: string | null; input_json: string }[];
+
+	it('asks Claude for one body in the source units, with no conversion rules', async () => {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		await extractPaste({ id: 'paste-job', kind: 'extract_paste', input_json: '{"text":"x"}' } as JobRow, db);
+		const req = vi.mocked(claudeCall).mock.calls[0][1];
+		expect(req.schema).toBe(RECIPE_DRAFT_SCHEMA);
+		const body = RECIPE_DRAFT_SCHEMA.properties.body;
+		expect(Object.keys(body.properties).sort()).toEqual(['ingredients', 'source_units', 'steps']);
+		expect(req.system).toBe(EXTRACT_SYSTEM);
+		expect(EXTRACT_SYSTEM).not.toContain('BOTH US and metric');
+		expect(EXTRACT_SYSTEM).not.toContain('Conversion rules');
+	});
+
+	it('leaves a queued conversion keyed to the draft, carrying the as-written body', async () => {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		const out = await extractPaste(
+			{ id: 'paste-job', kind: 'extract_paste', input_json: '{"text":"x"}' } as JobRow,
+			db
+		);
+		expect(out).toEqual(draft());
+		const [job, ...rest] = conversions(db);
+		expect(rest).toEqual([]);
+		expect(job).toMatchObject({ status: 'queued', variation_id: null });
+		expect(JSON.parse(job.input_json)).toEqual({ draft_id: 'paste-job', source: draft().body });
+	});
+
+	it('queues no conversion when the extraction finds no recipe', async () => {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		const empty = draft();
+		empty.body.ingredients = [];
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(empty);
+		await expect(
+			extractPaste({ id: 'paste-job', kind: 'extract_paste', input_json: '{"text":"x"}' } as JobRow, db)
+		).rejects.toMatchObject({ code: 'no_recipe_found' });
+		expect(conversions(db)).toEqual([]);
+	});
+
+	it('queues one conversion for a URL capture that fell back to the caption', async () => {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		const empty = draft();
+		empty.body.ingredients = [];
+		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+		await extractUrl(
+			{
+				id: 'url-job',
+				kind: 'extract_url',
+				input_json: JSON.stringify({ url: 'https://a.com/r', page: 'Login', text: 'Caption' })
+			} as JobRow,
+			db
+		);
+		expect(conversions(db)).toHaveLength(1);
 	});
 });

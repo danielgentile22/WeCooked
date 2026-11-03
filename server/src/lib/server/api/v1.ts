@@ -21,6 +21,7 @@ import {
 	getGenerationJob,
 	pickCandidate,
 	retryDraft,
+	retryDraftConversion,
 	saveDraft
 } from '../drafts';
 import {
@@ -312,6 +313,16 @@ export const routes: readonly Route[] = [
 		path: '/drafts/:id/retry',
 		run: (db, req) => {
 			retryDraft(db, draftJob(db, req.params.id));
+			return OK;
+		}
+	},
+	// Issue #67: D6 "tap to retry" for a draft's failed conversion.
+	{
+		method: 'POST',
+		path: '/drafts/:id/retry-conversion',
+		run: (db, req) => {
+			const job = draftJob(db, req.params.id);
+			guard(() => retryDraftConversion(db, job));
 			return OK;
 		}
 	},

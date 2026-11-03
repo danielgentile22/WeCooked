@@ -1,24 +1,15 @@
 {
+  "counterpart_state": {
+    "job_id": null,
+    "status": "failed"
+  },
   "cover_job_id": null,
   "damage_reasoning": "One bowl and a tin.",
   "error_text": null,
   "id": "01TEST00000000000000000045",
   "initial": {
     "cook_minutes": 45,
-    "counterpart": {
-      "ingredients": [
-        {
-          "heading": null,
-          "items": [
-            "1 cup sugar",
-            "2 lemons"
-          ]
-        }
-      ],
-      "steps": [
-        "Bake."
-      ]
-    },
+    "counterpart": null,
     "cover_image_id": "01TEST00000000000000000047",
     "cuisine": "british",
     "damage": "tidy",

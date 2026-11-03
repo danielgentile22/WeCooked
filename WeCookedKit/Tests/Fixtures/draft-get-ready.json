@@ -1,4 +1,8 @@
 {
+  "counterpart_state": {
+    "job_id": null,
+    "status": "ready"
+  },
   "cover_job_id": null,
   "damage_reasoning": "One bowl and a tin.",
   "error_text": null,
