@@ -26,9 +26,12 @@ export const isCaptureKind = (k: string) => (CAPTURE_KINDS as readonly string[])
 export const DRAFT_KINDS = [...CAPTURE_KINDS, 'generate'] as const;
 export const isDraftKind = (k: string) => (DRAFT_KINDS as readonly string[]).includes(k);
 
-/** Work nobody is standing over (issue #63): a capture or generation is
- *  claimed ahead of these, and their old finished rows are pruned. */
-export const BACKGROUND_KINDS = ['cover', 'reconvert'] as const satisfies readonly JobKind[];
+/** Work nobody is standing over (issue #63): covers and a variation's
+ *  reconvert. Everything else is claimed ahead of these, and their old
+ *  finished rows are pruned. A draft's conversion (conversion_draft set) is
+ *  not one: the cook is looking at the draft, and the job holds its
+ *  counterpart body. */
+const BACKGROUND_SQL = `(kind = 'cover' OR (kind = 'reconvert' AND conversion_draft IS NULL))`;
 
 export type JobRow = {
 	id: string;
@@ -175,8 +178,8 @@ export function parseWait(raw: string | null): number | null {
 	return Math.min(Math.round(s * 1000), MAX_WAIT_MS);
 }
 
-// The runner announces every status it writes; this re-read catches any
-// other writer (a retry re-queueing a job) without making it announce too.
+// The runner and requeueJob announce every status they write; this re-read
+// is the safety net for any other writer.
 const RECHECK_MS = 1000;
 
 /**
@@ -213,6 +216,23 @@ export function waitForJobPoll(
 	});
 }
 
+/** SPEC 6.4 retry: puts a failed job back in the queue, wakes the runner and
+ *  answers held status polls. `input`, when given, replaces input_json.
+ *  Returns false, changing nothing, unless the job had failed. */
+export function requeueJob(db: Database, id: string, input?: unknown): boolean {
+	const n = db
+		.prepare(
+			`UPDATE job SET status = 'queued', input_json = coalesce(?, input_json), error_code = NULL,
+			   error_text = NULL, result_json = NULL, started_at = NULL, finished_at = NULL
+			 WHERE id = ? AND status = 'failed'`
+		)
+		.run(input === undefined ? null : JSON.stringify(input), id).changes;
+	if (!n) return false;
+	created.emit(db);
+	changed.emit(db);
+	return true;
+}
+
 /** SPEC 6.2: on boot, anything left running failed with 'interrupted'. */
 export function recoverInterrupted(db: Database): number {
 	const n = db
@@ -225,8 +245,6 @@ export function recoverInterrupted(db: Database): number {
 	return n.changes;
 }
 
-const BACKGROUND_SQL = BACKGROUND_KINDS.map((k) => `'${k}'`).join(', ');
-
 // Single-statement claim: atomic, so a future second process cannot
 // double-run a job (SPEC 6.1). Background kinds go last (issue #63), so a
 // cover backfill never makes the cook wait; otherwise oldest first.
@@ -235,7 +253,7 @@ function claimNext(db: Database): JobRow | undefined {
 		db,
 		`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
 		 WHERE id = (SELECT id FROM job WHERE status = 'queued'
-		             ORDER BY kind IN (${BACKGROUND_SQL}), created_at, id LIMIT 1)
+		             ORDER BY ${BACKGROUND_SQL}, created_at, id LIMIT 1)
 		   AND status = 'queued'
 		 RETURNING *`
 	).get(now()) as JobRow | undefined;
@@ -247,15 +265,15 @@ function claimNext(db: Database): JobRow | undefined {
 export const PRUNE_AFTER_DAYS = 30;
 
 /** Deletes finished background jobs older than the retention period and
- *  returns how many. Captures and generations back drafts and are kept, and
- *  so is a cover job that found an image: it is the record that keeps the
- *  backfill from putting back a cover the cook removed. */
+ *  returns how many. Captures, generations and draft conversions back drafts
+ *  and are kept, and so is a cover job that found an image: it is the record
+ *  that keeps the backfill from putting back a cover the cook removed. */
 export function pruneJobs(db: Database, at = Date.now(), days = PRUNE_AFTER_DAYS): number {
 	const cutoff = new Date(at - days * 24 * 60 * 60 * 1000).toISOString();
 	return db
 		.prepare(
 			`DELETE FROM job
-			 WHERE kind IN (${BACKGROUND_SQL}) AND status IN ('done', 'failed') AND finished_at < ?
+			 WHERE ${BACKGROUND_SQL} AND status IN ('done', 'failed') AND finished_at < ?
 			   AND NOT (kind = 'cover' AND json_extract(result_json, '$.image_id') IS NOT NULL)`
 		)
 		.run(cutoff).changes;

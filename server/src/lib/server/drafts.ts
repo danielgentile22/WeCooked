@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { createRecipe } from './recipes';
-import { DRAFT_KINDS, isDraftKind, pendingCoverJob, type JobRow } from './jobs';
+import { DRAFT_KINDS, isDraftKind, pendingCoverJob, requeueJob, type JobRow } from './jobs';
 import { CANDIDATE_COUNT } from './generate';
 import { enqueueCover } from './cover';
 import { presignGet } from './r2';
@@ -58,7 +58,9 @@ const candidatesOf = (job: Pick<JobRow, 'result_json'>) =>
 	(JSON.parse(job.result_json!) as { candidates: StoredDraft[] }).candidates.map(parseDraft);
 
 // The draft's conversion job (issue #67): a reconvert keyed to the draft.
-const CONVERSIONS = `FROM job WHERE kind = 'reconvert' AND json_extract(input_json, '$.draft_id') = ?`;
+// conversion_draft (migration 008) is null on every other job, so it needs
+// no kind term, which would steer the planner off its index.
+const CONVERSIONS = `FROM job WHERE conversion_draft = ?`;
 
 /** The newest conversion job for a draft, if any. */
 const latestConversion = (db: Database, draftId: string) =>
@@ -102,12 +104,7 @@ export function retryDraftConversion(db: Database, job: JobRow): void {
 	db.transaction(() => {
 		const { state } = counterpartOf(db, job.id, draft);
 		if (state.status !== 'failed') return;
-		if (state.job_id)
-			db.prepare(
-				`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
-				   result_json = NULL, started_at = NULL, finished_at = NULL
-				 WHERE id = ?`
-			).run(state.job_id);
+		if (state.job_id) requeueJob(db, state.job_id);
 		else enqueueDraftConversion(db, job.id, draft.body);
 	})();
 }
@@ -388,11 +385,7 @@ export function discardDraft(db: Database, job: JobRow): void {
 /** Retry re-queues a failed job; the runner picks it up (SPEC 6.4: a failure
  *  is never a dead end). A no-op for any other status. */
 export function retryDraft(db: Database, job: JobRow): void {
-	db.prepare(
-		`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
-		   result_json = NULL, started_at = NULL, finished_at = NULL
-		 WHERE id = ? AND status = 'failed'`
-	).run(job.id);
+	requeueJob(db, job.id);
 }
 
 /**

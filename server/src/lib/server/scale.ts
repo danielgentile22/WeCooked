@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { BodyText, UnitSystem } from '$lib/tags';
 import { claudeCall } from './claude';
 import { BODY_SCHEMA, CONVERSION_RULES } from './extract';
-import { JobError, createJob, type JobHandler } from './jobs';
+import { JobError, createJob, requeueJob, type JobHandler } from './jobs';
 import { enqueueReconvert } from './recipes';
 import { ulid } from './ids';
 
@@ -273,20 +273,14 @@ export function ensureFresh(db: Database, variationId: string): string | null {
 /** D6 tap-to-retry for a failed stale refresh: requeue it. */
 export function retryScale(db: Database, variationId: string): string {
 	return db.transaction(() => {
-		const requeued = db
+		const failed = db
 			.prepare(
-				`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
-				   result_json = NULL, started_at = NULL, finished_at = NULL
-				 WHERE id = (SELECT id FROM job
-				             WHERE kind = 'scale' AND variation_id = ? AND status = 'failed'
-				             ORDER BY created_at DESC, id DESC LIMIT 1)
-				 RETURNING id`
+				`SELECT id FROM job WHERE kind = 'scale' AND variation_id = ? AND status = 'failed'
+				 ORDER BY created_at DESC, id DESC LIMIT 1`
 			)
 			.get(variationId) as { id: string } | undefined;
-		return (
-			requeued?.id ??
-			createJob(db, 'scale', { variation_id: variationId }, { variation_id: variationId })
-		);
+		if (failed && requeueJob(db, failed.id)) return failed.id;
+		return createJob(db, 'scale', { variation_id: variationId }, { variation_id: variationId });
 	})();
 }
 

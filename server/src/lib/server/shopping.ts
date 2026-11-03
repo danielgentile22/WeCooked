@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { claudeCall } from './claude';
-import { JobError, createJob, type JobHandler, type JobRow } from './jobs';
+import { JobError, createJob, requeueJob, type JobHandler, type JobRow } from './jobs';
 import { normaliseYield, scale } from './scale';
 import { ulid } from './ids';
 import type { IngredientGroup } from '$lib/tags';
@@ -140,20 +140,14 @@ export function requestBuild(
 /** D6 tap-to-retry for a failed build: requeue it (picks are unchanged). */
 export function retryBuild(db: Database, listId: string): { job_id: string } {
 	return db.transaction(() => {
-		const requeued = db
+		const failed = db
 			.prepare(
-				`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
-				   result_json = NULL, started_at = NULL, finished_at = NULL
-				 WHERE id = (SELECT id FROM job
-				             WHERE kind = 'shopping_merge' AND list_id = ? AND status = 'failed'
-				             ORDER BY created_at DESC, id DESC LIMIT 1)
-				 RETURNING id`
+				`SELECT id FROM job WHERE kind = 'shopping_merge' AND list_id = ? AND status = 'failed'
+				 ORDER BY created_at DESC, id DESC LIMIT 1`
 			)
 			.get(listId) as { id: string } | undefined;
-		return {
-			job_id:
-				requeued?.id ?? createJob(db, 'shopping_merge', { list_id: listId }, { list_id: listId })
-		};
+		if (failed && requeueJob(db, failed.id)) return { job_id: failed.id };
+		return { job_id: createJob(db, 'shopping_merge', { list_id: listId }, { list_id: listId }) };
 	})();
 }
 

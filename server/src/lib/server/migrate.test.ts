@@ -3,10 +3,12 @@ import Database from 'better-sqlite3';
 import { copyFileSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import candidates from '../../../fixtures/candidates.json';
 import { migrate } from './migrate';
-import { coverJobs, createJob, getJobPoll, pendingCoverJob, startRunner } from './jobs';
+import { coverJobs, createJob, getJobPoll, pendingCoverJob, startRunner, type JobRow } from './jobs';
 import { getShoppingState } from './shopping';
-import { listDrafts } from './drafts';
+import { discardDraft, draftView, listDrafts } from './drafts';
+import { enqueueDraftConversion } from './extract';
 import { createRecipe, getRecipe } from './recipes';
 import { ensureFresh, getCalcJob } from './scale';
 
@@ -264,6 +266,24 @@ describe('hot query plans (issue #64)', () => {
 		const { db, ran } = recording();
 		listDrafts(db);
 		expect(fullScans(db, ran)).toEqual([]);
+	});
+
+	it("finds and drops a draft's conversion job from an index (migration 008)", () => {
+		const { db, ran } = recording();
+		const body = { source_units: 'us' as const, ingredients: [{ heading: null, items: ['1 cup sugar'] }], steps: ['Bake.'] };
+		const id = createJob(db, 'extract_paste', { text: 'cake' });
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(
+			JSON.stringify({ ...candidates.candidates[0], body, counterpart: undefined }),
+			id
+		);
+		enqueueDraftConversion(db, id, body);
+		const job = db.prepare('SELECT * FROM job WHERE id = ?').get(id) as JobRow;
+		ran.length = 0;
+		draftView(db, job);
+		discardDraft(db, job);
+		expect(ran.some((r) => r.sql.includes('conversion_draft'))).toBe(true);
+		expect(fullScans(db, ran)).toEqual([]);
+		expect(plans(db, ran).filter((p) => p.detail.includes('job_kind'))).toEqual([]);
 	});
 
 	it('finds a draft or recipe cover job from an index', () => {

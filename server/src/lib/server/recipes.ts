@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
-import { createJob, pendingCoverJob } from './jobs';
+import { createJob, pendingCoverJob, requeueJob } from './jobs';
 import {
 	MEAL_TYPES,
 	CUISINES,
@@ -558,22 +558,15 @@ export function retryReconvert(db: Database, recipeId: string, variationId?: str
 		// Requeue only the latest failed job (older failures are history, and
 		// requeuing them all would bill one tap several times), and rewrite its
 		// target: is_source may have moved since the job was created.
-		const requeued = db
+		const failed = db
 			.prepare(
-				`UPDATE job SET status = 'queued', input_json = ?, error_code = NULL,
-				   error_text = NULL, result_json = NULL, started_at = NULL, finished_at = NULL
-				 WHERE id = (SELECT id FROM job
-				             WHERE variation_id = ? AND kind = 'reconvert' AND status = 'failed'
-				             ORDER BY created_at DESC, id DESC LIMIT 1)`
+				`SELECT id FROM job WHERE variation_id = ? AND kind = 'reconvert' AND status = 'failed'
+				 ORDER BY created_at DESC, id DESC LIMIT 1`
 			)
-			.run(
-				JSON.stringify({
-					variation_id: v.id,
-					target_units: otherUnits(v.unit_system)
-				}),
-				v.id
-			).changes;
-		if (!requeued) enqueueReconvert(db, v.id, otherUnits(v.unit_system));
+			.get(v.id) as { id: string } | undefined;
+		const target = otherUnits(v.unit_system);
+		if (!failed || !requeueJob(db, failed.id, { variation_id: v.id, target_units: target }))
+			enqueueReconvert(db, v.id, target);
 	})();
 }
 

@@ -6,6 +6,7 @@ import {
 	parseWait,
 	pruneJobs,
 	recoverInterrupted,
+	requeueJob,
 	startRunner,
 	waitForJobPoll,
 	JobError,
@@ -161,10 +162,12 @@ describe('job runner (SPEC 6)', () => {
 			createJob(db, 'cover', { recipe_id: 'r2' }),
 			createJob(db, 'reconvert', { variation_id: 'v1' })
 		];
+		// A draft's conversion is foreground: the cook is looking at the draft.
+		const conversion = createJob(db, 'reconvert', { draft_id: 'd1', source: {} });
 		const paste = createJob(db, 'extract_paste', { text: 'x' });
 		const gen = createJob(db, 'generate', { description: 'y' });
 		// Distinct creation times: ids made in one millisecond do not sort in order.
-		[...background, paste, gen].forEach((id, i) =>
+		[...background, conversion, paste, gen].forEach((id, i) =>
 			db.prepare('UPDATE job SET created_at = ? WHERE id = ?').run(`2026-11-01T00:00:0${i}Z`, id)
 		);
 		const order: string[] = [];
@@ -172,8 +175,9 @@ describe('job runner (SPEC 6)', () => {
 		const runner = startRunner(db, { cover: record, reconvert: record, extract_paste: record, generate: record });
 		runner.stop();
 		await runner.tick();
-		expect(order.slice(0, 2).sort()).toEqual([paste, gen].sort());
-		expect(order.slice(2)).toEqual(background);
+		expect(order.slice(0, 2).sort()).toEqual([conversion, paste].sort());
+		expect(order[2]).toBe(gen);
+		expect(order.slice(3)).toEqual(background);
 	});
 
 	it('a hanging afterJob does not hold a job slot (issue #63)', async () => {
@@ -198,8 +202,14 @@ describe('job runner (SPEC 6)', () => {
 			db
 				.prepare('UPDATE job SET status = ?, finished_at = ?, result_json = ? WHERE id = ?')
 				.run(status, new Date(at - daysAgo * DAY).toISOString(), JSON.stringify(result), id);
-		const job = (kind: Parameters<typeof createJob>[1], status: string, daysAgo: number, result?: unknown) => {
-			const id = createJob(db, kind, {});
+		const job = (
+			kind: Parameters<typeof createJob>[1],
+			status: string,
+			daysAgo: number,
+			result?: unknown,
+			input: unknown = {}
+		) => {
+			const id = createJob(db, kind, input);
 			if (status !== 'queued') finish(id, status, daysAgo, result);
 			return id;
 		};
@@ -212,6 +222,9 @@ describe('job runner (SPEC 6)', () => {
 		const kept = [
 			job('reconvert', 'done', 5), // inside the retention period
 			job('reconvert', 'queued', 0),
+			// A draft's counterpart body lives only in its conversion job.
+			job('reconvert', 'done', 40, { ingredients: [], steps: [] }, { draft_id: 'd1', source: {} }),
+			job('reconvert', 'failed', 40, null, { draft_id: 'd2', source: {} }),
 			// A found cover is the record that keeps the backfill from
 			// putting back a cover the cook removed.
 			job('cover', 'done', 40, { image_id: 'img1' }),
@@ -226,6 +239,29 @@ describe('job runner (SPEC 6)', () => {
 		expect(pruneJobs(db, at)).toBe(pruned.length);
 		const left = (db.prepare('SELECT id FROM job').all() as { id: string }[]).map((r) => r.id);
 		expect(left.sort()).toEqual(kept.sort());
+	});
+
+	it('requeueJob queues a failed job, wakes the runner and answers held polls', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		db.prepare(
+			"UPDATE job SET status = 'failed', error_code = 'api_error', error_text = 'x', result_json = 'null', finished_at = '2026' WHERE id = ?"
+		).run(id);
+		let ran!: () => void;
+		const done = new Promise<void>((r) => (ran = r));
+		// A poll interval far past the test: only the wakeup can start the job.
+		const runner = startRunner(db, { reconvert: async () => (ran(), 'again') }, 60_000);
+		const waiting = waitForJobPoll(db, id, 5000);
+		expect(requeueJob(db, id, { n: 2 })).toBe(true);
+		// Answered by the emit, not the 1 s re-read.
+		expect(await Promise.race([waiting, new Promise((r) => setTimeout(() => r('held'), 300))])).not.toBe('held');
+		await Promise.race([done, new Promise((_, no) => setTimeout(() => no(new Error('runner not woken')), 300))]);
+		runner.stop();
+		await new Promise((r) => setTimeout(r, 10));
+		const j = row(db, id);
+		expect(j).toMatchObject({ status: 'done', error_code: null, error_text: null, input_json: '{"n":2}' });
+		// Only a failed job is requeued.
+		expect(requeueJob(db, id)).toBe(false);
 	});
 
 	it('startup recovery fails running jobs with interrupted and retry copy', () => {
