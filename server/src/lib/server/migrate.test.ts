@@ -61,7 +61,7 @@ describe('migrate', () => {
 	it('applies the real schema', () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		expect(version(db)).toBe(5);
+		expect(version(db)).toBe(6);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 			.all()

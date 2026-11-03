@@ -312,6 +312,8 @@ CREATE TABLE image (
                                   -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
+  r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
+                                  -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
   height         INTEGER NOT NULL,
   role           TEXT NOT NULL CHECK (role IN ('capture','photo')),
@@ -660,7 +662,11 @@ The client polls one job for the whole thing.
 
 ### 5.8 Images sent to Claude
 
-- Long edge resized to **2576 px**, JPEG quality 85.
+- Long edge resized to **1568 px**, JPEG quality 85. Issue #71 lowered this
+  from 2576 after a benchmark: on a two-page spread with 7pt footnotes,
+  1568 read every fact 2576 did, about 2 s faster and with half the bytes.
+- Built when a capture photo is uploaded and stored as `r2_key_claude`, so the
+  photo job only downloads it (issue #71). A recipe photo gets none.
 - Never send the raw camera file: iPhone photos are 12 to 24 MP and over 10 MB,
   the API caps at 10 MB, and the server downscales anyway, so full resolution
   buys nothing and costs latency and tokens.
@@ -1081,7 +1087,8 @@ The camera file never reaches the server intact, on purpose:
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
-   1200 px long edge, and a 2576 px quality-85 JPEG for Claude.
+   1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
+   (`r2_key_claude`, section 5.8).
 
 **Deliberate deviation, stated plainly:** "store the original" means the
 normalised 3000 px JPEG, not the untouched camera file. The true original is not
