@@ -784,6 +784,21 @@ systems on their own phones without a shared setting to fight over.
 authored", and reconvert failures surface as a banner on the derived body
 (ADR-028).
 
+**Amended 2026-11-03 (issue #67).** The guarantee was "both bodies come
+back in the same call as the extraction". It is now: **both bodies exist on
+every saved recipe and variation, and the counterpart is queued the moment its
+source body exists.** Extraction (paste, URL, photos) asks Claude for the
+as-written body only, and a conversion job keyed to the draft is queued as the
+extraction finishes. Writing every body twice was most of a capture's wait, so
+the draft now opens on the as-written body and the counterpart fills in a few
+seconds later, shown as "converting" until then and with the reconvert banner
+and retry if it fails. Saving does not wait for it: a ready counterpart is
+stored, and a converting or failed one is dropped in favour of a reconvert on
+the saved variation, so the invariant holds on every saved recipe. "Eager, not
+on demand" stands, because the conversion still starts without anyone asking.
+Generation and scaling still write both bodies in one call until their own
+tickets move them over.
+
 **The hand-edit problem, and the fork it created.** Editing one body makes its
 counterpart wrong.
 

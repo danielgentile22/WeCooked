@@ -440,17 +440,19 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 
 | Kind | Input | Output | Approx cost |
 |---|---|---|---|
-| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft` | $0.05 to $0.09 |
+| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft`, as-written body only (issue #67) | $0.05 to $0.09 |
 | `scale` | source body + target yield | `BodyPair` + scaling note | ~$0.06 |
-| `reconvert` | one edited body | the counterpart body | ~$0.05 |
+| `reconvert` | one edited body, or a draft's as-written body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
 | `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
 | cover pick | a recipe title + up to four 512 px photos | the index of the dish photo, or -1 (ADR-043) | under $0.01 |
 
 ### 5.3 Shared output shapes
 
-`BodyPair` is the unit that both `extract` and `scale` produce. Every recipe
-body exists in both unit systems at all times (ADR-019).
+`BodyPair` is the unit that `scale` and `generate` produce. Every saved
+recipe body exists in both unit systems (ADR-019, amended by issue #67:
+`extract` writes the as-written body only, and the draft's conversion job
+writes the counterpart).
 
 ```jsonc
 // BodyPair
@@ -505,7 +507,14 @@ Output schema:
   "prep_minutes": 15,          // nullable
   "cook_minutes": 40,          // nullable
   "source_text": "string|null",
-  "body": { /* BodyPair */ },
+  // The as-written body (issue #67). Drafts stored before #67 and generation
+  // candidates hold a BodyPair here; the server reads those as this plus the
+  // counterpart.
+  "body": {
+    "source_units": "us",
+    "ingredients": [{ "heading": "string|null", "items": ["string"] }],
+    "steps": ["string"]
+  },
   "tags": {
     "meal_type": ["dinner"],
     "cuisine": "italian",      // nullable
@@ -532,8 +541,10 @@ Rules:
   modernise the recipe. Do not add ingredients that are not stated.
 - Preserve ingredient section headings ("For the sauce") as groups. If the
   recipe has no sections, return one group with a null heading.
+- Write the body once, in the units the source uses, and name them in
+  source_units. Convert nothing. When the source gives both, as in
+  "225°F (110°C)" or "1 lb (450 g)", keep only the source_units one.
 - Ingredients stay as human-readable strings, exactly as a cook would read them.
-- Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
   Leave cuisine or protein null if unsure. effort and damage are required.
 - Score damage with the rubric below and show your arithmetic in
@@ -544,7 +555,6 @@ Rules:
 
 [tag vocabulary]
 [damage rubric]
-[conversion rules]
 ```
 
 User content per path:
@@ -600,6 +610,11 @@ change and times are a starting point only.
 Triggered when a human edits a body (ADR-019). Input is the edited body and its
 unit system; output is the counterpart body only. This preserves the invariant
 that the two unit systems always agree.
+
+A finished extraction also queues one, keyed to the draft instead of a
+variation (issue #67): `input_json` is `{ draft_id, source }` with the
+as-written body, and the converted body is the job's `result_json`. The
+draft reads its counterpart from there (6.5).
 
 ```jsonc
 { "ingredients": [...], "steps": [...] }
@@ -754,6 +769,17 @@ holds the description and yield count as input and three candidate
 which then reads as a ready draft seeded from that candidate; the review
 form and Save are the ones above. The saved recipe records the description
 as its `source_text` and has no `source_url`.
+
+A capture's draft opens on its **as-written body** alone (issue #67). The
+counterpart comes from the draft's conversion job (5.6), and the draft read
+reports `counterpart_state`: `ready` (the body rides in the seed as the
+known-good counterpart), `converting` (the clients watch the job and re-read
+the draft when it ends), or `failed` (the reconvert banner with retry,
+`POST /drafts/:id/retry-conversion`). Save never waits for it: a ready
+counterpart is stored even if the form loaded before it was ready, provided
+the as-written body is unedited; otherwise the recipe is saved with its
+source body and the new variation gets a reconvert, as any save without a
+counterpart does. Save and Discard delete the draft's conversion jobs.
 
 A **cover** job (issue #44, ADR-043) is not a draft kind. It follows a
 successful capture or a pick, finds a cover photo, and writes its image id to

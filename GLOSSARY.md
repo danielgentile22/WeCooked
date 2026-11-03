@@ -16,6 +16,10 @@ is the **original**, permanently labelled so, and it cannot be deleted.
 or metric). Every variation has both. The body a human last authored is
 marked **as written**; the other is machine-converted.
 
+**Counterpart.** The body that is not as written. On a draft it may still be
+**converting**, written by the draft's conversion job after the extraction
+finishes (issue #67), or have **failed**, which offers a retry.
+
 **Capture.** Getting a recipe into the book, by URL, pasted text, photos, or
 typing. All capture paths terminate in the review form.
 
