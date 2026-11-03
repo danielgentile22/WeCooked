@@ -47,6 +47,7 @@ struct FixtureDecodingTests {
 		"shopping-build": JobReply.self,
 		"shopping-get-empty": ShoppingResponse.self,
 		"shopping-get": ShoppingResponse.self,
+		"shopping-get-list": ShoppingListReply.self,
 		"tags": Vocabulary.self,
 		"trash-get": TrashResponse.self,
 		"trash-restore-recipe": RestoreReply.self,

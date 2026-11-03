@@ -10,6 +10,11 @@ struct ShoppingModelTests {
 	static let chickpeas: ShoppingItemID = "01TEST00000000000000000029"
 	static let patch = "PATCH \(base)/items/\(chickpeas)"
 	static let ok = FakeServer.json(#"{"ok":true}"#)
+	/// Unticked on the server in `shopping-get`, like `chickpeas`.
+	static let other: ShoppingItemID = "01TEST00000000000000000030"
+	static let patchOther = "PATCH \(base)/items/\(other)"
+	static let listOnly = "GET \(base)?only=list"
+	static let tag = #""v1""#
 
 	static func env(_ server: FakeServer, defaults: any KeyValueStore = DeviceStateTests.Memory()) -> AppEnvironment {
 		let config = URLSessionConfiguration.ephemeral
@@ -89,16 +94,83 @@ struct ShoppingModelTests {
 	}
 
 	@Test func aSecondTapDuringASendIsSentAfterIt() async throws {
-		let server = FakeServer([Self.patch: Self.ok])
+		let server = FakeServer([Self.patch: Self.ok], held: [Self.patch])
 		let env = Self.env(server)
 		let model = try Self.model(env)
 		model.setTicked(Self.chickpeas, true)
-		await Self.until { model.flushing != nil }
+		await Self.until { server.requests.count == 1 }
 		model.setTicked(Self.chickpeas, false)
+		await Self.until { model.sending.isEmpty == false }
+		#expect(server.requests == [Self.patch], "the second tap waits for the line's first send")
+		server.release()
 		await model.flush()
 		#expect(server.requests == [Self.patch, Self.patch])
 		#expect(env.device.pendingTicks.isEmpty)
 		#expect(mirrored(model) == false, "the later target wins")
+	}
+
+	@Test func ticksOnSeveralLinesAreSentTogether() async throws {
+		let server = FakeServer([Self.patch: Self.ok, Self.patchOther: Self.ok], held: [Self.patch, Self.patchOther])
+		let env = Self.env(server)
+		let model = try Self.model(env)
+		model.setTicked(Self.chickpeas, true)
+		model.setTicked(Self.other, true)
+		await Self.until { server.requests.count == 2 }
+		#expect(Set(server.requests) == [Self.patch, Self.patchOther], "the second line did not wait for the first")
+		server.release()
+		await model.flush()
+		#expect(env.device.pendingTicks.isEmpty)
+		#expect(model.progress.ticked == 3)
+	}
+
+	@Test func aLineThatFailsLeavesTheOthersSent() async throws {
+		let server = FakeServer([Self.patch: (500, try Fixtures.data("error")), Self.patchOther: Self.ok])
+		let env = Self.env(server)
+		let model = try Self.model(env)
+		env.device.queueTick(Self.chickpeas, true)
+		env.device.queueTick(Self.other, true)
+		await model.flush()
+		#expect(Set(server.requests) == [Self.patch, Self.patchOther])
+		#expect(env.device.pendingTicks == [Self.chickpeas: true], "only the failed line waits for the next poll")
+		#expect(model.banner == nil)
+	}
+
+	@Test func thePollAsksForTheListOnlyAndOnlyIfItChanged() async throws {
+		let server = FakeServer([Self.listOnly: FakeServer.fixture("shopping-get-list")], etags: [Self.listOnly: Self.tag])
+		let env = Self.env(server)
+		let empty = try Self.reply("shopping-get-empty")
+		let model = try Self.model(env, empty)
+		let polled = try Self.reply().list
+
+		await model.resource.poll()
+		#expect(model.resource.value?.list == polled)
+		#expect(model.resource.value?.recipes == empty.recipes, "the poll keeps the recipes it did not ask for")
+		await model.resource.poll()
+		#expect(model.resource.value?.list == polled)
+		#expect(model.resource.phase == .idle)
+
+		// A local edit means the held value is no longer what the tag names.
+		model.resource.mutate { $0.list.items[0].ticked.toggle() }
+		await model.resource.poll()
+		#expect(model.resource.value?.list == polled, "the unconditional reply puts the server's value back")
+
+		#expect(server.requests == [Self.listOnly, Self.listOnly, Self.listOnly])
+		#expect(server.headers.map { $0["If-None-Match"] } == [nil, Self.tag, nil])
+	}
+
+	@Test func watchingFetchesEverythingFirstThenPollsTheList() async throws {
+		let server = FakeServer([
+			"GET \(Self.base)": FakeServer.fixture("shopping-get"),
+			Self.listOnly: FakeServer.fixture("shopping-get-list"),
+		], etags: [Self.listOnly: Self.tag])
+		let env = Self.env(server)
+		let resource = env.store.resource(.shopping)
+		let watching = Task { await resource.watch(every: .milliseconds(10)) }
+		await Self.until { server.requests.count >= 3 }
+		watching.cancel()
+		#expect(Array(server.requests.prefix(3)) == ["GET \(Self.base)", Self.listOnly, Self.listOnly])
+		#expect(server.headers.prefix(3).map { $0["If-None-Match"] } == [nil, nil, Self.tag])
+		#expect(resource.value?.recipes.count == 3)
 	}
 
 	@Test func aPollThatStartedBeforeATickDoesNotFlipItBack() async throws {

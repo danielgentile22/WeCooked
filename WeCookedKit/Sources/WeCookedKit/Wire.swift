@@ -795,6 +795,11 @@ public struct ShoppingResponse: Codable, Hashable, Sendable {
 	public var recipes: [PickableRecipe]
 }
 
+/// Body of `GET /shopping?only=list`, the 5 s poll (issue #75).
+public struct ShoppingListReply: Codable, Hashable, Sendable {
+	public var list: ShoppingState
+}
+
 /// Body of `POST /shopping/build`.
 public struct BuildPick: Codable, Hashable, Sendable {
 	public let recipeId: RecipeID
