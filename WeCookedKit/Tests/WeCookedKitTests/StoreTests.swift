@@ -279,6 +279,35 @@ struct StoreWatcherTests {
 		let job = try #require(busy.calcJob?.jobId)
 		#expect(relaunched.activeJobs == [job])
 	}
+
+	/// Two screens that list one job (a list and its recipe, say) refetch side
+	/// by side when it ends, so the result lands on both in one step. Each load
+	/// holds until it sees the other start; one after the other, the first
+	/// would give up waiting and report it ran alone.
+	@Test func theOwnersOfAFinishedJobRefetchConcurrently() async throws {
+		let gate = Gate()
+		let store = Store(api: StoreTests.api(), cache: StoreTests.tempCache(), poller: Self.poller(gate))
+		let busy = try Self.busy()
+		let job = try #require(busy.calcJob?.jobId)
+		let finished: RecipeResponse = { var f = busy; f.calcJob = nil; return f }()
+		let started = CallCounter()
+		let alone = CallCounter()
+		let load: @Sendable (APIClient) async throws -> RecipeResponse = { _ in
+			_ = started.next()
+			for _ in 0..<100 where started.count < 2 { try? await Task.sleep(for: .milliseconds(5)) }
+			if started.count < 2 { _ = alone.next() }
+			return finished
+		}
+		let a = store.resource(Key<RecipeResponse>(name: "a", family: .recipe(busy.recipe.id), load: load))
+		let b = store.resource(Key<RecipeResponse>(name: "b", family: .recipe(busy.recipe.id), load: load))
+		a.replace(busy)
+		b.replace(busy)
+		#expect(store.owners(of: job).count == 2)
+		gate.open.withLock { $0 = true }
+		await Self.settle { a.value?.calcJob == nil && b.value?.calcJob == nil }
+		#expect(started.count == 2)
+		#expect(alone.count == 0, "both refetches were in flight at once")
+	}
 }
 
 final class CallCounter: Sendable {

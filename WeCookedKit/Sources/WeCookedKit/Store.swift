@@ -432,9 +432,10 @@ public final class Store {
 		guard jobWaits[id] != nil else { return }
 		jobWaits[id] = nil
 		if outcome == .timedOut { timedOutJobs.insert(id) } else { endedJobs.insert(id) }
-		let owners = owners(of: id)
-		Task {
-			for r in owners { await r.revalidate() }
+		// Side by side: a list and the recipe it opened both list a scale, and
+		// the result should land on both in one step, not one after the other.
+		for r in owners(of: id) {
+			Task { await r.revalidate() }
 		}
 	}
 
