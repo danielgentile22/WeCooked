@@ -16,6 +16,7 @@ import { claudeCall } from '$lib/server/claude';
 import { scale } from '$lib/server/scale';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
+import { getObject } from '$lib/server/r2';
 import type { JobRow } from '$lib/server/jobs';
 import { getDevice } from '$lib/server/devices';
 import type { GenerateResult, RecipeDraft } from '$lib/extract';
@@ -258,6 +259,25 @@ describe('/api/v1', () => {
 		photoId = img.id;
 	});
 
+	it('POST /images/thumbnails/backfill', async () => {
+		db.prepare(
+			`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+			 VALUES ('legacy', NULL, 'images/legacy/full.jpg', 'images/legacy/display.jpg', 40, 30, 'photo', '2026')`
+		).run();
+		vi.mocked(getObject).mockResolvedValueOnce(await jpeg());
+		await fails('POST', '/images/thumbnails/backfill', 400, 'limit must be 1 to 200.', { query: 'limit=0' });
+		expect(await ok('POST', '/images/thumbnails/backfill')).toEqual({ made: 1, failed: 0, next: null });
+		expect(db.prepare(`SELECT r2_key_thumb FROM image WHERE id = 'legacy'`).get()).toEqual({
+			r2_key_thumb: 'images/legacy/thumb.webp'
+		});
+		expect(await ok('POST', '/images/thumbnails/backfill', { query: 'after=legacy' })).toEqual({
+			made: 0,
+			failed: 0,
+			next: null
+		});
+		db.prepare(`DELETE FROM image WHERE id = 'legacy'`).run();
+	});
+
 	it('POST /recipes', async () => {
 		await fails('POST', '/recipes', 400, 'Title is required.', { body: input({ title: ' ' }) });
 		await fails('POST', '/recipes', 400, 'Malformed JSON.', { body: [1] });
@@ -278,6 +298,9 @@ describe('/api/v1', () => {
 		expect(view.recipe).toMatchObject({ title: 'Chickpea stew', is_original: true, reconvert: null });
 		expect(view.recipe.images[0]).toMatchObject({ id: photoId, width: 40, height: 30 });
 		expect(view.recipe.images[0].r2_key_full).toBeUndefined();
+		// Issue #73: the photo strip reads the thumbnail, the cover the display copy.
+		expect(view.recipe.images[0].url).toMatch(/display\.jpg/);
+		expect(view.recipe.images[0].thumb_url).toMatch(/thumb\.webp/);
 		expect(view).toMatchObject({ refresh: null, calcJob: null });
 		variationId = view.recipe.variation_id;
 		await fails('GET', '/recipes/missing', 404, 'Recipe not found');
@@ -445,6 +468,8 @@ describe('/api/v1', () => {
 		expect(browse.drafts.map((d: { status: string }) => d.status)).toEqual(['ready', 'extracting', 'failed']);
 		expect(browse.recipes.map((r: { title: string }) => r.title)).toEqual(['Quick omelette', 'Chickpea stew']);
 		expect(browse.recipes[1].cover_url).toMatch(/display\.jpg/);
+		expect(browse.recipes[1].cover_thumb_url).toMatch(/thumb\.webp/);
+		expect(browse.recipes[0]).toMatchObject({ cover_url: null, cover_thumb_url: null });
 		expect((await ok('GET', '/recipes', { query: 'effort=quick' })).recipes).toHaveLength(1);
 		expect((await ok('GET', '/recipes', { query: 'q=stew' })).recipes[0].id).toBe(recipeId);
 
