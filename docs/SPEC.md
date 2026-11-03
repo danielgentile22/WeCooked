@@ -450,15 +450,15 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 | `scale` | source body + target yield | metric body + scaling note (#69) | ~$0.06 |
 | `reconvert` | one edited body, or a draft's as-written body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
-| `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
+| `generate` | a description + yield count + one angle | one metric-only `RecipeDraft` candidate; a generation makes three in parallel (ADR-042, issue #68) | ~$0.03 each |
 | cover pick | a recipe title + up to four 512 px photos | the index of the dish photo, or -1 (ADR-043) | under $0.01 |
 
 ### 5.3 Shared output shapes
 
-`BodyPair` is the unit that `generate` produces. Every saved
-recipe body exists in both unit systems (ADR-019, amended by issue #67:
-`extract` writes the as-written body only, and the draft's conversion job
-writes the counterpart).
+`BodyPair` is the unit that generations stored before issue #68 hold. Every
+saved recipe body exists in both unit systems (ADR-019, amended by issues #67
+and #68: `extract` and `generate` write the as-written body only, and the
+draft's conversion job writes the counterpart).
 
 ```jsonc
 // BodyPair
@@ -514,8 +514,8 @@ Output schema:
   "cook_minutes": 40,          // nullable
   "source_text": "string|null",
   // The as-written body (issue #67). Drafts stored before #67 and generation
-  // candidates hold a BodyPair here; the server reads those as this plus the
-  // counterpart.
+  // candidates stored before #68 hold a BodyPair here; the server reads those
+  // as this plus the counterpart.
   "body": {
     "source_units": "us",
     "ingredients": [{ "heading": "string|null", "items": ["string"] }],
@@ -796,11 +796,16 @@ A **generation** (issue #41, ADR-042) is a fourth draft kind. Its job row
 holds the description and yield count as input and three candidate
 `RecipeDraft`s as result. Browse shows it as one card ("generating", then
 "choose a recipe"). Picking a candidate records the index on the same row,
-which then reads as a ready draft seeded from that candidate; the review
-form and Save are the ones above. The saved recipe records the description
+which then reads as a ready draft seeded from that candidate, and queues
+its cover and its conversion; the review form and Save are the ones above.
+Each candidate is written in metric only by its own call, three in parallel,
+each given a distinct angle chosen in code from the description (issue #68):
+the main protein unless the description names one or a diet, else the
+cuisine unless it names one, else the technique. Any call failing fails the
+generation, and each call counts against the daily cap. The saved recipe records the description
 as its `source_text` and has no `source_url`.
 
-A capture's draft opens on its **as-written body** alone (issue #67). The
+A capture's draft, and a picked candidate (issue #68), opens on its **as-written body** alone (issue #67). The
 counterpart comes from the draft's conversion job (5.6), and the draft read
 reports `counterpart_state`: `ready` (the body rides in the seed as the
 known-good counterpart), `converting` (the clients watch the job and re-read
