@@ -37,7 +37,9 @@ export const MERGE_SCHEMA = {
 					section: { enum: SECTION_ORDER.slice(0, 7) },
 					text_us: { type: 'string' },
 					text_metric: { type: 'string' },
-					from_recipes: { type: 'array', items: { type: 'string' } },
+					// Short 1-based indices into the input list, mapped back to
+					// recipe ids in code: a ULID costs far more output tokens.
+					from_recipes: { type: 'array', items: { type: 'integer' } },
 					is_staple: { type: 'boolean' }
 				},
 				required: ['section', 'text_us', 'text_metric', 'from_recipes', 'is_staple']
@@ -55,7 +57,12 @@ export type MergeItem = {
 	is_staple: boolean;
 };
 
-// SPEC 5.7 prompt rules, verbatim.
+/** What the merge call returns: provenance by input index, not recipe id. */
+type MergeOutput = { items: (Omit<MergeItem, 'from_recipes'> & { from_recipes: number[] })[] };
+
+// SPEC 5.7 prompt rules. Two departures from the verbatim text: provenance is
+// by the short recipe number, and the input is metric only (#69), so the US
+// line is written from the metric one.
 export const MERGE_SYSTEM = `You merge recipe ingredient lists into one shopping list for a private two-person recipe book.
 
 Merge these ingredient lists into one shopping list.
@@ -64,14 +71,19 @@ Merge these ingredient lists into one shopping list.
   ("2 cloves garlic" + "1 clove garlic" = "3 cloves garlic").
 - When units are NOT reliably combinable, keep separate lines rather than
   inventing a conversion.
-- Give every line in both US and metric.
+- Each recipe's ingredients are in metric (in US units only when no metric
+  version exists yet). Give every line in both US and metric, converting
+  where needed. Write US lines the way a US shopper buys: tins as cans by
+  count and size ("2 (15 oz) cans"), weights in pounds and ounces with
+  fractions, never decimal pounds.
 - Assign each line one section: produce, meat-fish, dairy, dry-goods, spices,
   frozen, other.
 - Set is_staple = true for things a home kitchen normally already has: salt,
   black pepper, cooking oil, plain flour, sugar, common dried herbs and spices,
   butter, water. These go to a separate "check you have" section rather than
   being dropped.
-- Record which recipes each line came from, by recipe_id.
+- Record which recipes each line came from, by recipe number. The numbers
+  are references only: never write them in the line text.
 - Do not add anything that is not in the input lists.`;
 
 const now = () => new Date().toISOString();
@@ -232,60 +244,75 @@ export const shoppingMerge: JobHandler = async (job, db) => {
 	if (picks.length === 0) throw new JobError('api_error', 'No recipes picked for this list.');
 
 	// The build uses variations, never raw originals (SPEC 7.6), so the list
-	// and the recipe you cook from can never disagree.
-	const variationIds: string[] = [];
-	for (const p of picks) {
-		const existing = db
-			.prepare(
-				`SELECT id FROM variation WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL`
-			)
-			.get(p.recipe_id, p.yield_count) as { id: string } | undefined;
-		if (existing) {
-			variationIds.push(existing.id);
-			continue;
-		}
-		// Reuse the scale handler on a synthetic row: it saves a real variation
-		// (visible on the recipe afterwards) and double-checks the yield race.
-		// The synthetic id matches no job row, so its bookkeeping is a no-op.
-		const scaled = (await scale(
-			{ ...job, id: ulid(), input_json: JSON.stringify({ recipe_id: p.recipe_id, to_count: p.yield_count }) } as JobRow,
-			db
-		)) as { variation_id: string } | null;
-		if (!scaled) throw new JobError('api_error', `Could not scale ${p.title}.`);
-		variationIds.push(scaled.variation_id);
-	}
+	// and the recipe you cook from can never disagree. Missing variations are
+	// scaled concurrently, then the merge runs once (#69).
+	const findVariation = db.prepare(
+		`SELECT id FROM variation WHERE recipe_id = ? AND yield_count = ? AND deleted_at IS NULL`
+	);
+	const scaled = await Promise.allSettled(
+		picks.map(async (p) => {
+			const existing = findVariation.get(p.recipe_id, p.yield_count) as { id: string } | undefined;
+			if (existing) return existing.id;
+			// Reuse the scale handler on a synthetic row: it saves a real variation
+			// (visible on the recipe afterwards) in its own transaction and
+			// double-checks the yield race. The synthetic id matches no job row,
+			// so its bookkeeping is a no-op.
+			const out = (await scale(
+				{
+					...job,
+					id: ulid(),
+					input_json: JSON.stringify({ recipe_id: p.recipe_id, to_count: p.yield_count })
+				} as JobRow,
+				db
+			)) as { variation_id: string } | null;
+			if (!out) throw new JobError('api_error', `Could not scale ${p.title}.`);
+			return out.variation_id;
+		})
+	);
+	// allSettled, not all: every scale that succeeds is saved before the job
+	// fails, so a retry only pays for what is left (SPEC 5.7).
+	const failed = scaled.find((r) => r.status === 'rejected');
+	if (failed) throw failed.reason;
+	const variationIds = scaled.map((r) => (r as PromiseFulfilledResult<string>).value);
 
-	// SPEC 5.7 input: metric ingredients per recipe, plus US for dual-unit output.
+	// SPEC 5.7 input: each recipe's metric ingredients, by short number. The US
+	// lines are left out (#69): the merge writes US from metric. A variation
+	// whose metric body is still converting sends its as-written lines.
+	const bodiesOf = db.prepare(
+		`SELECT unit_system, ingredients_json FROM body WHERE variation_id = ?
+		 ORDER BY (unit_system = 'metric') DESC LIMIT 1`
+	);
 	const lists = picks.map((p, i) => {
-		const bodies = db
-			.prepare(`SELECT unit_system, ingredients_json FROM body WHERE variation_id = ?`)
-			.all(variationIds[i]) as { unit_system: 'us' | 'metric'; ingredients_json: string }[];
-		const flat = (units: 'us' | 'metric') => {
-			const b = bodies.find((x) => x.unit_system === units);
-			return b
-				? (JSON.parse(b.ingredients_json) as IngredientGroup[]).flatMap((g) => g.items)
-				: [];
-		};
+		const b = bodiesOf.get(variationIds[i]) as
+			| { unit_system: 'us' | 'metric'; ingredients_json: string }
+			| undefined;
 		return {
-			recipe_id: p.recipe_id,
-			recipe_title: p.title,
-			ingredients_metric: flat('metric'),
-			ingredients_us: flat('us')
+			recipe: i + 1,
+			title: p.title,
+			...(b && b.unit_system === 'us' ? { units: 'us' } : {}),
+			ingredients: b
+				? (JSON.parse(b.ingredients_json) as IngredientGroup[]).flatMap((g) => g.items)
+				: []
 		};
 	});
 
-	const result = await claudeCall<{ items: MergeItem[] }>(db, {
+	const result = await claudeCall<MergeOutput>(db, {
 		system: MERGE_SYSTEM,
 		messages: [{ role: 'user', content: JSON.stringify(lists, null, 1) }],
 		schema: MERGE_SCHEMA
 	});
 
-	// Add nothing: a line whose provenance is entirely hallucinated ids keeps
-	// its text but drops the unknown ids.
-	const known = new Set(picks.map((p) => p.recipe_id));
-	const items = result.items.map((i) => ({
+	// Add nothing: a line whose provenance is entirely hallucinated numbers
+	// keeps its text but drops the unknown ones.
+	const items: MergeItem[] = result.items.map((i) => ({
 		...i,
-		from_recipes: i.from_recipes.filter((id) => known.has(id))
+		from_recipes: [
+			...new Set(
+				i.from_recipes
+					.filter((n) => Number.isInteger(n) && n >= 1 && n <= picks.length)
+					.map((n) => picks[n - 1].recipe_id)
+			)
+		]
 	}));
 	return applyMerge(db, list_id, items);
 };

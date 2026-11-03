@@ -58,14 +58,29 @@ const mergeItem = (over: Partial<MergeItem> = {}): MergeItem => ({
 	...over
 });
 
+/** One line as the merge call returns it: provenance by recipe number. */
+const mergeReply = (
+	over: Partial<Omit<MergeItem, 'from_recipes'>> & { from_recipes?: number[] } = {}
+) => ({ ...mergeItem(), from_recipes: [] as number[], ...over });
+
 const scaleResult = () => ({
-	body: {
-		source_units: 'metric',
-		us: { ingredients: [{ heading: null, items: ['1 lb 2 oz chickpeas'] }], steps: [] },
-		metric: { ingredients: [{ heading: null, items: ['500 g chickpeas'] }], steps: [] }
-	},
+	body: { ingredients: [{ heading: null, items: ['500 g chickpeas'] }], steps: [] },
 	scaling_note: 'Scaled up.'
 });
+
+/** A promise the test settles by hand, to control the order calls finish in. */
+function deferred<T>() {
+	let resolve!: (v: T) => void;
+	let reject!: (e: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
+/** Recipes in the order the build reads its picks (by recipe id). */
+const byId = (...ids: string[]) => [...ids].sort();
 
 function buildJob(): JobRow {
 	return db
@@ -152,7 +167,8 @@ describe('shoppingMerge job', () => {
 		vi.mocked(claudeCall)
 			.mockResolvedValueOnce(scaleResult())
 			.mockResolvedValueOnce({
-				items: [mergeItem({ from_recipes: [a, b, 'hallucinated-id'] })]
+				// Short indices, in pick order (by recipe id); 99 is hallucinated.
+				items: [mergeReply({ from_recipes: [1, 2, 99] })]
 			});
 
 		const result = await shoppingMerge(buildJob(), db);
@@ -168,6 +184,36 @@ describe('shoppingMerge job', () => {
 		expect(state.items[0].from_titles.sort()).toEqual(['Carbonara', 'Tagine']);
 	});
 
+	it('runs every scale a build needs at once, before any of them finishes', async () => {
+		const a = createRecipe(db, input('Tagine', ['800 g chicken']));
+		const b = createRecipe(db, input('Fish pie', ['400 g haddock']));
+		const c = createRecipe(db, input('Dal', ['300 g lentils']));
+		requestBuild(db, [
+			{ recipe_id: a, yield_count: 6 },
+			{ recipe_id: b, yield_count: 8 },
+			{ recipe_id: c, yield_count: 2 }
+		]);
+		const scales = [deferred<unknown>(), deferred<unknown>(), deferred<unknown>()];
+		vi.mocked(claudeCall)
+			.mockReturnValueOnce(scales[0].promise as never)
+			.mockReturnValueOnce(scales[1].promise as never)
+			.mockReturnValueOnce(scales[2].promise as never)
+			.mockResolvedValueOnce({ items: [mergeItem()] });
+		const run = shoppingMerge(buildJob(), db);
+		await Promise.resolve();
+		// All three scale calls are in flight while none has answered.
+		expect(vi.mocked(claudeCall)).toHaveBeenCalledTimes(3);
+		// Finish out of order; the merge still runs once, after all of them.
+		scales[2].resolve(scaleResult());
+		scales[0].resolve(scaleResult());
+		scales[1].resolve(scaleResult());
+		await run;
+		expect(vi.mocked(claudeCall)).toHaveBeenCalledTimes(4);
+		expect(
+			db.prepare(`SELECT COUNT(*) AS n FROM variation WHERE is_original = 0`).get()
+		).toEqual({ n: 3 });
+	});
+
 	it('mid-build failure keeps saved variations; retry only pays for what is left', async () => {
 		const a = createRecipe(db, input('Tagine', ['800 g chicken']));
 		const b = createRecipe(db, input('Fish pie', ['400 g haddock']));
@@ -175,20 +221,29 @@ describe('shoppingMerge job', () => {
 			{ recipe_id: a, yield_count: 6 },
 			{ recipe_id: b, yield_count: 8 }
 		]);
-		// First scale succeeds, second blows up mid-build.
+		// One scale fails fast while the other is still running: the build waits
+		// for the slow one so its variation is saved, then fails.
+		const slow = deferred<unknown>();
 		vi.mocked(claudeCall)
-			.mockResolvedValueOnce(scaleResult())
+			.mockReturnValueOnce(slow.promise as never)
 			.mockRejectedValueOnce(new Error('api down'));
-		await expect(shoppingMerge(buildJob(), db)).rejects.toThrow();
-		// Whichever recipe scaled first, its variation is saved and persists.
+		const run = shoppingMerge(buildJob(), db);
+		const settled = run.then(
+			() => 'resolved',
+			() => 'rejected'
+		);
+		await new Promise((r) => setTimeout(r, 0));
+		slow.resolve(scaleResult());
+		expect(await settled).toBe('rejected');
+		const [first] = byId(a, b);
 		expect(
 			db
 				.prepare(
-					`SELECT COUNT(*) AS n FROM variation
+					`SELECT recipe_id FROM variation
 					 WHERE recipe_id IN (?, ?) AND yield_count IN (6, 8) AND deleted_at IS NULL`
 				)
-				.get(a, b)
-		).toEqual({ n: 1 });
+				.all(a, b)
+		).toEqual([{ recipe_id: first }]);
 
 		// Retry: only the remaining scale plus the merge are paid for.
 		vi.mocked(claudeCall)
@@ -197,6 +252,48 @@ describe('shoppingMerge job', () => {
 			.mockResolvedValueOnce({ items: [mergeItem()] });
 		await shoppingMerge(buildJob(), db);
 		expect(vi.mocked(claudeCall)).toHaveBeenCalledTimes(2);
+	});
+
+	it('sends recipes by short index with metric lines only, and maps indices back', async () => {
+		const a = createRecipe(db, input('Tagine', ['800 g chicken']));
+		const b = createRecipe(db, input('Carbonara', ['200 g spaghetti']));
+		// A US-sourced recipe whose metric body is not converted yet: its
+		// as-written lines are the only ones there are, so they go in.
+		const c = createRecipe(db, {
+			...input('Chili', ['1 lb ground beef']),
+			source_units: 'us',
+			counterpart: null
+		});
+		requestBuild(db, [
+			{ recipe_id: a, yield_count: 4 },
+			{ recipe_id: b, yield_count: 4 },
+			{ recipe_id: c, yield_count: 4 }
+		]);
+		const order = byId(a, b, c);
+		const idx = (id: string) => order.indexOf(id) + 1;
+		vi.mocked(claudeCall).mockResolvedValueOnce({
+			items: [
+				mergeReply({ text_metric: 'chicken', from_recipes: [idx(a)] }),
+				mergeReply({ text_metric: 'pasta', from_recipes: [idx(b), 0, 7] })
+			]
+		});
+		await shoppingMerge(buildJob(), db);
+
+		const content = vi.mocked(claudeCall).mock.calls[0][1].messages[0].content as string;
+		for (const id of [a, b, c]) expect(content).not.toContain(id);
+		expect(content).not.toContain('ingredients_us');
+		const sent = JSON.parse(content) as { recipe: number; title: string; ingredients: string[] }[];
+		expect(sent.map((r) => r.recipe)).toEqual([1, 2, 3]);
+		expect(sent[idx(c) - 1].ingredients).toEqual(['1 lb ground beef']);
+		expect(sent[idx(a) - 1].ingredients).toEqual(['800 g chicken']);
+
+		const rows = db
+			.prepare(`SELECT text_metric, from_recipes FROM shopping_list_item ORDER BY position`)
+			.all() as { text_metric: string; from_recipes: string }[];
+		expect(rows.map((r) => [r.text_metric, JSON.parse(r.from_recipes)])).toEqual([
+			['chicken', [a]],
+			['pasta', [b]]
+		]);
 	});
 
 	it('a queued build job is reused, not doubled', () => {

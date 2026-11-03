@@ -21,7 +21,7 @@ struct CaptureModelTests {
 		let server = FakeServer([Self.captures: FakeServer.fixture("captures")])
 		let model = CaptureModel(env: RecipeModelTests.env(server))
 		model.text = "https://www.example.com/soup"
-		#expect(await model.extract() == "01TEST00000000000000000019")
+		#expect(await model.extract() == "01TEST00000000000000000020")
 		#expect(server.requests == [Self.captures])
 		#expect(model.text.isEmpty)
 		#expect(model.error == nil)
@@ -72,7 +72,7 @@ struct CaptureModelTests {
 @MainActor
 struct GenerateModelTests {
 	static let generations = "POST /api/v1/generations"
-	static let reply = FakeServer.json(#"{"job_id":"01TEST00000000000000000030"}"#)
+	static let reply = FakeServer.json(#"{"job_id":"01TEST00000000000000000031"}"#)
 
 	static func env(_ server: FakeServer) throws -> AppEnvironment {
 		let env = RecipeModelTests.env(server)
@@ -150,9 +150,9 @@ struct GenerateModelTests {
 struct EditorModelTests {
 	static let recipe: RecipeID = "01TEST00000000000000000003"
 	static let original: VariationID = "01TEST00000000000000000004"
-	static let ready: JobID = "01TEST00000000000000000021"
-	static let failed: JobID = "01TEST00000000000000000018"
-	static let savedRecipe: RecipeID = "01TEST00000000000000000022"
+	static let ready: JobID = "01TEST00000000000000000022"
+	static let failed: JobID = "01TEST00000000000000000019"
+	static let savedRecipe: RecipeID = "01TEST00000000000000000023"
 	static let recipePath = "/api/v1/recipes/01TEST00000000000000000003"
 
 	static func lookup(_ name: String) throws -> DraftLookup {
@@ -274,7 +274,7 @@ struct EditorModelTests {
 		await Self.appear(model) { model.phase != .extracting }
 		#expect(model.phase == .editing)
 		#expect(model.form.title == "Lemon drizzle cake")
-		#expect(model.form.coverImageId == "01TEST00000000000000000020")
+		#expect(model.form.coverImageId == "01TEST00000000000000000021")
 		#expect(model.warnings == ["Step 3 was cut off in the photo."])
 		#expect(model.damageReasoning == "One bowl and a tin.")
 	}
@@ -325,7 +325,7 @@ struct EditorModelTests {
 	// MARK: Generation
 
 	static let generation = GenerationJSON.job
-	static let generationPath = "/api/v1/drafts/01TEST00000000000000000030"
+	static let generationPath = "/api/v1/drafts/01TEST00000000000000000031"
 
 	static func generationLookup(_ json: String) throws -> DraftLookup {
 		try Wire.makeDecoder().decode(DraftLookup.self, from: GenerationJSON.data(json))
@@ -373,7 +373,7 @@ struct EditorModelTests {
 	}
 
 	@Test func tryAgainStartsAFreshGenerationFromTheSameDescription() async throws {
-		let again = FakeServer.json(#"{"job_id":"01TEST00000000000000000031"}"#)
+		let again = FakeServer.json(#"{"job_id":"01TEST00000000000000000032"}"#)
 		let server = FakeServer([
 			"POST /api/v1/generations": again,
 			"POST \(Self.generationPath)/discard": FakeServer.json(#"{"ok":true}"#),
@@ -381,13 +381,13 @@ struct EditorModelTests {
 		let env = try Self.env(server)
 		env.store.resource(.draft(Self.generation)).replace(try Self.generationLookup(GenerationJSON.choosing))
 		let model = EditorModel(origin: .draft(Self.generation), env: env)
-		#expect(await model.tryAgain() == "01TEST00000000000000000031")
+		#expect(await model.tryAgain() == "01TEST00000000000000000032")
 		#expect(
 			server.requests.filter { !$0.contains("/jobs/") }
 				== ["POST /api/v1/generations", "POST \(Self.generationPath)/discard"],
 			"the old set is discarded once the new one is under way")
 		let card = env.store.resource(.recipes()).value?.drafts.first
-		#expect(card?.id == "01TEST00000000000000000031")
+		#expect(card?.id == "01TEST00000000000000000032")
 		#expect(card?.title == GenerationJSON.description)
 		#expect(EditorModel(origin: .manual, env: env).isGeneration == false)
 	}
@@ -633,7 +633,7 @@ struct EditorModelTests {
 
 	// MARK: Find another photo
 
-	static let coverDraft: JobID = "01TEST00000000000000000045"
+	static let coverDraft: JobID = "01TEST00000000000000000046"
 
 	static func found(_ id: ImageID) -> RecipeImage {
 		RecipeImage(

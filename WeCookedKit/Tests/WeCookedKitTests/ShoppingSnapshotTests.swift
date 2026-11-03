@@ -4,9 +4,9 @@ import Testing
 @testable import WeCookedKit
 
 struct ShoppingSnapshotTests {
-	static let chickpeas: ShoppingItemID = "01TEST00000000000000000029"
-	static let oliveOil: ShoppingItemID = "01TEST00000000000000000030"
-	static let binBags: ShoppingItemID = "01TEST00000000000000000031"
+	static let chickpeas: ShoppingItemID = "01TEST00000000000000000030"
+	static let oliveOil: ShoppingItemID = "01TEST00000000000000000031"
+	static let binBags: ShoppingItemID = "01TEST00000000000000000032"
 	static let saved = Date(timeIntervalSince1970: 1_790_000_000)
 
 	static func snapshot(
@@ -60,7 +60,7 @@ struct ShoppingSnapshotTests {
 	}
 
 	@Test func aPendingUntickBringsTheLineBack() throws {
-		let s = try Self.snapshot(pending: [Self.chickpeas: true, "01TEST00000000000000000028": false])
+		let s = try Self.snapshot(pending: [Self.chickpeas: true, "01TEST00000000000000000029": false])
 		#expect(s.items.map(\.textMetric) == ["2 onions", "bin bags"])
 	}
 
