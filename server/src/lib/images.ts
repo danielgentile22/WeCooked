@@ -20,11 +20,35 @@ export async function normalise(file: File): Promise<Blob> {
 /** source_url is set on a found cover (issue #44): fetched, not taken. */
 export type FormImage = { id: string; url: string; source_url: string | null };
 
-/** Normalise then upload one photo; resolves to what the form strip needs. */
-export async function uploadPhoto(file: File, role: 'photo' | 'capture' = 'photo'): Promise<FormImage> {
-	const blob = await normalise(file);
-	const res = await fetch(`/api/images?role=${role}`, { method: 'POST', body: blob });
+type Role = 'photo' | 'capture';
+type UploadOptions = { shrink?: (file: File) => Promise<Blob>; fetchFn?: typeof fetch };
+
+async function send(blob: Blob, role: Role, fetchFn: typeof fetch): Promise<FormImage> {
+	const res = await fetchFn(`/api/images?role=${role}`, { method: 'POST', body: blob });
 	if (!res.ok) throw new Error('Upload failed.');
 	const { id, url } = await res.json();
 	return { id, url, source_url: null };
+}
+
+/** Normalise then upload one photo; resolves to what the form strip needs. */
+export async function uploadPhoto(file: File, role: Role = 'photo'): Promise<FormImage> {
+	return send(await normalise(file), role, fetch);
+}
+
+/**
+ * Issue #77: several picked pages. Each is shrunk in turn (one full-size
+ * decode at a time) and uploads as soon as it is shrunk, so the uploads
+ * overlap. One promise per file, in pick order; each fails on its own.
+ */
+export function uploadPhotos(
+	files: File[],
+	role: Role,
+	{ shrink = normalise, fetchFn = fetch }: UploadOptions = {}
+): Promise<FormImage>[] {
+	let previous: Promise<unknown> = Promise.resolve();
+	return files.map((file) => {
+		const blob = previous.then(() => shrink(file));
+		previous = blob.catch(() => {});
+		return blob.then((b) => send(b, role, fetchFn));
+	});
 }

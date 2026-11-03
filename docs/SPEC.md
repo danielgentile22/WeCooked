@@ -836,7 +836,10 @@ recipe editor, and everything funnels into it.
 
 1. The phone renders the page first (ADR-041). The share sheet and the Add tab
    load the URL in an offscreen WKWebView and post the rendered HTML alongside
-   the link as `{url, html}`. A real WebKit on a residential address is what
+   the link as `{url, html}`. Both start rendering as soon as they have the
+   link (the sheet on open, the Add tab when a lone link lands in the paste
+   box); Extract on the Add tab waits at most 4 s for it and then posts the
+   bare link. A real WebKit on a residential address is what
    the big publishers let through; the server's own fetcher is not.
 2. The server reduces the rendered HTML at ingest: readable text, the page's
    `og:description` (an Instagram reel keeps its whole caption there and
@@ -1120,6 +1123,10 @@ The camera file never reaches the server intact, on purpose:
    - This bakes EXIF orientation into the pixels, sidesteps HEIC decoding on the
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
+   - Several pages shrink one at a time (each is a full-size decode) and each
+     uploads as soon as it is shrunk, so the uploads overlap. On iOS a camera
+     shot or a shared screenshot is already a bitmap: it is drawn straight to
+     the capped JPEG off the main thread, never encoded at full size first.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
    1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
    (`r2_key_claude`, section 5.8).

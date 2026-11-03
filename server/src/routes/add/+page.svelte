@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { Camera, Keyboard, LoaderCircle, Sparkles, WandSparkles, X } from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
-	import { uploadPhoto, type FormImage } from '$lib/images';
+	import { uploadPhotos, type FormImage } from '$lib/images';
 
 	let { form } = $props();
 	let submitting = $state(false);
@@ -23,9 +23,10 @@
 		const files = picked.slice(0, Math.max(0, MAX_PHOTOS - photos.length - uploading));
 		uploadError = files.length < picked.length ? `At most ${MAX_PHOTOS} pages per recipe.` : null;
 		uploading += files.length;
-		for (const file of files) {
+		// Uploads overlap (issue #77); each page joins the strip in pick order.
+		for (const upload of uploadPhotos(files, 'capture')) {
 			try {
-				photos.push(await uploadPhoto(file, 'capture'));
+				photos.push(await upload);
 			} catch {
 				uploadError = 'Could not upload a photo. Check the connection and try again.';
 			}
