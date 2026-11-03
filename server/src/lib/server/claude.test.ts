@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from './migrate';
-import { nyDay, takeQuota } from './claude';
+import { CALL_TIMEOUT_MS, nyDay, takeQuota } from './claude';
+import { GIVE_UP_MS } from '$lib/jobs';
 import { JobError } from './jobs';
 
 function testDb() {
@@ -32,5 +33,13 @@ describe('daily call cap (SPEC 5.9)', () => {
 		// A new NY day starts a fresh count even at cap 1.
 		takeQuota(db, 1, new Date('2026-07-30T05:00:00Z'));
 		expect(db.prepare('SELECT count(*) AS n FROM job_quota').get()).toEqual({ n: 2 });
+	});
+});
+
+describe('per-call timeout (issue #70)', () => {
+	it('fits two attempts inside the client five minute give-up', () => {
+		// Two attempts (maxRetries: 1), the 10 s page fetch before them, and
+		// the SDK's longest honoured retry-after (60 s) between them.
+		expect(2 * CALL_TIMEOUT_MS + 10_000 + 60_000).toBeLessThanOrEqual(GIVE_UP_MS);
 	});
 });
