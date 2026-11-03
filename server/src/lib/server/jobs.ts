@@ -80,7 +80,10 @@ export function createJob(
 }
 
 /** The cover jobs in these statuses for a draft, or for a recipe directly or
- *  through the draft that became it (issue #44). Newest first. */
+ *  through the draft that became it (issue #44). Newest first. cover_owner
+ *  (issue #64) is the draft or recipe id from input_json, null on every
+ *  other kind, so it needs no kind term (which would steer the planner off
+ *  its index). */
 export function coverJobs(
 	db: Database,
 	target: CoverTarget,
@@ -88,16 +91,15 @@ export function coverJobs(
 ): Pick<JobRow, 'id' | 'result_json'>[] {
 	const [match, id] =
 		'draft_id' in target
-			? [`json_extract(input_json, '$.draft_id') = @id`, target.draft_id]
+			? [`cover_owner = @id`, target.draft_id]
 			: [
-					`(json_extract(input_json, '$.recipe_id') = @id
-					  OR json_extract(input_json, '$.draft_id') IN (SELECT id FROM job WHERE recipe_id = @id))`,
+					`(cover_owner = @id OR cover_owner IN (SELECT id FROM job WHERE recipe_id = @id))`,
 					target.recipe_id
 				];
 	return db
 		.prepare(
 			`SELECT id, result_json FROM job
-			 WHERE kind = 'cover' AND status IN (${statuses.map(() => '?').join(',')}) AND ${match}
+			 WHERE ${match} AND status IN (${statuses.map(() => '?').join(',')})
 			 ORDER BY created_at DESC, id DESC`
 		)
 		.all(...statuses, { id }) as Pick<JobRow, 'id' | 'result_json'>[];

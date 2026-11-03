@@ -232,6 +232,9 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA synchronous = NORMAL;   -- safe with WAL + Litestream
+PRAGMA cache_size = -32000;    -- 32 MB page cache (issue #64)
+PRAGMA temp_store = MEMORY;    -- sorts stay in memory (issue #64)
+-- after migrating, at startup: PRAGMA optimize = 0x10002;
 
 CREATE TABLE recipe (
   id                TEXT PRIMARY KEY,
@@ -337,7 +340,8 @@ CREATE TABLE job (
   started_at   TEXT,
   finished_at  TEXT
 );
-CREATE INDEX job_pending ON job(status, created_at) WHERE status IN ('queued','running');
+-- The job and image read indexes, and the cover_owner column, are in
+-- migrations/005_hot_indexes.sql (issue #64); it replaced job_pending.
 
 CREATE TABLE job_quota (
   day   TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' in America/New_York
