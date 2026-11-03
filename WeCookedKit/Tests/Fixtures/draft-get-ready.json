@@ -27,7 +27,7 @@
       {
         "id": "01TEST00000000000000000021",
         "source_url": null,
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000021/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6ab39388b9ba04e89cd7c55ee0aa9da5d4a5feea5a49e1116d37243d8c5fb8e1"
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000021/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=f07412b7ba2a167029498b485097bc1cbf5a3bfac3eada563dfecb5b6a14e7ca"
       }
     ],
     "ingredients": [

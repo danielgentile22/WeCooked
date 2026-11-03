@@ -2,7 +2,9 @@ import SwiftUI
 import WeCookedKit
 
 /// Browse. Reads `Key.recipes(filters)`: search text and tag chips make a new
-/// key, so each filter combination is cached and instant the second time. Draft
+/// key. Tag filters are cached on disk; typed searches are not, and the Store
+/// drops a filtered list from memory once it is off screen. While a new key
+/// loads, the last list shown stays up (`shown`). Draft
 /// cards (D7) come from the same reply, and the Store waits on extracting
 /// drafts on its own, so nothing here polls. Trash is the last row (D1).
 struct RecipesTab: View {
@@ -11,11 +13,13 @@ struct RecipesTab: View {
 	@State private var filters = BrowseFilters()
 	@State private var searchText = ""
 	@State private var showFilters = false
+	/// The last list on screen, the placeholder while a new filter loads.
+	@State private var shown: BrowseResponse?
 
 	private var resource: Resource<BrowseResponse> { env.store.resource(.recipes(filters)) }
 
 	var body: some View {
-		Loaded(resource: resource) { list in
+		Loaded(resource: resource, placeholder: shown) { list in
 			List {
 				if list.drafts.isEmpty && list.recipes.isEmpty {
 					emptyState.listRowSeparator(.hidden)
@@ -39,6 +43,9 @@ struct RecipesTab: View {
 		// and the new one starts, which fetches.
 		.watching(resource)
 		.id(filters)
+		.onChange(of: resource.value, initial: true) { _, new in
+			if let new { shown = new }
+		}
 		.navigationTitle("Recipes")
 		.searchable(text: $searchText)
 		.task(id: searchText) {

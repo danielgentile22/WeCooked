@@ -1013,6 +1013,14 @@ with the S3 client already needed for uploads.
 defeats the browser cache. Round the signing timestamp to the day, so URLs
 are stable for 24 hours, which covers a cooking session.
 
+**Amendment, 2026-11-03 (issue #74).** Every presigned GET also signs a
+`response-cache-control` override of `private, max-age=31536000, immutable`,
+so R2 answers each photo, including ones stored before the change, with a
+lifetime that stops browsers and the iOS image store revalidating it. A photo
+key never gets new bytes, so immutable holds, and private keeps shared caches
+out. The signing key is derived once per UTC day. The decision itself is
+unchanged: the bucket stays private and every URL is still presigned.
+
 ---
 
 ## ADR-027: One build job; the quota counts Claude calls
@@ -1554,6 +1562,21 @@ or recipe; the route stores that list on the job. The new image takes the
 cover and the found one it displaces is soft-deleted. Each tap is one Brave
 query and one Claude call, so the server refuses a second while one is
 pending.
+
+**Amended 2026-11-03 (issue #72).** Covers arrive sooner. Candidate images
+download up to four at a time, and the highest ranked usable image still
+wins when downloads finish out of order; nothing new starts once the winner
+is known, so a few dead links cost one timeout, not one each. When the server
+fetches a URL capture's page itself, it saves the page's photos into the
+capture's `input_json` (an empty list when the fetch failed), and the cover
+job never fetches that page again: one request per publisher, not two. The
+source step needs no title, so it starts when the capture job starts and runs
+alongside the extraction; the cover job queued after the extraction takes its
+result. The pick asks for the index only, with no reason field. A benchmark
+(`model-bench.mjs <model> 3 cover`, nine sets with a known answer, built from
+Brave hits checked by eye) scored Sonnet 5.5 27 of 27 and Haiku 5.5 24 of 27:
+Haiku took huevos rancheros for shakshuka on every run, at about the same
+speed (1.5 s against 1.6 s). `COVER_MODEL` stays Sonnet 5.5.
 
 ---
 

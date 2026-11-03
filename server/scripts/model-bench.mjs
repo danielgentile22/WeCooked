@@ -4,20 +4,29 @@
 // from server/.env, and prints wall time per case. Each run costs real API
 // calls (a build of three new yields is four calls).
 //
-// Pick cases with BENCH_CASES=scale,shopping_build. BENCH_SHOW=1 prints the
-// merge output, for comparing list quality across changes.
+// Pick cases with the third argument (scale,shopping_build). BENCH_SHOW=1
+// prints the merge output, for comparing list quality across changes.
 //
 //   node server/scripts/model-bench.mjs claude-opus-5 3
 //   node server/scripts/model-bench.mjs claude-haiku-5-5 3
+//
+// The cover case (issue #72) runs only when asked for. It times the cover
+// pick and scores it against sets whose right answer is known, built from
+// Brave image hits (BRAVE_SEARCH_API_KEY): one photo of the dish among photos
+// of near-miss dishes, and sets where nothing fits. The candidate images are
+// fetched once into /tmp/cover-bench and reused by later invocations, so
+// every run and every model sees the same images.
+//
+//   node server/scripts/model-bench.mjs claude-haiku-5-5 3 cover
 
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import Database from 'better-sqlite3';
 
-const [model, runsArg = '3'] = process.argv.slice(2);
+const [model, runsArg = '3', casesArg = 'extract_paste,generate'] = process.argv.slice(2);
 if (!model) {
-	console.error('usage: node server/scripts/model-bench.mjs <model> [runs]');
+	console.error('usage: node server/scripts/model-bench.mjs <model> [runs] [extract_paste,generate,scale,shopping_build,cover]');
 	process.exit(2);
 }
 const runs = Number(runsArg);
@@ -26,6 +35,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const envFile = `${root}.env`;
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 process.env.CLAUDE_MODEL = model;
+process.env.COVER_MODEL = model;
+const wanted = casesArg.split(',');
 process.env.DAILY_CALL_CAP = '1000';
 
 const PASTE = `Lemon Garlic Chicken Thighs with Potatoes
@@ -51,6 +62,19 @@ For the tray:
 3. Spread the potatoes and onion in a roasting tin and set the chicken on top, skin side up. Pour the stock around the edges.
 4. Roast 40 to 45 minutes, until the skin is crisp and the chicken reaches 175F.
 5. Rest 5 minutes, scatter with parsley and serve with the pan juices.`;
+
+// Each set: the dish, then near misses a careless pick could take for it.
+const COVER_SETS = [
+	['Shakshuka', 'Huevos rancheros', 'Tomato soup', 'Eggs Benedict'],
+	['Lemon drizzle cake', 'Victoria sponge', 'Banana bread', 'Lemon meringue pie'],
+	['Chicken tikka masala', 'Chicken biryani', 'Beef rendang', 'Chana masala'],
+	['Pad thai', 'Chow mein', 'Spaghetti carbonara', 'Pho'],
+	['Beef stew', 'Chilli con carne', 'French onion soup', 'Shepherds pie'],
+	['Caesar salad', 'Greek salad', 'Coleslaw', 'Club sandwich']
+];
+// Usable hits to pass over because they are not a plain photo of the dish
+// (a step collage, a spread of raw ingredients), checked by eye.
+const COVER_SKIP = { Shakshuka: 1, 'Pad thai': 2 };
 
 const GENERATE = {
 	description: 'Something vegetarian with chickpeas and spinach, about 30 minutes, cosy for a weeknight',
@@ -104,7 +128,6 @@ const RECIPES = [
 		['Parboil the potatoes 8 minutes.', 'Toss with oil, garlic and rosemary in a 30 x 40 cm tin.', 'Roast at 220°C for 45 minutes.']
 	)
 ];
-const only = process.env.BENCH_CASES?.split(',');
 
 process.chdir(root);
 const vite = await createServer({ logLevel: 'error', server: { middlewareMode: true }, appType: 'custom' });
@@ -149,8 +172,9 @@ try {
 				return { title: `${items.length} lines` };
 			}
 		]
-	].filter(([name]) => !only || only.includes(name));
-	for (const [name, fn] of cases) {
+	];
+	if (wanted.includes('cover')) cases.push(...(await coverCases(db)));
+	for (const [name, fn] of cases.filter(([n]) => wanted.some((w) => n.startsWith(w)))) {
 		const times = [];
 		for (let i = 0; i < runs; i++) {
 			const t = performance.now();
@@ -158,7 +182,7 @@ try {
 				const out = await fn();
 				const s = (performance.now() - t) / 1000;
 				times.push(s);
-				const n = out.candidates ? out.candidates.length + ' candidates' : out.title;
+				const n = out.candidates ? out.candidates.length + ' candidates' : (out.title ?? out.note);
 				console.log(`${model}\t${name}\trun ${i + 1}\t${s.toFixed(1)}s\t${n}`);
 			} catch (e) {
 				console.log(`${model}\t${name}\trun ${i + 1}\tFAILED\t${e.code ?? ''} ${e.message}`);
@@ -171,4 +195,56 @@ try {
 	}
 } finally {
 	await vite.close();
+}
+
+/** One case per known-answer set: [name, fn] where fn reports the pick, the
+ *  expected index and whether they match. Prints the score as it goes. */
+async function coverCases(db) {
+	const { claudePick, coverQuery, fetchImage } = await vite.ssrLoadModule('/src/lib/server/cover.ts');
+	const { searchImages } = await vite.ssrLoadModule('/src/lib/server/imagesearch.ts');
+	const { deriveThumb } = await vite.ssrLoadModule('/src/lib/server/images.ts');
+	const { mkdirSync, readFileSync, writeFileSync } = await import('node:fs');
+	const dir = '/tmp/cover-bench';
+	mkdirSync(dir, { recursive: true });
+	const firstPhoto = async (title) => {
+		let skip = COVER_SKIP[title] ?? 0;
+		for (const hit of await searchImages(coverQuery(title), 10)) {
+			const full = await fetchImage(hit.image_url);
+			if (full && skip-- === 0) return deriveThumb(full);
+		}
+		throw new Error(`no usable image for ${title}`);
+	};
+	const photos = new Map();
+	// Kept between invocations so every model is scored on the same images.
+	for (const title of COVER_SETS.flat()) {
+		const file = `${dir}/${title.replaceAll(' ', '-')}.jpg`;
+		if (!existsSync(file)) writeFileSync(file, await firstPhoto(title));
+		photos.set(title, readFileSync(file));
+	}
+	const sets = COVER_SETS.flatMap(([dish, ...misses], i) => {
+		// The dish moves through every position across the sets.
+		const at = i % (misses.length + 1);
+		const withDish = [...misses.slice(0, at), dish, ...misses.slice(at)];
+		return [
+			{ title: dish, images: withDish, expect: at },
+			// Nothing fits: the near misses alone, asked for the dish.
+			...(i % 2 === 0 ? [{ title: dish, images: misses, expect: -1 }] : [])
+		];
+	});
+	const score = new Map();
+	return sets.map((set, i) => [
+		`cover ${i} ${set.title}${set.expect < 0 ? ' (none)' : ''}`,
+		async () => {
+			const pick = await claudePick(
+				db,
+				set.title,
+				set.images.map((t) => photos.get(t))
+			);
+			const ok = pick === set.expect;
+			const s = score.get(model) ?? { ok: 0, n: 0 };
+			score.set(model, { ok: s.ok + (ok ? 1 : 0), n: s.n + 1 });
+			const { ok: right, n } = score.get(model);
+			return { note: `pick ${pick} expected ${set.expect} ${ok ? 'right' : 'WRONG'} (${right}/${n} so far)` };
+		}
+	]);
 }

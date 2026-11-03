@@ -53,6 +53,14 @@ public struct ShoppingSnapshot: Codable, Hashable, Sendable {
 			units: units, savedAt: now)
 	}
 
+	/// Equal apart from `savedAt`: the widget would draw the same list, so the
+	/// file is not rewritten and the widget not reloaded.
+	public func sameContent(as other: ShoppingSnapshot?) -> Bool {
+		guard var other else { return false }
+		other.savedAt = savedAt
+		return other == self
+	}
+
 	public enum Display: Hashable, Sendable {
 		/// The view shows `emptyText`.
 		case empty

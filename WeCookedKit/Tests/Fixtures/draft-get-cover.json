@@ -27,7 +27,7 @@
       {
         "id": "01TEST00000000000000000048",
         "source_url": "https://www.example.com/hero.jpg",
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000048/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=030fe23e4c2ec75bb141394d8604fc76f825aed94c7c0682468862ab3c5b05a6"
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000048/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=3c35941601899c71b28f5028f1e9fcc97d36ff8f54bad3f693f46bde7f82b707"
       }
     ],
     "ingredients": [

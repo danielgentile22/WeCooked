@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
 ///
 /// The presigned request carries its own credentials in the query string, so it
 /// goes through a bare `URLSession`, never `APIClient` (no bearer header).
+/// That session has no `URLCache`: this store's own disk copy is the cache, and
+/// the shared URL cache would keep every image a second time (issue #74).
 public actor ImageStore {
 	private let directory: URL
 	private let session: URLSession
@@ -20,10 +22,20 @@ public actor ImageStore {
 	private var inflight: [String: Task<Data?, Never>] = [:]
 	private static let memoryLimit = 60
 
-	public init(directory: URL, session: URLSession = .shared) {
+	/// One per process: image loads share connections, and none of them cache.
+	public static let downloads: URLSession = {
+		let config = URLSessionConfiguration.default
+		config.urlCache = nil
+		config.requestCachePolicy = .reloadIgnoringLocalCacheData
+		return URLSession(configuration: config)
+	}()
+
+	public init(directory: URL, session: URLSession = ImageStore.downloads) {
 		self.directory = directory
 		self.session = session
 	}
+
+	var sessionConfiguration: URLSessionConfiguration { session.configuration }
 
 	public static func key(for url: URL) -> String {
 		(url.host() ?? "") + url.path()
