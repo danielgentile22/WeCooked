@@ -17,7 +17,7 @@
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
-	import { ignoreAbort, pollJob } from '$lib/jobs';
+	import { watchJob } from '$lib/jobs';
 	import {
 		adoptCounterpart,
 		loadedBodies,
@@ -342,14 +342,10 @@
 		if (jobId) {
 			coverSearch = { status: 'pending' };
 			// Leaving the form cancels the poll (issue #66).
-			const poll = new AbortController();
 			const dependency = untrack(() => coverDependency);
-			pollJob(jobId, { signal: poll.signal })
-				.then(() => {
-					if (dependency) return invalidate(dependency);
-				})
-				.catch(ignoreAbort);
-			return () => poll.abort();
+			return watchJob(jobId, () => {
+				if (dependency) return invalidate(dependency);
+			});
 		}
 		if (untrack(() => coverSearch.status) === 'pending') coverSearch = { status: 'idle' };
 	});

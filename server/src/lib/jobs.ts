@@ -75,6 +75,28 @@ export const ignoreAbort = (e: unknown) => {
 };
 
 /**
+ * A page effect's job watch: polls `jobId` and hands the finished poll to
+ * `onEnd`. Returns the effect's cleanup, which aborts the poll (issue #66),
+ * so a page that moves on never runs `onEnd`. A failure other than that
+ * abort goes to `onError`, else surfaces as before.
+ */
+export function watchJob(
+	jobId: string,
+	onEnd: (job: JobPoll) => unknown,
+	{ onError, fetchFn }: { onError?: (e: unknown) => void; fetchFn?: typeof fetch } = {}
+): () => void {
+	const poll = new AbortController();
+	pollJob(jobId, { signal: poll.signal, fetchFn })
+		.then(onEnd)
+		.catch((e) => {
+			if (isAbort(e)) return;
+			if (!onError) throw e;
+			onError(e);
+		});
+	return () => poll.abort();
+}
+
+/**
  * Named load dependencies (SvelteKit `depends`) a finished job invalidates,
  * so it reruns only the loads that show what the job changed (issue #66).
  * A key carries its id, so a poll left over from another page matches nothing.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pollJob, TIMEOUT_COPY, type JobPoll } from './jobs';
+import { pollJob, TIMEOUT_COPY, watchJob, type JobPoll } from './jobs';
 
 const poll = (status: JobPoll['status']): JobPoll => ({
 	status,
@@ -96,5 +96,43 @@ describe('pollJob cancellation (issue #66)', () => {
 			pollJob('j1', { signal: page.signal, fetchFn: fetchFn as typeof fetch })
 		).rejects.toMatchObject({ name: 'AbortError' });
 		expect(fetchFn).not.toHaveBeenCalled();
+	});
+});
+
+describe('watchJob', () => {
+	const held = () => {
+		let answer!: (r: Response) => void;
+		const fetchFn = ((_url: string, init?: RequestInit) =>
+			new Promise<Response>((resolve, reject) => {
+				answer = resolve;
+				init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+			})) as typeof fetch;
+		return { fetchFn, answer: (s: JobPoll['status']) => answer(Response.json(poll(s))) };
+	};
+
+	it('hands the finished poll to onEnd', async () => {
+		const { fetchFn, answer } = held();
+		const onEnd = vi.fn();
+		watchJob('j1', onEnd, { fetchFn });
+		answer('done');
+		await vi.waitFor(() => expect(onEnd).toHaveBeenCalledWith(poll('done')));
+	});
+
+	it('its cleanup cancels the poll silently: no onEnd, no onError', async () => {
+		const { fetchFn } = held();
+		const onEnd = vi.fn();
+		const onError = vi.fn();
+		const stop = watchJob('j1', onEnd, { fetchFn, onError });
+		stop();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(onEnd).not.toHaveBeenCalled();
+		expect(onError).not.toHaveBeenCalled();
+	});
+
+	it('passes any other failure to onError', async () => {
+		const fetchFn = (async () => new Response('', { status: 500 })) as unknown as typeof fetch;
+		const onError = vi.fn();
+		watchJob('j1', () => {}, { fetchFn, onError });
+		await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
 	});
 });

@@ -14,7 +14,7 @@
 	import { goto, invalidate } from '$app/navigation';
 	import Chip from '$lib/components/Chip.svelte';
 	import Banner from '$lib/components/Banner.svelte';
-	import { ignoreAbort, isAbort, jobDeps, pollJob } from '$lib/jobs';
+	import { jobDeps, watchJob as followJob } from '$lib/jobs';
 
 	let { data, form } = $props();
 	const r = $derived(data.recipe);
@@ -85,9 +85,9 @@
 		const running = untrack(() => (calc?.phase === 'running' ? calc : null));
 		if (!job_id || !running || running.recipe_id !== id) return;
 		const { to_count } = running;
-		const poll = new AbortController();
-		pollJob(job_id, { signal: poll.signal })
-			.then(async (job) => {
+		return followJob(
+			job_id,
+			async (job) => {
 				if (job.status === 'done' && job.result_ref) {
 					calc = null;
 					await goto(`/recipes/${id}?v=${job.result_ref}`, {
@@ -100,11 +100,9 @@
 					calc = { phase: 'failed', text: job.error_text ?? 'Could not calculate.', to_count };
 					await invalidate(jobDeps.recipe(id));
 				}
-			})
-			.catch((e) => {
-				if (!isAbort(e)) calc = { phase: 'failed', text: 'Lost track of the calculation.', to_count };
-			});
-		return () => poll.abort();
+			},
+			{ onError: () => (calc = { phase: 'failed', text: 'Lost track of the calculation.', to_count }) }
+		);
 	});
 	let retryCalcForm: HTMLFormElement | undefined = $state();
 
@@ -114,14 +112,10 @@
 		const jid = refreshJobId;
 		const id = recipeId;
 		if (!jid) return;
-		const poll = new AbortController();
-		pollJob(jid, { signal: poll.signal })
-			.then(async (job) => {
-				justUpdated = job.status === 'done';
-				await invalidate(jobDeps.recipe(id));
-			})
-			.catch(ignoreAbort);
-		return () => poll.abort();
+		return followJob(jid, async (job) => {
+			justUpdated = job.status === 'done';
+			await invalidate(jobDeps.recipe(id));
+		});
 	});
 
 	// Action results that hand back a job to watch or a variation to show.
@@ -237,11 +231,7 @@
 		const jid = reconvertJobId;
 		const id = recipeId;
 		if (!jid) return;
-		const poll = new AbortController();
-		pollJob(jid, { signal: poll.signal })
-			.then(() => invalidate(jobDeps.recipe(id)))
-			.catch(ignoreAbort);
-		return () => poll.abort();
+		return followJob(jid, () => invalidate(jobDeps.recipe(id)));
 	});
 
 	// D6 tap-to-retry goes through the hidden form + use:enhance, same as the

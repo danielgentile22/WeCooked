@@ -5,7 +5,7 @@
 	import Banner from '$lib/components/Banner.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
-	import { ignoreAbort, jobDeps, pollJob } from '$lib/jobs';
+	import { jobDeps, watchJob } from '$lib/jobs';
 
 	let { data, form } = $props();
 
@@ -40,11 +40,7 @@
 	$effect(() => {
 		if (!working) return;
 		const id = draftId;
-		const poll = new AbortController();
-		pollJob(id, { signal: poll.signal })
-			.then(() => invalidate(jobDeps.draft(id)))
-			.catch(ignoreAbort);
-		return () => poll.abort();
+		return watchJob(id, () => invalidate(jobDeps.draft(id)));
 	});
 
 	// Issue #67: the counterpart body fills in when the draft's conversion ends.
@@ -56,11 +52,7 @@
 	$effect(() => {
 		if (!conversionJob) return;
 		const id = draftId;
-		const poll = new AbortController();
-		pollJob(conversionJob, { signal: poll.signal })
-			.then(() => invalidate(jobDeps.draft(id)))
-			.catch(ignoreAbort);
-		return () => poll.abort();
+		return watchJob(conversionJob, () => invalidate(jobDeps.draft(id)));
 	});
 	let conversionRetry: HTMLFormElement | undefined = $state();
 
