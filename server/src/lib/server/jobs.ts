@@ -4,8 +4,9 @@ import { prepared } from './statements';
 import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
 import type { CoverTarget } from '$lib/extract';
 
-// The in-process job runner (SPEC 6): 500 ms poll, concurrency 2,
-// transactional claim, startup recovery. No queue service, no second process.
+// The in-process job runner (SPEC 6): concurrency 2, transactional claim,
+// startup recovery. Creating a job wakes the runner at once; the 500 ms poll
+// is the safety net (issue #63). No queue service, no second process.
 
 export type JobKind =
 	| 'extract_url'
@@ -24,6 +25,10 @@ export const isCaptureKind = (k: string) => (CAPTURE_KINDS as readonly string[])
 /** The kinds whose job row is a draft (SPEC 6.5): the captures and generation (issue #41). */
 export const DRAFT_KINDS = [...CAPTURE_KINDS, 'generate'] as const;
 export const isDraftKind = (k: string) => (DRAFT_KINDS as readonly string[]).includes(k);
+
+/** Work nobody is standing over (issue #63): a capture or generation is
+ *  claimed ahead of these, and their old finished rows are pruned. */
+export const BACKGROUND_KINDS = ['cover', 'reconvert'] as const satisfies readonly JobKind[];
 
 export type JobRow = {
 	id: string;
@@ -77,7 +82,25 @@ export function createJob(
 		JSON.stringify(input),
 		now()
 	);
+	wake(db);
 	return id;
+}
+
+// The runners listening on each database. createJob is called from inside
+// transactions, so a wakeup is deferred to after the current task: the
+// runner then claims a committed row.
+const wakers = new WeakMap<Database, Set<() => void>>();
+
+function wake(db: Database): void {
+	const set = wakers.get(db);
+	if (set?.size) setImmediate(() => set.forEach((w) => w()));
+}
+
+function onCreate(db: Database, w: () => void): () => void {
+	let set = wakers.get(db);
+	if (!set) wakers.set(db, (set = new Set()));
+	set.add(w);
+	return () => set.delete(w);
 }
 
 /** The cover jobs in these statuses for a draft, or for a recipe directly or
@@ -143,16 +166,38 @@ export function recoverInterrupted(db: Database): number {
 		.run(ERROR_COPY.interrupted, now()).changes;
 }
 
+const BACKGROUND_SQL = BACKGROUND_KINDS.map((k) => `'${k}'`).join(', ');
+
 // Single-statement claim: atomic, so a future second process cannot
-// double-run a job (SPEC 6.1).
+// double-run a job (SPEC 6.1). Background kinds go last (issue #63), so a
+// cover backfill never makes the cook wait; otherwise oldest first.
 function claimNext(db: Database): JobRow | undefined {
 	return prepared(
 		db,
 		`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
-		 WHERE id = (SELECT id FROM job WHERE status = 'queued' ORDER BY created_at, id LIMIT 1)
+		 WHERE id = (SELECT id FROM job WHERE status = 'queued'
+		             ORDER BY kind IN (${BACKGROUND_SQL}), created_at, id LIMIT 1)
 		   AND status = 'queued'
 		 RETURNING *`
 	).get(now()) as JobRow | undefined;
+}
+
+/** How long finished background jobs are kept (issue #63). */
+export const PRUNE_AFTER_DAYS = 30;
+
+/** Deletes finished background jobs older than the retention period and
+ *  returns how many. Captures and generations back drafts and are kept, and
+ *  so is a cover job that found an image: it is the record that keeps the
+ *  backfill from putting back a cover the cook removed. */
+export function pruneJobs(db: Database, at = Date.now(), days = PRUNE_AFTER_DAYS): number {
+	const cutoff = new Date(at - days * 24 * 60 * 60 * 1000).toISOString();
+	return db
+		.prepare(
+			`DELETE FROM job
+			 WHERE kind IN (${BACKGROUND_SQL}) AND status IN ('done', 'failed') AND finished_at < ?
+			   AND NOT (kind = 'cover' AND json_extract(result_json, '$.image_id') IS NOT NULL)`
+		)
+		.run(cutoff).changes;
 }
 
 /** Runs once a job has finished, done or failed (issue #42: the capture push). */
@@ -178,30 +223,42 @@ async function run(db: Database, handlers: Handlers, job: JobRow, afterJob?: Aft
 		).run(code, ERROR_COPY[code], now(), job.id);
 	}
 	if (!afterJob) return;
-	// The job's outcome is already stored; nothing here may change it.
-	try {
-		await afterJob(db.prepare('SELECT * FROM job WHERE id = ?').get(job.id) as JobRow);
-	} catch (e) {
-		console.error(`after job ${job.id} (${job.kind}) failed:`, e);
-	}
+	// The job's outcome is already stored; nothing here may change it. Fire
+	// and forget (issue #63): a slow push send must not hold the job's slot.
+	const finished = db.prepare('SELECT * FROM job WHERE id = ?').get(job.id) as JobRow;
+	Promise.resolve()
+		.then(() => afterJob(finished))
+		.catch((e) => console.error(`after job ${job.id} (${job.kind}) failed:`, e));
 }
 
 const CONCURRENCY = 2;
 
 export function startRunner(db: Database, handlers: Handlers, pollMs = 500, afterJob?: AfterJob) {
 	let running = 0;
-	// Claims up to the free slots; returns completion of the jobs it started.
+	// Claims up to the free slots; a freed slot claims the next job straight
+	// away. Returns completion of the jobs it started and those they chained to.
 	const tick = (): Promise<void> => {
 		const started: Promise<void>[] = [];
 		while (running < CONCURRENCY) {
 			const job = claimNext(db);
 			if (!job) break;
 			running++;
-			started.push(run(db, handlers, job, afterJob).finally(() => running--));
+			started.push(
+				run(db, handlers, job, afterJob)
+					.finally(() => running--)
+					.then(tick)
+			);
 		}
 		return Promise.all(started).then(() => {});
 	};
 	const interval = setInterval(tick, pollMs);
 	interval.unref?.();
-	return { tick, stop: () => clearInterval(interval) };
+	const unsubscribe = onCreate(db, () => void tick());
+	return {
+		tick,
+		stop: () => {
+			clearInterval(interval);
+			unsubscribe();
+		}
+	};
 }

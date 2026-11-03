@@ -85,7 +85,8 @@ export function findRecipeCover(db: Database, recipeId: string): string | null {
 }
 
 /** Each search-step cover is one Claude call against the daily cap (ADR-027),
- *  and cover jobs queue ahead of fresh captures, so a backfill goes in batches. */
+ *  so a backfill goes in batches. Captures are claimed ahead of queued covers
+ *  (issue #63), so a batch never makes the cook wait. */
 export const BACKFILL_LIMIT = 20;
 
 /** The saved recipes the backfill covers: live, coverless, with no cover job

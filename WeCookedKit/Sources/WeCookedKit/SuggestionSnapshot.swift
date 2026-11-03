@@ -50,6 +50,14 @@ public struct SuggestionSnapshot: Codable, Hashable, Sendable {
 			savedAt: now)
 	}
 
+	/// Equal apart from `savedAt`: every day's pick would be the same, so the
+	/// file is not rewritten and the widget not reloaded.
+	public func sameContent(as other: SuggestionSnapshot?) -> Bool {
+		guard var other else { return false }
+		other.savedAt = savedAt
+		return other == self
+	}
+
 	/// The recipe for the day `date` falls on. Each day moves one step through
 	/// the book, so every recipe comes up before any repeats. Monday to
 	/// Thursday skip `project` recipes, unless the whole book is projects.
