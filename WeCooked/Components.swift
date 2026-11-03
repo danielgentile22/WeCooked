@@ -345,25 +345,36 @@ struct PhotoSources<Label: View>: View {
 			}
 		}
 		.fullScreenCover(isPresented: $cameraOpen) {
-			CameraPicker { data in Task { await accept(data) } }
+			CameraPicker { shot in Task { await accept(shot) } }
 				.ignoresSafeArea()
 		}
 	}
 
 	private func accept(_ raw: Data?) async {
 		guard let raw else { unreadable = true; return }
-		// ImageIO decoding a 48 MP photo takes long enough to hitch the main thread.
-		let jpeg = await Task.detached(priority: .userInitiated) { try? JPEG.normalise(raw) }.value
+		await accept { try JPEG.normalise(raw) }
+	}
+
+	/// The shot goes straight to the shrink as a bitmap, never encoded at full
+	/// size first (issue #77).
+	private func accept(_ shot: UIImage) async {
+		await accept { try JPEG.normalise(shot) }
+	}
+
+	/// Shrinks off the main thread: decoding or drawing a 48 MP photo takes
+	/// long enough to hitch it. One at a time, which bounds memory.
+	private func accept(_ shrink: @escaping @Sendable () throws -> Data) async {
+		let jpeg = await Task.detached(priority: .userInitiated) { try? shrink() }.value
 		guard let jpeg else { unreadable = true; return }
 		unreadable = false
 		await onJPEG(jpeg)
 	}
 }
 
-/// The system camera. Hands back the shot as JPEG; `JPEG.normalise` applies the
-/// orientation the camera wrote into it.
+/// The system camera. Hands back the shot as taken; `PhotoSources` shrinks it
+/// off the main thread with the orientation the camera reported.
 private struct CameraPicker: UIViewControllerRepresentable {
-	let onShot: (Data) -> Void
+	let onShot: (UIImage) -> Void
 	@Environment(\.dismiss) private var dismiss
 
 	func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -384,7 +395,7 @@ private struct CameraPicker: UIViewControllerRepresentable {
 		func imagePickerController(
 			_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
 		) {
-			if let data = (info[.originalImage] as? UIImage)?.jpegData(compressionQuality: 1) { parent.onShot(data) }
+			if let shot = info[.originalImage] as? UIImage { parent.onShot(shot) }
 			parent.dismiss()
 		}
 

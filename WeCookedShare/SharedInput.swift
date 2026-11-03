@@ -3,13 +3,14 @@ import UniformTypeIdentifiers
 import WeCookedKit
 
 /// What the share sheet handed over, reduced to the one input a capture takes.
-/// Safari shares a URL plus the page title as text; the URL wins.
-enum SharedInput: Sendable {
+/// Safari shares a URL plus the page title as text; the URL wins. Images stay
+/// unloaded so each one loads, shrinks and uploads in turn (issue #77).
+@MainActor enum SharedInput {
 	case link(URL)
 	case text(String)
-	case images([Data])
+	case images([NSItemProvider])
 
-	@MainActor static func read(_ items: [NSExtensionItem]) async -> SharedInput? {
+	static func read(_ items: [NSExtensionItem]) async -> SharedInput? {
 		let providers = items.flatMap { $0.attachments ?? [] }
 		for p in providers where p.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
 			if let url = await load(p, .url, as: webURL) { return .link(url) }
@@ -17,17 +18,19 @@ enum SharedInput: Sendable {
 		for p in providers where p.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
 			if let text = await load(p, .plainText, as: plainText) { return .text(text) }
 		}
-		var images: [Data] = []
-		for p in providers where p.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-			guard images.count < CaptureRequest.maxImages else { break }
-			if let data = await load(p, .image, as: imageData) { images.append(data) }
-		}
-		return images.isEmpty ? nil : .images(images)
+		let images = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
+		return images.isEmpty ? nil : .images(Array(images.prefix(CaptureRequest.maxImages)))
+	}
+
+	/// One shared image, loaded and shrunk to the upload JPEG off the main
+	/// thread. Nil when it could not be read.
+	static func page(_ provider: NSItemProvider) async -> Data? {
+		await load(provider, .image, as: pageJPEG)
 	}
 
 	/// The conversion runs inside the completion handler, so only a `Sendable`
 	/// value crosses back.
-	@MainActor private static func load<T: Sendable>(
+	private static func load<T: Sendable>(
 		_ provider: NSItemProvider, _ type: UTType, as convert: @escaping @Sendable (Any) -> T?
 	) async -> T? {
 		await withCheckedContinuation { continuation in
@@ -57,12 +60,13 @@ enum SharedInput: Sendable {
 	}
 
 	/// Photos arrive as data or a file URL; a screenshot shared straight from
-	/// the markup editor arrives as a `UIImage`.
-	private static let imageData: @Sendable (Any) -> Data? = { item in
+	/// the markup editor arrives as a `UIImage`, which is drawn straight to
+	/// JPEG rather than encoded as PNG first.
+	private static let pageJPEG: @Sendable (Any) -> Data? = { item in
 		switch item {
-		case let d as Data: d
-		case let u as URL where u.isFileURL: try? Data(contentsOf: u)
-		case let i as UIImage: i.pngData()
+		case let d as Data: try? JPEG.normalise(d)
+		case let u as URL where u.isFileURL: (try? Data(contentsOf: u)).flatMap { try? JPEG.normalise($0) }
+		case let i as UIImage: try? JPEG.normalise(i)
 		default: nil
 		}
 	}

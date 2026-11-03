@@ -123,6 +123,51 @@ public enum JPEG {
 		return try encode(image)
 	}
 
+	/// The same normalisation for a bitmap that was never encoded: a camera
+	/// shot or a shared screenshot. Draws it once at the capped size with the
+	/// orientation applied and encodes once, so the shot skips the full-size
+	/// encode and decode `normalise(_ data:)` would cost.
+	public static func normalise(_ image: CGImage, orientation: CGImagePropertyOrientation) throws -> Data {
+		let turned = orientation.rawValue >= 5
+		let longEdge = max(image.width, image.height)
+		let scale = longEdge > maxEdge ? CGFloat(maxEdge) / CGFloat(longEdge) : 1
+		// The stored bitmap at the target scale, before turning.
+		let w = (CGFloat(image.width) * scale).rounded()
+		let h = (CGFloat(image.height) * scale).rounded()
+		let (outW, outH) = turned ? (Int(h), Int(w)) : (Int(w), Int(h))
+		let space =
+			image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+		guard let ctx = CGContext(
+			data: nil, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,
+			space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+		else { throw Failure.encodingFailed }
+		ctx.interpolationQuality = .high
+		ctx.concatenate(transform(orientation, width: w, height: h))
+		ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+		guard let drawn = ctx.makeImage() else { throw Failure.encodingFailed }
+		return try encode(drawn)
+	}
+
+	/// Maps the stored bitmap, drawn at (0, 0, w, h), onto the upright output
+	/// in Core Graphics coordinates (y up). Each case is the EXIF meaning of
+	/// the tag; `aBitmapComesOutAsTheTaggedFileWould` checks all eight
+	/// against ImageIO.
+	private static func transform(_ o: CGImagePropertyOrientation, width w: CGFloat, height h: CGFloat)
+		-> CGAffineTransform
+	{
+		switch o {
+		case .up: .identity
+		case .upMirrored: CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: w, ty: 0)
+		case .down: CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: w, ty: h)
+		case .downMirrored: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: h)
+		case .leftMirrored: CGAffineTransform(a: 0, b: -1, c: -1, d: 0, tx: h, ty: w)
+		case .right: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: w)
+		case .rightMirrored: CGAffineTransform(a: 0, b: 1, c: 1, d: 0, tx: 0, ty: 0)
+		case .left: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: h, ty: 0)
+		@unknown default: .identity
+		}
+	}
+
 	static func encode(_ image: CGImage) throws -> Data {
 		let out = NSMutableData()
 		guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else {

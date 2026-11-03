@@ -52,6 +52,8 @@ targets:
         excludes: ["*.entitlements"]
       # The widget's Cook button runs in the app, so the app compiles it too.
       - path: WeCookedWidget/CookRecipeIntent.swift
+      # Camera shots and shared screenshots shrink the same way.
+      - path: WeCookedShare/BitmapJPEG.swift
     dependencies:
       - package: WeCookedKit
         product: WeCookedKit

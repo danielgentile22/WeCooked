@@ -43,6 +43,69 @@ struct JPEGTests {
 		#expect((props[kCGImagePropertyOrientation] as? Int ?? 1) == 1)
 	}
 
+	/// Four flat quadrants, red, green, blue and white from the top left, so
+	/// a wrong rotation or mirror moves a colour.
+	static func quadrants(width: Int, height: Int) throws -> CGImage {
+		let ctx = try #require(CGContext(
+			data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+			space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+		let (w, h) = (CGFloat(width) / 2, CGFloat(height) / 2)
+		// Core Graphics puts y = 0 at the bottom.
+		for (rect, rgb) in [
+			(CGRect(x: 0, y: h, width: w, height: h), (1.0, 0.0, 0.0)),
+			(CGRect(x: w, y: h, width: w, height: h), (0.0, 1.0, 0.0)),
+			(CGRect(x: 0, y: 0, width: w, height: h), (0.0, 0.0, 1.0)),
+			(CGRect(x: w, y: 0, width: w, height: h), (1.0, 1.0, 1.0)),
+		] {
+			ctx.setFillColor(CGColor(red: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1))
+			ctx.fill(rect)
+		}
+		return try #require(ctx.makeImage())
+	}
+
+	/// The colour at the centre of each quadrant of a decoded image, top left
+	/// first, each channel rounded to 0 or 1.
+	static func corners(_ jpeg: Data) throws -> [[Int]] {
+		let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+		let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+		let (w, h) = (image.width, image.height)
+		var pixels = [UInt8](repeating: 0, count: w * h * 4)
+		let ctx = try #require(CGContext(
+			data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+			space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+		ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+		// The buffer's first row is the top of the image.
+		return [(w / 4, h / 4), (3 * w / 4, h / 4), (w / 4, 3 * h / 4), (3 * w / 4, 3 * h / 4)].map { x, y in
+			(0..<3).map { Int(pixels[(y * w + x) * 4 + $0]) > 127 ? 1 : 0 }
+		}
+	}
+
+	/// Issue #77: camera shots and shared screenshots arrive as bitmaps. They
+	/// go straight to the shrink with their orientation, and come out as
+	/// ImageIO's path makes them from an encoded file with that tag.
+	@Test(arguments: 1...8)
+	func aBitmapComesOutAsTheTaggedFileWould(orientation: UInt32) throws {
+		let bitmap = try Self.quadrants(width: 80, height: 40)
+		let tagged = NSMutableData()
+		let dest = try #require(CGImageDestinationCreateWithData(tagged, UTType.png.identifier as CFString, 1, nil))
+		CGImageDestinationAddImage(dest, bitmap, [kCGImagePropertyOrientation: orientation] as CFDictionary)
+		#expect(CGImageDestinationFinalize(dest))
+		let expected = try JPEG.normalise(tagged as Data)
+
+		let out = try JPEG.normalise(bitmap, orientation: try #require(CGImagePropertyOrientation(rawValue: orientation)))
+		#expect(out.starts(with: [0xFF, 0xD8]), "JPEG magic")
+		let size = try #require(JPEG.size(of: out))
+		let want = try #require(JPEG.size(of: expected))
+		#expect(size.width == want.width && size.height == want.height)
+		#expect(try Self.corners(out) == Self.corners(expected))
+	}
+
+	@Test func aBitmapIsCappedAtThreeThousandAfterRotating() throws {
+		let out = try JPEG.normalise(try Self.quadrants(width: 2000, height: 4000), orientation: .right)
+		let size = try #require(JPEG.size(of: out))
+		#expect(size.width == 3000 && size.height == 1500)
+	}
+
 	@Test func garbageIsUnreadable() {
 		#expect(throws: JPEG.Failure.self) { try JPEG.normalise(Data("not an image".utf8)) }
 	}

@@ -115,18 +115,22 @@ import WeCookedKit
 		context?.cancelRequest(withError: NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError))
 	}
 
-	private func upload(_ images: [Data]) async {
+	/// Each image loads, shrinks and starts uploading before the next one
+	/// loads. One decode at a time: ten full-size bitmaps at once can pass the
+	/// extension's memory limit. Uploads still overlap.
+	private func upload(_ images: [NSItemProvider]) async {
 		phase = .ready(.images(images.indices.map { Page(id: $0, state: .uploading) }))
 		let client = client
 		do {
-			try await withThrowingTaskGroup(of: (Int, ImageID).self) { group in
-				for (index, data) in images.enumerated() {
-					// One decode at a time: ten full-size bitmaps at once can pass
-					// the extension's memory limit. Uploads still overlap.
-					let jpeg = try await Self.normalised(data)
-					group.addTask { (index, try await client.uploadImage(jpeg, role: .capture).id) }
+			try await withThrowingTaskGroup(of: Void.self) { group in
+				for (index, provider) in images.enumerated() {
+					guard let jpeg = await SharedInput.page(provider) else { throw JPEG.Failure.unreadable }
+					group.addTask {
+						let id = try await client.uploadImage(jpeg, role: .capture).id
+						await self.markUploaded(index, id)
+					}
 				}
-				for try await (index, id) in group { markUploaded(index, id) }
+				try await group.waitForAll()
 			}
 		} catch is JPEG.Failure {
 			phase = .failed("One of these images could not be read. Try a screenshot instead.")
@@ -139,9 +143,5 @@ import WeCookedKit
 		guard case .ready(.images(var pages)) = phase else { return }
 		pages[index].state = .uploaded(id)
 		phase = .ready(.images(pages))
-	}
-
-	@concurrent private nonisolated static func normalised(_ data: Data) async throws -> Data {
-		try JPEG.normalise(data)
 	}
 }
