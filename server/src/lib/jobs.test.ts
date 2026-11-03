@@ -1,21 +1,69 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pollJob, type JobPoll } from './jobs';
+import { pollJob, TIMEOUT_COPY, type JobPoll } from './jobs';
 
-const running: JobPoll = { status: 'running', error_code: null, error_text: null, result_ref: null };
+const poll = (status: JobPoll['status']): JobPoll => ({
+	status,
+	error_code: null,
+	error_text: null,
+	result_ref: status === 'done' ? 'v1' : null
+});
+const running = poll('running');
+
+/** A fetch that replays `statuses` and records each URL; each call "takes" `ms`. */
+function fakeFetch(statuses: JobPoll['status'][], ms = 0) {
+	const urls: string[] = [];
+	const fn = (async (url: string) => {
+		urls.push(url);
+		vi.setSystemTime(Date.now() + ms);
+		const s = statuses[Math.min(urls.length - 1, statuses.length - 1)];
+		return Response.json(poll(s));
+	}) as unknown as typeof fetch;
+	return { fn, urls };
+}
+
+describe('pollJob long-poll (issue #65)', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('asks the server to hold the reply and re-asks straight away on a change', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { fn, urls } = fakeFetch(['queued', 'running', 'done']);
+		expect(await pollJob('j1', { fetchFn: fn })).toEqual(poll('done'));
+		expect(urls).toEqual(Array(3).fill('/api/jobs/j1?wait=25'));
+	});
+
+	it('gives up at 5 minutes, never asking to wait past it', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { fn, urls } = fakeFetch(['running'], 25_000);
+		const r = await pollJob('j1', { fetchFn: fn });
+		expect(r).toEqual({ status: 'timeout', error_code: null, error_text: TIMEOUT_COPY, result_ref: null });
+		expect(urls.length).toBe(12);
+		expect(urls.every((u) => u === '/api/jobs/j1?wait=25')).toBe(true);
+	});
+});
 
 describe('pollJob cancellation (issue #66)', () => {
 	afterEach(() => vi.useRealTimers());
 
 	it('stops polling and rejects once its page aborts the signal', async () => {
 		vi.useFakeTimers();
-		const fetchFn = vi.fn(async () => Response.json(running));
+		// The server holds each request for its whole wait (issue #65).
+		const fetchFn = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((resolve, reject) => {
+					const t = setTimeout(() => resolve(Response.json(running)), 25_000);
+					init?.signal?.addEventListener('abort', () => {
+						clearTimeout(t);
+						reject(init.signal!.reason);
+					});
+				})
+		);
 		const page = new AbortController();
 		const poll = pollJob('j1', { signal: page.signal, fetchFn: fetchFn as typeof fetch });
 		const settled = poll.then(
 			() => 'resolved',
 			(e: unknown) => (e as Error).name
 		);
-		await vi.advanceTimersByTimeAsync(1500);
+		await vi.advanceTimersByTimeAsync(25_000);
 		expect(fetchFn).toHaveBeenCalledTimes(2);
 		page.abort();
 		expect(await settled).toBe('AbortError');

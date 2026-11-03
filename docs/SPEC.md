@@ -744,8 +744,16 @@ visible failure the user can retry, not as a row that hangs forever.
 
 `GET /api/jobs/:id` returns `{status, error_code, error_text, result_ref}`.
 
-Client polls every **1.5 s**, backing off to 5 s after 30 s, and stops at 5
-minutes with a timeout message. No websockets for two users.
+`?wait=` seconds (at most 25) makes it a long-poll (issue #65): the reply is
+held until the job's status differs from what it was when the request arrived,
+or the wait elapses, and then carries the current status. A finished or
+unknown job, or no `wait`, answers at once, as older clients expect.
+
+Clients long-poll with `wait=25` and ask again as soon as a reply comes back,
+stopping at 5 minutes with a timeout message. A reply the server did not hold
+(a dropped connection, or a server from before the long-poll) falls back to
+polling every **1.5 s**, backing off to 5 s after 30 s. No websockets for two
+users.
 
 ### 6.4 Error codes and what the UI says
 

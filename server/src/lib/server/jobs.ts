@@ -82,26 +82,32 @@ export function createJob(
 		JSON.stringify(input),
 		now()
 	);
-	wake(db);
+	created.emit(db);
 	return id;
 }
 
-// The runners listening on each database. createJob is called from inside
-// transactions, so a wakeup is deferred to after the current task: the
-// runner then claims a committed row.
-const wakers = new WeakMap<Database, Set<() => void>>();
-
-function wake(db: Database): void {
-	const set = wakers.get(db);
-	if (set?.size) setImmediate(() => set.forEach((w) => w()));
+// In-process listeners per database: runners hear a job created, status
+// long-polls hear a job change status (issue #65). createJob is called from
+// inside transactions, so every emit is deferred to after the current task:
+// a listener then reads a committed row.
+function channel() {
+	const listeners = new WeakMap<Database, Set<() => void>>();
+	return {
+		emit(db: Database): void {
+			const set = listeners.get(db);
+			if (set?.size) setImmediate(() => set.forEach((l) => l()));
+		},
+		on(db: Database, l: () => void): () => void {
+			let set = listeners.get(db);
+			if (!set) listeners.set(db, (set = new Set()));
+			set.add(l);
+			return () => set.delete(l);
+		}
+	};
 }
 
-function onCreate(db: Database, w: () => void): () => void {
-	let set = wakers.get(db);
-	if (!set) wakers.set(db, (set = new Set()));
-	set.add(w);
-	return () => set.delete(w);
-}
+const created = channel();
+const changed = channel();
 
 /** The cover jobs in these statuses for a draft, or for a recipe directly or
  *  through the draft that became it (issue #44). Newest first. cover_owner
@@ -156,14 +162,67 @@ export function getJobPoll(db: Database, id: string): JobPoll | null {
 	};
 }
 
+/** Longest a status request may be held open (issue #65): well inside the
+ *  phone's 60 s request timeout and Fly's proxy idle timeout. */
+export const MAX_WAIT_MS = 25_000;
+
+/** `?wait=` in seconds as milliseconds, capped at MAX_WAIT_MS; absent is 0
+ *  (answer at once, as older clients expect); anything else unreadable is null. */
+export function parseWait(raw: string | null): number | null {
+	if (raw === null || raw === '') return 0;
+	const s = Number(raw);
+	if (!Number.isFinite(s) || s < 0) return null;
+	return Math.min(Math.round(s * 1000), MAX_WAIT_MS);
+}
+
+// The runner announces every status it writes; this re-read catches any
+// other writer (a retry re-queueing a job) without making it announce too.
+const RECHECK_MS = 1000;
+
+/**
+ * The status long-poll (issue #65): answers as soon as the job's status
+ * differs from what it was on arrival, when `waitMs` elapses, or when the
+ * client goes away. A finished or unknown job, or no wait, answers at once.
+ */
+export function waitForJobPoll(
+	db: Database,
+	id: string,
+	waitMs: number,
+	signal?: AbortSignal
+): Promise<JobPoll | null> {
+	const first = getJobPoll(db, id);
+	if (!first || waitMs <= 0 || first.status === 'done' || first.status === 'failed' || signal?.aborted)
+		return Promise.resolve(first);
+	return new Promise((resolve) => {
+		const check = () => {
+			const poll = getJobPoll(db, id);
+			if (poll?.status !== first.status) finish(poll);
+		};
+		const finish = (poll: JobPoll | null) => {
+			clearTimeout(timer);
+			clearInterval(recheck);
+			unsubscribe();
+			signal?.removeEventListener('abort', gone);
+			resolve(poll);
+		};
+		const gone = () => finish(getJobPoll(db, id));
+		const timer = setTimeout(gone, waitMs);
+		const recheck = setInterval(check, RECHECK_MS);
+		const unsubscribe = changed.on(db, check);
+		signal?.addEventListener('abort', gone, { once: true });
+	});
+}
+
 /** SPEC 6.2: on boot, anything left running failed with 'interrupted'. */
 export function recoverInterrupted(db: Database): number {
-	return db
+	const n = db
 		.prepare(
 			`UPDATE job SET status = 'failed', error_code = 'interrupted', error_text = ?, finished_at = ?
 			 WHERE status = 'running'`
 		)
-		.run(ERROR_COPY.interrupted, now()).changes;
+		.run(ERROR_COPY.interrupted, now());
+	if (n.changes) changed.emit(db);
+	return n.changes;
 }
 
 const BACKGROUND_SQL = BACKGROUND_KINDS.map((k) => `'${k}'`).join(', ');
@@ -172,7 +231,7 @@ const BACKGROUND_SQL = BACKGROUND_KINDS.map((k) => `'${k}'`).join(', ');
 // double-run a job (SPEC 6.1). Background kinds go last (issue #63), so a
 // cover backfill never makes the cook wait; otherwise oldest first.
 function claimNext(db: Database): JobRow | undefined {
-	return prepared(
+	const job = prepared(
 		db,
 		`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
 		 WHERE id = (SELECT id FROM job WHERE status = 'queued'
@@ -180,6 +239,8 @@ function claimNext(db: Database): JobRow | undefined {
 		   AND status = 'queued'
 		 RETURNING *`
 	).get(now()) as JobRow | undefined;
+	if (job) changed.emit(db);
+	return job;
 }
 
 /** How long finished background jobs are kept (issue #63). */
@@ -222,6 +283,7 @@ async function run(db: Database, handlers: Handlers, job: JobRow, afterJob?: Aft
 			`UPDATE job SET status = 'failed', error_code = ?, error_text = ?, finished_at = ? WHERE id = ?`
 		).run(code, ERROR_COPY[code], now(), job.id);
 	}
+	changed.emit(db);
 	if (!afterJob) return;
 	// The job's outcome is already stored; nothing here may change it. Fire
 	// and forget (issue #63): a slow push send must not hold the job's slot.
@@ -253,7 +315,7 @@ export function startRunner(db: Database, handlers: Handlers, pollMs = 500, afte
 	};
 	const interval = setInterval(tick, pollMs);
 	interval.unref?.();
-	const unsubscribe = onCreate(db, () => void tick());
+	const unsubscribe = created.on(db, () => void tick());
 	return {
 		tick,
 		stop: () => {

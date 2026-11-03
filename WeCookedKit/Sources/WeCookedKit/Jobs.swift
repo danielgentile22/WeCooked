@@ -8,8 +8,13 @@ import Foundation
 // screen holds a job id and no job id is persisted on the phone: a relaunch
 // re-reads the cached reply and the wait resumes from there.
 
-/// 1.5 s for the first 30 s, then 5 s, then give up after 5 minutes.
+/// Each status request asks the server to hold the reply up to `longPoll`,
+/// answering the moment the job's status changes (issue #65), and the wait
+/// gives up after 5 minutes. The 1.5 s then 5 s sleeps are only for a reply
+/// the server did not hold (a dropped connection, or a server from before
+/// the long-poll).
 public enum PollSchedule {
+	public static let longPoll: Duration = .seconds(25)
 	public static let fast: Duration = .milliseconds(1500)
 	public static let slow: Duration = .seconds(5)
 	public static let fastWindow: Duration = .seconds(30)
@@ -22,6 +27,11 @@ public enum PollSchedule {
 	public static func delay(afterElapsed elapsed: Duration) -> Duration? {
 		if elapsed >= timeout { return nil }
 		return elapsed < fastWindow ? fast : slow
+	}
+
+	/// How long the next request may be held, or nil once the budget is spent.
+	public static func hold(afterElapsed elapsed: Duration) -> Duration? {
+		elapsed >= timeout ? nil : min(longPoll, timeout - elapsed)
 	}
 }
 
@@ -47,20 +57,21 @@ public enum JobOutcome: Sendable, Hashable {
 public struct JobPoller: Sendable {
 	public typealias Instant = ContinuousClock.Instant
 
-	private let fetch: @Sendable (JobID) async throws -> JobPoll
+	/// The job's status, held by the server up to the given wait.
+	private let fetch: @Sendable (JobID, Duration) async throws -> JobPoll
 	private let sleep: @Sendable (Duration) async throws -> Void
 	private let now: @Sendable () -> Instant
 
 	public init(api: APIClient) {
-		fetch = { try await api.job($0) }
+		fetch = { try await api.job($0, wait: $1) }
 		sleep = { try await Task.sleep(for: $0) }
 		now = { ContinuousClock.now }
 	}
 
-	/// Seam for tests: a scripted `fetch`, a `sleep` that records instead of
-	/// waiting, and a `now` the fake sleep advances.
+	/// Seam for tests: a scripted `fetch` (given the wait it may be held), a
+	/// `sleep` that records instead of waiting, and a `now` the fakes advance.
 	public init(
-		fetch: @escaping @Sendable (JobID) async throws -> JobPoll,
+		fetch: @escaping @Sendable (JobID, Duration) async throws -> JobPoll,
 		sleep: @escaping @Sendable (Duration) async throws -> Void,
 		now: @escaping @Sendable () -> Instant
 	) {
@@ -69,18 +80,26 @@ public struct JobPoller: Sendable {
 		self.now = now
 	}
 
-	/// Poll until the job finishes or the schedule runs out. Cancellation (the
-	/// reply stopped listing the job, or sign-out) throws `CancellationError`;
-	/// the job itself keeps running on the server. A dropped connection is
-	/// retried on the schedule (up to three in a row) instead of failing the
-	/// wait, because a phone walking between rooms is normal; every other API
-	/// error, including 401, ends it.
+	/// Poll until the job finishes or the schedule runs out. A reply the server
+	/// held, or one whose status changed, is asked again at once. Cancellation
+	/// (the reply stopped listing the job, or sign-out) throws
+	/// `CancellationError`; the job itself keeps running on the server. A
+	/// dropped connection is retried on the schedule (up to three in a row)
+	/// instead of failing the wait, because a phone walking between rooms is
+	/// normal; every other API error, including 401, ends it.
 	public func wait(for id: JobID) async throws -> JobOutcome {
 		let start = now()
 		var dropped = 0
+		var last: JobStatus?
 		while true {
+			// A re-ask at once never reaches `sleep`, so cancellation is checked here.
+			try Task.checkCancellation()
+			guard let hold = PollSchedule.hold(afterElapsed: start.duration(to: now())) else {
+				return .timedOut
+			}
+			let asked = now()
 			do {
-				let poll = try await fetch(id)
+				let poll = try await fetch(id, hold)
 				dropped = 0
 				switch poll.status {
 				case .done: return .done(resultRef: poll.resultRef)
@@ -89,6 +108,10 @@ public struct JobPoller: Sendable {
 				case .timeout: return .timedOut
 				case .queued, .running, .unknown: break
 				}
+				let held = asked.duration(to: now()) >= hold / 2
+				let changed = poll.status != last
+				last = poll.status
+				if held || changed { continue }
 			} catch let e as APIError where e.isTransient {
 				dropped += 1
 				if dropped > 3 { throw e }

@@ -918,6 +918,10 @@ later without touching the data model.
 **Three rules adopted with it.**
 
 1. **Poll at 1.5 s, back off after 30 s.** No websockets for two users.
+   **Amended 2026-11-03 (issue #65).** The poll is a long-poll: the client
+   passes `wait`, the server answers when the status changes, so a finished
+   job is seen at once instead of up to 5 s late. Still one endpoint and no
+   socket; the 1.5 s schedule is the fallback for an unheld reply.
 2. **Failures are visible, never silent.** A failed job stays in the list as
    "extraction failed, tap to see why", and tapping opens the review form with
    the source attached.

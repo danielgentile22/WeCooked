@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from './migrate';
-import { createJob, pruneJobs, recoverInterrupted, startRunner, JobError, type JobRow } from './jobs';
+import {
+	createJob,
+	parseWait,
+	pruneJobs,
+	recoverInterrupted,
+	startRunner,
+	waitForJobPoll,
+	JobError,
+	MAX_WAIT_MS,
+	type JobRow
+} from './jobs';
 import { ERROR_COPY } from '$lib/jobs';
 
 function testDb() {
@@ -239,5 +249,86 @@ describe('job runner (SPEC 6)', () => {
 			'no_recipe_found',
 			'quota_exceeded'
 		]);
+	});
+});
+
+describe('job status long-poll (issue #65)', () => {
+	/** Settles after `ms` with 'pending', so a test can tell "still waiting" from an answer. */
+	const within = <T>(p: Promise<T>, ms: number) =>
+		Promise.race([p, new Promise<'pending'>((r) => setTimeout(() => r('pending'), ms))]);
+
+	it('without a wait answers at once, as today', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		expect(await within(waitForJobPoll(db, id, 0), 20)).toMatchObject({ status: 'queued' });
+	});
+
+	it('answers an unknown job with null at once', async () => {
+		expect(await within(waitForJobPoll(testDb(), 'missing', 5000), 20)).toBeNull();
+	});
+
+	it('answers a finished job at once even with a wait', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		const runner = startRunner(db, { reconvert: async () => null });
+		runner.stop();
+		await runner.tick();
+		expect(await within(waitForJobPoll(db, id, 5000), 20)).toMatchObject({ status: 'done' });
+	});
+
+	it('answers as soon as the status changes', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		let finish!: () => void;
+		const runner = startRunner(db, {
+			reconvert: () => new Promise<null>((r) => (finish = () => r(null)))
+		});
+		runner.stop();
+
+		const started = waitForJobPoll(db, id, 5000);
+		expect(await within(started, 20)).toBe('pending');
+		const done = runner.tick();
+		expect(await within(started, 50)).toMatchObject({ status: 'running' });
+
+		const finished = waitForJobPoll(db, id, 5000);
+		expect(await within(finished, 20)).toBe('pending');
+		finish();
+		await done;
+		expect(await within(finished, 50)).toMatchObject({ status: 'done', error_code: null });
+	});
+
+	it('answers a failure as soon as it is stored', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		db.prepare("UPDATE job SET status = 'running' WHERE id = ?").run(id);
+		const waiting = waitForJobPoll(db, id, 5000);
+		recoverInterrupted(db);
+		expect(await within(waiting, 50)).toMatchObject({ status: 'failed', error_code: 'interrupted' });
+	});
+
+	it('answers with the unchanged status when the wait elapses', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		const waiting = waitForJobPoll(db, id, 60);
+		expect(await within(waiting, 30)).toBe('pending');
+		expect(await within(waiting, 200)).toMatchObject({ status: 'queued' });
+	});
+
+	it('answers when the client goes away', async () => {
+		const db = testDb();
+		const id = createJob(db, 'reconvert', {});
+		const gone = new AbortController();
+		const waiting = waitForJobPoll(db, id, 5000, gone.signal);
+		gone.abort();
+		expect(await within(waiting, 20)).toMatchObject({ status: 'queued' });
+	});
+
+	it('reads ?wait= in seconds, capped, and refuses nonsense', () => {
+		expect(parseWait(null)).toBe(0);
+		expect(parseWait('')).toBe(0);
+		expect(parseWait('2.5')).toBe(2500);
+		expect(parseWait('600')).toBe(MAX_WAIT_MS);
+		expect(parseWait('-1')).toBeNull();
+		expect(parseWait('soon')).toBeNull();
 	});
 });
