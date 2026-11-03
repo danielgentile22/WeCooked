@@ -95,6 +95,46 @@ public actor ImageStore {
 	}
 }
 
+/// Decoding at the size an image shows (issue #73). A 56pt row tile needs a
+/// 168px square at 3x, not the 1200px display copy's 5.7 MB bitmap: ImageIO
+/// decodes straight to the smaller size, orientation applied, and the app's
+/// decoded cache charges each entry its bitmap bytes. CoreGraphics only, so it
+/// runs in the package tests.
+public enum ImageDecode {
+	/// The frame in pixels, each side rounded up to 32 so a frame settling by
+	/// a point or two keeps its decoded entry.
+	public static func pixels(_ points: CGSize, scale: CGFloat) -> CGSize {
+		func up(_ v: CGFloat) -> CGFloat { max(32, (v * scale / 32).rounded(.up) * 32) }
+		return CGSize(width: up(points.width), height: up(points.height))
+	}
+
+	/// The decoded cache's key: the stored object (`ImageStore.key`, so the
+	/// daily signature does not matter) at one frame size.
+	public static func key(_ url: URL, pixels: CGSize) -> String {
+		"\(ImageStore.key(for: url))@\(Int(pixels.width))x\(Int(pixels.height))"
+	}
+
+	/// Decoded just big enough to fill `pixels` the way `scaledToFill` does
+	/// (the short side covers the frame), never above the source.
+	public static func image(_ data: Data, toFill pixels: CGSize) -> CGImage? {
+		guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+			let size = JPEG.size(of: source), size.width > 0, size.height > 0
+		else { return nil }
+		let fill = max(pixels.width / CGFloat(size.width), pixels.height / CGFloat(size.height))
+		let longEdge = max(size.width, size.height)
+		let options: [CFString: Any] = [
+			kCGImageSourceCreateThumbnailFromImageAlways: true,
+			kCGImageSourceCreateThumbnailWithTransform: true,
+			kCGImageSourceThumbnailMaxPixelSize: min(longEdge, Int((CGFloat(longEdge) * fill).rounded(.up))),
+			kCGImageSourceShouldCacheImmediately: true,
+		]
+		return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+	}
+
+	/// What an entry costs the decoded cache: its bitmap bytes.
+	public static func cost(of image: CGImage) -> Int { image.bytesPerRow * image.height }
+}
+
 /// Client-side normalisation before upload, mirroring `server/src/lib/images.ts`:
 /// apply the EXIF orientation, cap the long edge at 3000 px, encode JPEG at
 /// quality 0.9. ImageIO only, so it runs in the package tests and inside the
@@ -136,8 +176,11 @@ public enum JPEG {
 	/// Pixel size of an encoded image, after orientation. Used by tests and by
 	/// the editor to show a photo's dimensions.
 	public static func size(of data: Data) -> (width: Int, height: Int)? {
-		guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-			let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+		CGImageSourceCreateWithData(data as CFData, nil).flatMap(size(of:))
+	}
+
+	static func size(of source: CGImageSource) -> (width: Int, height: Int)? {
+		guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
 			let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int
 		else { return nil }
 		let orientation = props[kCGImagePropertyOrientation] as? UInt32 ?? 1

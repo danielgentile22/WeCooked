@@ -181,7 +181,7 @@ struct CookingBody: View {
 			HStack(spacing: 10) {
 				ForEach(detail.images, id: \.id) { image in
 					let width = min(260, max(100, CGFloat(image.width) / CGFloat(max(image.height, 1)) * 140))
-					CachedImage(url: image.url)
+					CachedImage(url: image.thumbUrl)
 						.frame(width: width, height: 140)
 						.clipShape(.rect(cornerRadius: 10))
 				}

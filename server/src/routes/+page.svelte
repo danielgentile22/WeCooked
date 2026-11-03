@@ -179,8 +179,8 @@
 			{#each data.recipes as r (r.id)}
 				<li>
 					<a href="/recipes/{r.id}">
-						{#if r.cover_url}
-							<img class="thumb" src={r.cover_url} alt="" loading="lazy" />
+						{#if r.cover_thumb_url}
+							<img class="thumb" src={r.cover_thumb_url} alt="" loading="lazy" />
 						{:else}
 							<!-- D17: one identical neutral tile for every coverless recipe.
 						     Lucide's CookingPot stands in for the D16 glyph (D14: Lucide only). -->
