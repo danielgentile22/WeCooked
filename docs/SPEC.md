@@ -313,7 +313,7 @@ CREATE TABLE image (
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
   r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
-                                  -- only (migration 005, issue #71)
+                                  -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
   height         INTEGER NOT NULL,
   role           TEXT NOT NULL CHECK (role IN ('capture','photo')),
