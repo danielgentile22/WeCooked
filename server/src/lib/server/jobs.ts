@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
+import { prepared } from './statements';
 import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
 import type { CoverTarget } from '$lib/extract';
 
@@ -111,11 +112,10 @@ export const pendingCoverJob = (db: Database, target: CoverTarget): string | nul
 
 /** SPEC 6.3 polling contract, or null for an unknown job. */
 export function getJobPoll(db: Database, id: string): JobPoll | null {
-	const row = db
-		.prepare(
-			'SELECT status, error_code, error_text, recipe_id, variation_id, list_id FROM job WHERE id = ?'
-		)
-		.get(id) as
+	const row = prepared(
+		db,
+		'SELECT status, error_code, error_text, recipe_id, variation_id, list_id FROM job WHERE id = ?'
+	).get(id) as
 		| (Pick<JobPoll, 'status' | 'error_code' | 'error_text'> & {
 				recipe_id: string | null;
 				variation_id: string | null;
@@ -146,14 +146,13 @@ export function recoverInterrupted(db: Database): number {
 // Single-statement claim: atomic, so a future second process cannot
 // double-run a job (SPEC 6.1).
 function claimNext(db: Database): JobRow | undefined {
-	return db
-		.prepare(
-			`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
-			 WHERE id = (SELECT id FROM job WHERE status = 'queued' ORDER BY created_at, id LIMIT 1)
-			   AND status = 'queued'
-			 RETURNING *`
-		)
-		.get(now()) as JobRow | undefined;
+	return prepared(
+		db,
+		`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
+		 WHERE id = (SELECT id FROM job WHERE status = 'queued' ORDER BY created_at, id LIMIT 1)
+		   AND status = 'queued'
+		 RETURNING *`
+	).get(now()) as JobRow | undefined;
 }
 
 /** Runs once a job has finished, done or failed (issue #42: the capture push). */

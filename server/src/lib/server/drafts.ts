@@ -46,30 +46,53 @@ export function draftOf(job: DraftSource): RecipeDraft | null {
 		: (JSON.parse(job.result_json) as GenerateResult).candidates[picked];
 }
 
-function cardStatus(job: DraftSource): DraftCard['status'] {
-	if (job.status === 'failed') return 'failed';
-	if (job.status !== 'done') return job.kind === 'generate' ? 'generating' : 'extracting';
-	return isChoosing(job) ? 'choosing' : 'ready';
+/** One draft card's fields, read with json_extract so the list never parses
+ *  a whole extraction or a generation's three candidates (issue #64). */
+type CardRow = {
+	id: string;
+	kind: JobRow['kind'];
+	status: JobRow['status'];
+	/** The extraction's title, or the picked candidate's. */
+	title: string | null;
+	/** A generate job's input has picked: null until a candidate is chosen. */
+	picked: number | null;
+	description: string | null;
+	/** The start of a pasted capture's text, enough for its first line. */
+	text: string | null;
+	url: string | null;
+};
+
+function cardStatus(row: CardRow): DraftCard['status'] {
+	if (row.status === 'failed') return 'failed';
+	if (row.status !== 'done') return row.kind === 'generate' ? 'generating' : 'extracting';
+	return row.kind === 'generate' && row.picked === null ? 'choosing' : 'ready';
 }
 
-function cardTitle(job: DraftSource): string {
-	const title = draftOf(job)?.title;
-	if (title) return title;
-	if (job.kind === 'generate') return generateInput(job).description;
-	const input = JSON.parse(job.input_json) as CaptureInput;
-	return input.text?.trim().split('\n')[0]?.slice(0, 80) || input.url || 'Draft';
+function cardTitle(row: CardRow): string {
+	if (row.title) return row.title;
+	if (row.kind === 'generate') return row.description ?? 'Draft';
+	return row.text?.trim().split('\n')[0]?.slice(0, 80) || row.url || 'Draft';
 }
 
 /** The draft cards above the saved recipes on browse, newest first. */
 export function listDrafts(db: Database): DraftCard[] {
 	const rows = db
 		.prepare(
-			`SELECT id, kind, status, input_json, result_json FROM job
+			`SELECT id, kind, status,
+			   CASE WHEN kind = 'generate'
+			        THEN json_extract(result_json,
+			               '$.candidates[' || json_extract(input_json, '$.picked') || '].title')
+			        ELSE json_extract(result_json, '$.title') END AS title,
+			   json_extract(input_json, '$.picked') AS picked,
+			   json_extract(input_json, '$.description') AS description,
+			   substr(ltrim(json_extract(input_json, '$.text'), char(32, 9, 10, 13)), 1, 400) AS text,
+			   json_extract(input_json, '$.url') AS url
+			 FROM job
 			 WHERE kind IN (${DRAFT_KINDS.map(() => '?').join(',')}) AND recipe_id IS NULL
-			 ORDER BY created_at DESC`
+			 ORDER BY created_at DESC, id DESC`
 		)
-		.all(...DRAFT_KINDS) as (DraftSource & { id: string })[];
-	return rows.map((j) => ({ id: j.id, status: cardStatus(j), title: cardTitle(j) }));
+		.all(...DRAFT_KINDS) as CardRow[];
+	return rows.map((r) => ({ id: r.id, status: cardStatus(r), title: cardTitle(r) }));
 }
 
 /** The job behind a draft, or null if there is no such draft-kind job. */
