@@ -31,6 +31,16 @@ struct EditorSectionTests {
 		}
 	}
 
+	/// The Photos section reads `canFindCover` in its body.
+	@Test func typingDoesNotWakeTheFindCoverButton() throws {
+		let m = try Self.model()
+		let woke = CallCounter()
+		withObservationTracking { _ = m.canFindCover } onChange: { _ = woke.next() }
+		m.form.shown.ingredients[0].items[0] += "x"
+		m.form.title += "x"
+		#expect(woke.count == 0)
+	}
+
 	@Test func eachFieldWakesItsOwnSection() throws {
 		let m = try Self.model()
 		let edits: [(EditorSection, (EditorModel) -> Void)] = [

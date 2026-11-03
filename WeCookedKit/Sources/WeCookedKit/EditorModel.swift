@@ -373,8 +373,9 @@ public final class EditorModel {
 		case .editing, .saving: break
 		case .extracting, .extractionFailed, .choosing, .saved, .removed: return false
 		}
-		guard let cover = form.coverImageId else { return true }
-		return form.images.first { $0.id == cover }?.sourceUrl != nil
+		let photos = form(.photos)  // read in the Photos section's body
+		guard let cover = photos.coverImageId else { return true }
+		return photos.images.first { $0.id == cover }?.sourceUrl != nil
 	}
 
 	/// Each tap is a paid search, so the server refuses a second while one
