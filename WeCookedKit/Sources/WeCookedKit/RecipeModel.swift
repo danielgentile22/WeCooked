@@ -153,6 +153,14 @@ public final class RecipeModel {
 		env.store.resource(.recipe(recipeID, variation: variationID))
 	}
 
+	/// The list row this recipe was opened from, while its own reply has not
+	/// arrived: the screen shows its title and cover instead of a blank page.
+	/// Nil once the reply is there, or when no loaded list has the recipe.
+	public var preview: BrowseRow? {
+		guard resource.value == nil else { return nil }
+		return env.store.browseRow(recipeID)
+	}
+
 	/// Pure projection of the resource, this phone's units, its strikes, and
 	/// the Store's timed-out set.
 	public var display: RecipeDisplay? {

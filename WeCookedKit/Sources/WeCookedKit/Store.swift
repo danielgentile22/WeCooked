@@ -404,6 +404,15 @@ public final class Store {
 		}
 	}
 
+	/// The row for `id` in any browse list already in memory, so a recipe
+	/// opened from the list has its title and cover before its own reply.
+	public func browseRow(_ id: RecipeID) -> BrowseRow? {
+		for case let r as Resource<BrowseResponse> in distinctResources {
+			if let row = r.value?.recipes.first(where: { $0.id == id }) { return row }
+		}
+		return nil
+	}
+
 	/// Something changed on the server that these resources show. Watched ones
 	/// refetch now; the rest will on their next `watch`.
 	public func invalidate(_ families: Family...) {
@@ -475,9 +484,10 @@ public final class Store {
 		guard jobWaits[id] != nil else { return }
 		jobWaits[id] = nil
 		if outcome == .timedOut { timedOutJobs.insert(id) } else { endedJobs.insert(id) }
-		let owners = owners(of: id)
-		Task {
-			for r in owners { await r.revalidate() }
+		// Side by side: a list and the recipe it opened both list a scale, and
+		// the result should land on both in one step, not one after the other.
+		for r in owners(of: id) {
+			Task { await r.revalidate() }
 		}
 	}
 

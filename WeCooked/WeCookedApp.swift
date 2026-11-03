@@ -15,6 +15,13 @@ struct WeCookedApp: App {
 				.environment(env)
 				.environment(router)
 				.environment(delegate.push)
+				// The widget feeds read three caches and build snapshots, so they
+				// wait until the first frame is built rather than run in
+				// `makeEnvironment`, which is on the path to it.
+				.task {
+					await Task.yield()
+					env.startFeeds()
+				}
 				.onOpenURL { url in
 					if let link = DeepLink(url: url) { router.open(link) }
 				}

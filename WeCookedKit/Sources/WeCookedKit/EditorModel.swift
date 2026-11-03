@@ -209,7 +209,34 @@ public final class EditorModel {
 	public private(set) var coverSearch: CoverSearch = .idle
 	/// Every change is written through `device.saveEditorDraft` (debounced), and
 	/// restored silently on reopen. "Start over" needs a second tap.
-	public var form: EditorForm { didSet { persistDraft() } }
+	///
+	/// Observed per `EditorSection`, not as one value: reading `form` tracks
+	/// every section, `form(_:)` tracks one, and a write wakes only the
+	/// sections whose fields changed. Views read `form(_:)`.
+	public var form: EditorForm {
+		get {
+			for section in EditorSection.allCases { access(keyPath: \.[section: section]) }
+			return storedForm
+		}
+		set {
+			let touched = EditorSection.changed(from: storedForm, to: newValue)
+			guard !touched.isEmpty else { return }
+			for section in touched { _$observationRegistrar.willSet(self, keyPath: \.[section: section]) }
+			storedForm = newValue
+			for section in touched { _$observationRegistrar.didSet(self, keyPath: \.[section: section]) }
+			persistDraft()
+		}
+	}
+
+	/// The whole form, observed only for `section`'s fields.
+	public func form(_ section: EditorSection) -> EditorForm {
+		access(keyPath: \.[section: section])
+		return storedForm
+	}
+
+	@ObservationIgnored private var storedForm: EditorForm
+	/// One observation key per section; it holds nothing.
+	private nonisolated subscript(section _: EditorSection) -> Void { () }
 
 	@ObservationIgnored private let env: AppEnvironment
 	/// What the server holds now, as a form. The autosave is measured against
@@ -224,7 +251,7 @@ public final class EditorModel {
 	public init(origin: Origin, env: AppEnvironment) {
 		self.origin = origin
 		self.env = env
-		form = .blank(units: env.device.units)
+		storedForm = .blank(units: env.device.units)
 		switch origin {
 		case .draft(let job):
 			phase = .extracting
@@ -369,8 +396,9 @@ public final class EditorModel {
 		case .editing, .saving: break
 		case .extracting, .extractionFailed, .choosing, .saved, .removed: return false
 		}
-		guard let cover = form.coverImageId else { return true }
-		return form.images.first { $0.id == cover }?.sourceUrl != nil
+		let photos = form(.photos)  // read in the Photos section's body
+		guard let cover = photos.coverImageId else { return true }
+		return photos.images.first { $0.id == cover }?.sourceUrl != nil
 	}
 
 	/// Each tap is a paid search, so the server refuses a second while one
