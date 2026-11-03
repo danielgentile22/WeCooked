@@ -71,4 +71,23 @@ struct DraftCounterpartTests {
 		#expect(server.requests.filter { !$0.contains("/jobs/") } == ["POST \(path)/retry-conversion", "GET \(path)"])
 		#expect(model.conversion?.status == .converting)
 	}
+
+	@Test func aCounterpartArrivingOnAnEditedFormIsNotAnEditElsewhere() async throws {
+		let path = "/api/v1/drafts/\(Self.draft)"
+		let server = FakeServer([
+			"GET \(path)": FakeServer.json(String(decoding: try Fixtures.data("draft-get-ready"), as: UTF8.self))
+		])
+		let env = try EditorModelTests.env(server)
+		env.store.resource(.draft(Self.draft)).replace(try EditorModelTests.lookup("draft-get-converting"))
+		let model = EditorModel(origin: .draft(Self.draft), env: env)
+		model.form.title = "Edited while it converted"
+		// The reread when the conversion ends brings the ready draft.
+		let task = Task { await model.appear() }
+		defer { task.cancel() }
+
+		for _ in 0..<200 where model.form.other == nil { try await Task.sleep(for: .milliseconds(10)) }
+		#expect(model.form.other?.ingredients.first?.items == ["1 cup sugar", "2 lemons"])
+		#expect(model.form.title == "Edited while it converted")
+		#expect(!model.recipeChanged, "the conversion finishing is not the recipe changing")
+	}
 }

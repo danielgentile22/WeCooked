@@ -187,8 +187,13 @@ public struct EditorForm: Codable, Hashable, Sendable {
 	/// matches the bodies this form was started from: the other phone edited it
 	/// meanwhile. The screen shows "This recipe changed since you started
 	/// editing" and offers Start over.
+	/// A draft's counterpart arriving (issue #67) is not an edit elsewhere.
 	public func baselineDiffers(from fresh: EditorForm) -> Bool {
-		baseline != fresh.baseline
+		guard var mine = baseline, let theirs = fresh.baseline, mine.other == nil else {
+			return baseline != fresh.baseline
+		}
+		mine.other = theirs.other
+		return mine != theirs
 	}
 
 	/// This form's typed work, measured against `fresh`'s bodies. The payload
