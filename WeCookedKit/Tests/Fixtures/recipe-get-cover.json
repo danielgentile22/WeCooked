@@ -60,7 +60,7 @@
         "height": 600,
         "id": "01TEST00000000000000000050",
         "source_url": "https://images.example.com/omelette.jpg",
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000050/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=83c589cd5c33f1886499a077fb71a2d6621e0c7477043cc0222b1a99e741ccb5",
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000050/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=452a49520bad57d5775f14a776e94b7d30d366dcb952b62f2db4fac887353827",
         "width": 800
       }
     ],
