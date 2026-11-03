@@ -105,8 +105,8 @@ export function localStore(): LocalStore | null {
 	};
 }
 
-// No dot segments are possible: only the final ".jpg" may contain a dot.
-const SAFE_KEY = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\.jpg$/;
+// No dot segments are possible: only the final ".jpg" or ".webp" may contain a dot.
+const SAFE_KEY = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\.(jpg|webp)$/;
 
 export function localPath(store: LocalStore, key: string): string {
 	if (!SAFE_KEY.test(key)) throw new Error(`Unsafe image key: ${key}`);
