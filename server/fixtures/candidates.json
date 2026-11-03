@@ -67,6 +67,7 @@
         "cuisine": "chinese",
         "protein": "chicken",
         "effort": "quick",
+        "effort_override": null,
         "damage": "tidy"
       },
       "damage_reasoning": "1 wok + board and knife 1 = 2 points. The plate the chicken rests on is reused for serving. 2 points, tidy.",
@@ -139,6 +140,7 @@
         "cuisine": "central-european",
         "protein": "chicken",
         "effort": "weeknight",
+        "effort_override": null,
         "damage": "messy"
       },
       "damage_reasoning": "1 baking tray + 1 mixing bowl + board and knife 1 = 3 points, messy.",
@@ -221,6 +223,7 @@
         "cuisine": "japanese",
         "protein": "chicken",
         "effort": "weeknight",
+        "effort_override": null,
         "damage": "carnage"
       },
       "damage_reasoning": "1 frying pan + 3 bowls for the breading station + board and knife 1 = 5 points. Shallow frying in oil +2, breading +1 = 8 points, carnage.",

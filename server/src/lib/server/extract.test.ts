@@ -15,7 +15,11 @@ import {
 	pageImages,
 	photoBlocks,
 	stripHtml,
-	PHOTOS_INSTRUCTION
+	PHOTOS_INSTRUCTION,
+	CAPTION_PREAMBLE,
+	deriveEffort,
+	fromReply,
+	type ExtractReply
 } from './extract';
 import { migrate } from './migrate';
 import { JobError, type JobRow } from './jobs';
@@ -32,7 +36,7 @@ const draft = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
 	yield_count: 2,
 	yield_unit: 'servings',
 	prep_minutes: 10,
-	cook_minutes: 25,
+	cook_minutes: 15,
 	source_text: null,
 	body: {
 		source_units: 'metric',
@@ -478,10 +482,17 @@ describe('extract_url fallback (issue #39)', () => {
 	const sentContent = () =>
 		vi.mocked(claudeCall).mock.calls.map(([, req]) => req.messages[0].content);
 
-	it('extracts from the page when it is readable, ignoring the caption', async () => {
+	it('sends the caption with the page in the same call (issue #70)', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
 		const page = async () => '<p>Shakshuka from the page</p>';
 		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: page });
+		expect(sentContent()).toEqual([`Shakshuka from the page\n\n${CAPTION_PREAMBLE}${caption}`]);
+	});
+
+	it('sends the page alone when the capture has no caption', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
+		const page = async () => '<p>Shakshuka from the page</p>';
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: '  ' }), db, { fetchPage: page });
 		expect(sentContent()).toEqual(['Shakshuka from the page']);
 	});
 
@@ -499,13 +510,15 @@ describe('extract_url fallback (issue #39)', () => {
 		expect(claudeCall).not.toHaveBeenCalled();
 	});
 
-	it('falls back to the text when the page yields no recipe', async () => {
+	it('makes no second call when page and caption together yield no recipe (issue #70)', async () => {
 		const empty = draft();
 		empty.body.ingredients = [{ heading: null, items: [] }];
-		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(empty);
 		const page = async () => '<p>Log in to see this reel</p>';
-		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: page });
-		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
+		await expect(
+			extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: page })
+		).rejects.toMatchObject({ code: 'no_recipe_found' });
+		expect(claudeCall).toHaveBeenCalledTimes(1);
 	});
 
 	it('extracts from the phone-rendered page without fetching (issue #43)', async () => {
@@ -516,10 +529,8 @@ describe('extract_url fallback (issue #39)', () => {
 		expect(sentContent()).toEqual(['Rendered page']);
 	});
 
-	it('falls back to the text when the rendered page yields no recipe', async () => {
-		const empty = draft();
-		empty.body.ingredients = [{ heading: null, items: [] }];
-		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+	it('sends the caption with the rendered page in one call', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
 		const fetchSpy = vi.fn(async () => '<p>server copy</p>');
 		await extractUrl(
 			jobRow({ url: 'https://example.com/r', page: 'Log in to see this reel', text: caption }),
@@ -527,7 +538,11 @@ describe('extract_url fallback (issue #39)', () => {
 			{ fetchPage: fetchSpy }
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();
-		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
+		expect(sentContent()).toEqual([`Log in to see this reel\n\n${CAPTION_PREAMBLE}${caption}`]);
+	});
+
+	it('tells Claude to extract from the caption when the page holds no recipe', () => {
+		expect(EXTRACT_SYSTEM).toContain(CAPTION_PREAMBLE.replace(/: $/, ''));
 	});
 });
 
@@ -581,9 +596,7 @@ describe('as-written body only (issue #67)', () => {
 	it('queues one conversion for a URL capture that fell back to the caption', async () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		const empty = draft();
-		empty.body.ingredients = [];
-		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
 		await extractUrl(
 			{
 				id: 'url-job',
@@ -593,5 +606,74 @@ describe('as-written body only (issue #67)', () => {
 			db
 		);
 		expect(conversions(db)).toHaveLength(1);
+	});
+});
+
+describe('effort derived from minutes (issue #70)', () => {
+	it('is quick under 30, weeknight from 30 to 60, project over 60', () => {
+		expect(deriveEffort(10, 19, null)).toBe('quick');
+		expect(deriveEffort(10, 20, null)).toBe('weeknight');
+		expect(deriveEffort(null, 60, null)).toBe('weeknight');
+		expect(deriveEffort(20, 41, null)).toBe('project');
+		expect(deriveEffort(25, null, null)).toBe('quick');
+	});
+
+	it('takes the model override to project when minutes miss a rest', () => {
+		expect(deriveEffort(15, 10, 'project')).toBe('project');
+	});
+
+	it('falls back to weeknight when the source gives no times', () => {
+		expect(deriveEffort(null, null, null)).toBe('weeknight');
+	});
+
+	const reply = (over: Partial<ExtractReply['tags']> = {}, minutes = { prep: 15, cook: 10 }): ExtractReply => {
+		const { tags, ...rest } = draft({ prep_minutes: minutes.prep, cook_minutes: minutes.cook });
+		const { effort: _, ...others } = tags;
+		return { ...rest, tags: { ...others, effort_override: null, ...over } };
+	};
+
+	it('asks Claude for an override, not for effort itself', () => {
+		const tags = RECIPE_DRAFT_SCHEMA.properties.tags;
+		expect(tags.properties).not.toHaveProperty('effort');
+		expect(tags.properties.effort_override).toEqual({ enum: ['project', null] });
+		expect(tags.required).toContain('effort_override');
+	});
+
+	it('turns a reply into a draft with effort set and no override field', () => {
+		const d = fromReply(reply());
+		expect(d.tags.effort).toBe('quick');
+		expect(d.tags).not.toHaveProperty('effort_override');
+		expect(fromReply(reply({ effort_override: 'project' })).tags.effort).toBe('project');
+	});
+
+	it('an overnight rest the minutes miss comes out project', async () => {
+		const db = new Database(':memory:');
+		migrate(db, 'migrations');
+		// 20 minutes of work and a night in the fridge: the minutes alone say quick.
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(reply({ effort_override: 'project' }, { prep: 20, cook: 0 }));
+		const out = (await extractPaste(
+			{ id: 'paste-job', kind: 'extract_paste', input_json: '{"text":"rest overnight"}' } as JobRow,
+			db
+		)) as RecipeDraft;
+		expect(out.tags.effort).toBe('project');
+	});
+
+	it('tells Claude when to override, and that effort is not its call otherwise', () => {
+		expect(EXTRACT_SYSTEM).toMatch(/effort_override/);
+		expect(EXTRACT_SYSTEM).toMatch(/overnight/);
+	});
+});
+
+describe('damage reasoning in one sentence (issue #70)', () => {
+	// Prompt only, no clamp in code: the model puts the total and verdict at
+	// the end, so cutting after the first sentence would keep a wrong sum.
+	it('asks for one short sentence that ends with the total and the verdict', () => {
+		expect(EXTRACT_SYSTEM).toMatch(/damage_reasoning in one short\s+sentence/);
+		expect(RECIPE_DRAFT_SCHEMA.properties.damage_reasoning).toMatchObject({ type: 'string' });
+	});
+
+	it('comes before the tags, so the count is written before damage is picked', () => {
+		const keys = Object.keys(RECIPE_DRAFT_SCHEMA.properties);
+		expect(keys.indexOf('damage_reasoning')).toBeLessThan(keys.indexOf('tags'));
 	});
 });

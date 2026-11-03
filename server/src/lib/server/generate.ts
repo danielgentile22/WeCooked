@@ -1,7 +1,7 @@
 import { hasRecipe, type GenerateInput, type GenerateResult, type RecipeDraft } from '$lib/extract';
 import { CUISINES, PROTEINS } from '$lib/tags';
 import { claudeCall } from './claude';
-import { RECIPE_DRAFT_SCHEMA, RECIPE_RULES, RECIPE_SHAPE_RULES } from './extract';
+import { RECIPE_DRAFT_SCHEMA, RECIPE_RULES, RECIPE_SHAPE_RULES, fromReply, type ExtractReply } from './extract';
 import { JobError, type JobHandler } from './jobs';
 
 // The generate call (issues #41, #68): three candidate recipes from a
@@ -120,15 +120,17 @@ export function anglesFor(description: string): Angle[] {
  *  the daily cap. */
 export const generate: JobHandler = async (job, db) => {
 	const { description, yield_count } = JSON.parse(job.input_json) as GenerateInput;
-	const candidates = await Promise.all(
-		anglesFor(description).map((angle) =>
-			claudeCall<RecipeDraft>(db, {
-				system: GENERATE_SYSTEM,
-				messages: [
-					{ role: 'user', content: `Description: ${description}\nYield: ${yield_count}\nAngle: ${angle.text}` }
-				],
-				schema: CANDIDATE_SCHEMA
-			})
+	const candidates: RecipeDraft[] = await Promise.all(
+		anglesFor(description).map(async (angle) =>
+			fromReply(
+				await claudeCall<ExtractReply>(db, {
+					system: GENERATE_SYSTEM,
+					messages: [
+						{ role: 'user', content: `Description: ${description}\nYield: ${yield_count}\nAngle: ${angle.text}` }
+					],
+					schema: CANDIDATE_SCHEMA
+				})
+			)
 		)
 	);
 	if (!candidates.every(hasRecipe))

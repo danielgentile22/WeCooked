@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import candidates from '../../../fixtures/candidates.json';
-import type { BodyPair, GenerateResult, RecipeDraft } from '$lib/extract';
+import type { BodyPair, GenerateResult } from '$lib/extract';
 import { claudeCall, takeQuota } from './claude';
-import { EXTRACT_SYSTEM, RECIPE_RULES } from './extract';
+import { EXTRACT_SYSTEM, RECIPE_RULES, type ExtractReply } from './extract';
 import { migrate } from './migrate';
 import { GENERATE_SYSTEM, anglesFor, generate } from './generate';
 import { JobError, type JobRow } from './jobs';
@@ -13,11 +13,19 @@ vi.mock('./claude', async (actual) => ({
 	claudeCall: vi.fn()
 }));
 
-/** The fixture's candidates as one call now writes them: metric only. */
-const metricOnly = (): RecipeDraft[] =>
-	(structuredClone(candidates.candidates) as (Omit<RecipeDraft, 'body'> & { body: BodyPair })[]).map(
-		(c) => ({ ...c, body: { ...c.body.metric, source_units: 'metric' } })
-	);
+/** The fixture's candidates as one call now writes them: metric only, with
+ *  tags.effort_override in place of effort (issue #70). */
+const metricOnly = (): ExtractReply[] =>
+	(
+		structuredClone(candidates.candidates) as (Omit<ExtractReply, 'body'> & {
+			body: BodyPair;
+			tags: ExtractReply['tags'] & { effort?: string };
+		})[]
+	).map(({ tags: { effort: _effort, ...tags }, ...c }) => ({
+		...c,
+		tags,
+		body: { ...c.body.metric, source_units: 'metric' }
+	}));
 
 const DESCRIPTION = 'the chicken thighs and half a cabbage, under 40 minutes';
 const jobRow = {
@@ -26,7 +34,7 @@ const jobRow = {
 } as JobRow;
 
 let db: Database.Database;
-const reply = (...drafts: RecipeDraft[]) => {
+const reply = (...drafts: ExtractReply[]) => {
 	const queue = [...drafts];
 	vi.mocked(claudeCall).mockImplementation(async () => queue.shift()!);
 };
@@ -41,7 +49,7 @@ describe('generate (issues #41, #68)', () => {
 	});
 
 	it('writes each candidate in its own call, all three in flight at once', async () => {
-		const pending: ((d: RecipeDraft) => void)[] = [];
+		const pending: ((d: ExtractReply) => void)[] = [];
 		vi.mocked(claudeCall).mockImplementation(() => new Promise((r) => pending.push(r)));
 		const run = generate(jobRow, db);
 		await vi.waitFor(() => expect(pending).toHaveLength(3));
@@ -97,6 +105,17 @@ describe('generate (issues #41, #68)', () => {
 		});
 		await generate(jobRow, db);
 		expect(db.prepare('SELECT SUM(count) AS n FROM job_quota').get()).toEqual({ n: 3 });
+	});
+
+	it('derives each candidate effort from its minutes and override (issue #70)', async () => {
+		const drafts = metricOnly();
+		drafts[0].tags.effort_override = 'project';
+		drafts[1].prep_minutes = 5;
+		drafts[1].cook_minutes = 10;
+		reply(...drafts);
+		const result = (await generate(jobRow, db)) as GenerateResult;
+		expect(result.candidates.map((c) => c.tags.effort)).toEqual(['project', 'quick', 'weeknight']);
+		expect(result.candidates[0].tags).not.toHaveProperty('effort_override');
 	});
 
 	it('builds both prompts on the shared recipe rules', () => {

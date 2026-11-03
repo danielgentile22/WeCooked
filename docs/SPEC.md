@@ -197,7 +197,11 @@ leaves a field empty rather than inventing a value.
 `egg` `tofu` `beans` `cheese` `none`
 
 **effort** (exactly one): `quick` (under 30 minutes total) · `weeknight` (30 to
-60) · `project` (over 60, or overnight rests, or proving)
+60) · `project` (over 60, or overnight rests, or proving). On a capture or a
+generation the server works it out from prep plus cook minutes; Claude only
+flags the waits the minutes miss (rests, proving, marinating), which make it
+`project`. A source with no times at all comes out `weeknight` for the cook to
+correct (issue #70).
 
 **damage** (exactly one): `tidy` · `messy` · `carnage`
 
@@ -428,11 +432,16 @@ is a property of SQLite, not of the runner.
 | Effort | `medium` | `CLAUDE_EFFORT` |
 | Output | structured outputs via `output_config.format` | |
 | SDK retries | `maxRetries: 1` (SDK default is 2) | |
-| Timeout | 180 s per call | |
+| Timeout | 110 s per call | |
 
 Both model and effort are environment variables so they can change without a
 deploy. The API default effort on this generation is `high`; `low` must be
 set explicitly or you get more than you asked for.
+
+The timeout is set so two attempts, the 10 s page fetch before them and a
+minute between them (the SDK's default backoff is at most 8 s) fit inside
+the client's five minute give-up (issue #70). A longer retry-after sent by
+the API is honoured as sent and can still overrun.
 
 `maxRetries: 1` is deliberate and load-bearing. The SDK default of 2 means one
 transient failure silently bills three full extractions (ADR-016).
@@ -505,7 +514,8 @@ cuisine, protein, group headings, unit conversion) do not exist on any page.
 When JSON-LD is present it is supplied as **authoritative input**, which makes
 it a quality floor rather than a shortcut.
 
-Output schema:
+Output schema (what Claude writes; the stored draft has `tags.effort` in place
+of `effort_override`):
 
 ```jsonc
 // RecipeDraft
@@ -524,14 +534,16 @@ Output schema:
     "ingredients": [{ "heading": "string|null", "items": ["string"] }],
     "steps": ["string"]
   },
+  // One short sentence ending in the total and verdict. Before tags because
+  // output is written in schema order: it is the count damage is read from.
+  "damage_reasoning": "Pan 1 + board and knife 1 + flour 1 = 3, messy.",
   "tags": {
     "meal_type": ["dinner"],
     "cuisine": "italian",      // nullable
     "protein": "beef",         // nullable
-    "effort": "weeknight",
+    "effort_override": null,   // "project" or null; the server derives effort
     "damage": "messy"
   },
-  "damage_reasoning": "string",   // short, shows the rubric arithmetic
   "extraction_warnings": ["string"]  // e.g. "step 4 was cut off at the page edge"
 }
 ```
@@ -555,9 +567,13 @@ Rules:
   "225°F (110°C)" or "1 lb (450 g)", keep only the source_units one.
 - Ingredients stay as human-readable strings, exactly as a cook would read them.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
-  Leave cuisine or protein null if unsure. effort and damage are required.
-- Score damage with the rubric below and show your arithmetic in
-  damage_reasoning.
+  Leave cuisine or protein null if unsure. damage is required.
+- Effort is worked out from prep_minutes plus cook_minutes, so give those
+  honestly. Set effort_override to "project" only when the recipe needs a
+  wait the minutes leave out: an overnight or multi-hour rest, proving, or
+  marinating. Otherwise effort_override is null.
+- Score damage with the rubric below. Write damage_reasoning in one short
+  sentence that ends with the total and the verdict.
 - If part of the source is unreadable, missing, or cut off, transcribe what you
   can and describe the gap in extraction_warnings. Never invent the missing
   part.
@@ -572,7 +588,10 @@ User content per path:
   or meta description}` when the page has one (an Instagram reel keeps its
   caption there), then, when found, `Authoritative structured data from the
   page (schema.org Recipe JSON-LD), use these ingredients and steps verbatim:
-  {json}`. Blocks are joined by blank lines and empty ones are skipped.
+  {json}`, then, when the capture carried one, `Caption the cook shared with
+  the link: {text}`. Blocks are joined by blank lines and empty ones are
+  skipped. The prompt says to take the recipe from the page, or from the
+  caption when the page has none.
 - **Paste**: the pasted text as-is.
 - **Photos**: 1 to N image blocks, then `These images are pages of a printed
   cookbook, in order. They may be a two-page spread or a recipe continued on a
@@ -862,8 +881,11 @@ recipe editor, and everything funnels into it.
 6. Strip the HTML to readable text before sending: a modern recipe blog is
    300 kB of HTML around 2 kB of recipe, and stripping cuts input tokens by an
    order of magnitude and stops the model latching onto the wrong content.
-7. Run `extract`. When the page yields nothing and the capture carried a
-   caption (`text`), extract from the caption with the link as the source.
+7. Run `extract` once, with the caption (`text`) after the page content
+   when the capture carried one, so a page with no recipe falls back to the
+   caption inside the same call (issue #70). Only a page that could not be
+   fetched at all (`fetch_failed`, `fetch_blocked`) is replaced by the caption
+   alone.
 
 **Paste path.** The same input box accepts a URL or a block of text. If it
 parses as a URL, take the URL path; otherwise treat it as recipe text. This is

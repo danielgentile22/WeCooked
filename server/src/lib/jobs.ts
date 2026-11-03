@@ -36,7 +36,7 @@ export const TIMEOUT_COPY = 'Still working after 5 minutes. Try again in a bit.'
 // Issue #65: each request asks the server to hold the reply this many seconds,
 // answering early the moment the status changes, so no client-side sleep.
 const LONG_POLL_S = 25;
-const GIVE_UP_MS = 5 * 60_000;
+export const GIVE_UP_MS = 5 * 60_000;
 
 export type PollOptions = {
 	/** Abort when the page that started the poll goes away (issue #66). */
