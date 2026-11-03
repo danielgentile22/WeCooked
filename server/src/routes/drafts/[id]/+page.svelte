@@ -38,6 +38,17 @@
 		if (working) pollJob(data.id).then(() => invalidateAll());
 	});
 
+	// Issue #67: the counterpart body fills in when the draft's conversion ends.
+	const conversion = $derived.by(() => {
+		const state = 'counterpart_state' in data ? data.counterpart_state : null;
+		return state && state.status !== 'ready' ? { status: state.status, job_id: state.job_id } : null;
+	});
+	$effect(() => {
+		const job = conversion?.status === 'converting' ? conversion.job_id : null;
+		if (job) pollJob(job).then(() => invalidateAll());
+	});
+	let conversionRetry: HTMLFormElement | undefined = $state();
+
 	// Discard throws away the draft and any typed edits: two-step confirm.
 	let confirmDiscard = $state(false);
 </script>
@@ -162,7 +173,10 @@
 			error={form?.error ?? null}
 			coverJobId={data.cover_job_id}
 			findCover={data.status === 'done'}
+			{conversion}
+			onretry={() => conversionRetry?.requestSubmit()}
 		/>
+		<form method="POST" action="?/retryConversion" use:enhance bind:this={conversionRetry} hidden></form>
 
 		<div class="pad">
 			{@render discardForm('draft')}

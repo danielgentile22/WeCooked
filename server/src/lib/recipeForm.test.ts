@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadedBodies, payload, swapBodies, type FormState } from './recipeForm';
+import { adoptCounterpart, loadedBodies, payload, swapBodies, type FormState } from './recipeForm';
 import type { BodyText } from './tags';
 
 // One case per payload branch in iOS's EditorPayloadTests (validation, its
@@ -121,5 +121,31 @@ describe('recipe form payload', () => {
 		expect(p).not.toHaveProperty('images');
 		expect(p).not.toHaveProperty('other');
 		expect(p).not.toHaveProperty('shown_units');
+	});
+});
+
+describe('a counterpart that arrives after the form opened (issue #67)', () => {
+	const converting = (): FormState => ({ ...saved(), other: null });
+
+	it('joins an edited form as the hidden body and rides along while the source is unedited', () => {
+		const form = converting();
+		form.title = 'Lemon cake';
+		adoptCounterpart(form, saved());
+		expect(form.other).toEqual(us);
+		expect(payload(form, loadedBodies(saved()), true).counterpart).toEqual(us);
+	});
+
+	it('is dropped from the payload once the as-written body was edited', () => {
+		const form = converting();
+		form.ingredients[0].items[0] = '250 g flour';
+		adoptCounterpart(form, saved());
+		expect(payload(form, loadedBodies(saved()), true).counterpart).toBeNull();
+	});
+
+	it('leaves a form that already has a counterpart alone', () => {
+		const form = saved();
+		form.other!.steps = ['Stir.'];
+		adoptCounterpart(form, { ...saved(), other: metric });
+		expect(form.other!.steps).toEqual(['Stir.']);
 	});
 });

@@ -18,7 +18,14 @@
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
 	import { pollJob } from '$lib/jobs';
-	import { loadedBodies, payload, selection, swapBodies, type FormState } from '$lib/recipeForm';
+	import {
+		adoptCounterpart,
+		loadedBodies,
+		payload,
+		selection,
+		swapBodies,
+		type FormState
+	} from '$lib/recipeForm';
 	import {
 		MEAL_TYPES,
 		CUISINES,
@@ -26,6 +33,7 @@
 		EFFORTS,
 		DAMAGES,
 		cleanIngredients,
+		otherUnits,
 		type RecipeInput,
 		type UnitSystem
 	} from '$lib/tags';
@@ -50,6 +58,8 @@
 		findCover = false,
 		// The counterpart body's regeneration state (ADR-028), edit page only.
 		reconvert = null as { status: 'pending' | 'failed' } | null,
+		// A draft's counterpart still converting or failed (issue #67), drafts only.
+		conversion = null as { status: 'converting' | 'failed' } | null,
 		onretry = undefined as (() => void) | undefined,
 		// Which variation the body edits land on (SPEC 7.5), edit page only.
 		variationId = null as string | null
@@ -170,6 +180,7 @@
 	function restore(saved: Autosave): FormState {
 		const form = { ...fromInitial(), ...saved.form };
 		syncImages(form, fresh, null);
+		adoptCounterpart(form, loaded);
 		return form;
 	}
 	// svelte-ignore state_referenced_locally
@@ -202,6 +213,7 @@
 			else {
 				if (next.baseline !== seen.baseline) recipeChanged = true;
 				syncImages(draft, next.form, seen.form);
+				adoptCounterpart(draft, loaded);
 			}
 			seen = next;
 		});
@@ -527,6 +539,19 @@
 				</button>
 			{/each}
 		</div>
+		{#if editing && conversion && !draft.other}
+			<!-- Issue #67: the draft's counterpart is still being written. -->
+			{@const units = otherUnits(loaded.source_units) === 'us' ? 'US' : 'metric'}
+			{#if conversion.status === 'converting'}
+				<Banner role="status" icon={LoaderCircle} text="Converting to {units}…" />
+			{:else}
+				<Banner
+					text="Couldn't convert to {units}."
+					action={onretry ? 'Retry' : null}
+					onaction={onretry}
+				/>
+			{/if}
+		{/if}
 		{#if editing && reconvert && draft.shown_units !== loaded.source_units}
 			<!-- D6: the counterpart is being regenerated from the last edit. -->
 			{#if reconvert.status === 'pending'}
