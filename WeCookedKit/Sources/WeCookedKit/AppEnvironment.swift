@@ -40,9 +40,11 @@ public final class AppEnvironment {
 	@ObservationIgnored public let widgetSnapshot: SnapshotFile
 	/// Kept in step with the unfiltered recipe list; see `feedSuggestion`.
 	@ObservationIgnored public let suggestionFile: SuggestionFile
-	/// Called after each write or removal of either widget's files. The app sets
-	/// it to reload the widgets' timelines; the package knows nothing of WidgetKit.
-	@ObservationIgnored public var onSnapshotWritten: @MainActor @Sendable () -> Void = {}
+	/// Called with a widget's kind (`SnapshotFile.widgetKind`,
+	/// `SuggestionFile.widgetKind`) after each write or removal of that
+	/// widget's files. The app sets it to reload that kind's timelines; the
+	/// package knows nothing of WidgetKit.
+	@ObservationIgnored public var onSnapshotWritten: @MainActor @Sendable (_ kind: String) -> Void = { _ in }
 
 	public init(
 		config: AppConfig, tokens: any TokenStore, defaults: any KeyValueStore,
@@ -85,8 +87,14 @@ public final class AppEnvironment {
 			for await rows in inputs {
 				guard let self, let rows, isSignedIn else { continue }
 				let snapshot = SuggestionSnapshot(rows: rows, now: .now)
-				suggestionFile.write(snapshot)
-				onSnapshotWritten()
+				// A change the widget does not show (a draft, a cover's daily
+				// signature) leaves the file alone; covers are still checked,
+				// because the week moves on with the date.
+				var changed = false
+				if !snapshot.sameContent(as: suggestionFile.read()) {
+					suggestionFile.write(snapshot)
+					changed = true
+				}
 				let week = snapshot.days(from: .now).compactMap(\.pick)
 				let urls = Dictionary(rows.compactMap { r in r.coverUrl.map { (r.id, $0) } }) { a, _ in a }
 				var added = false
@@ -99,14 +107,14 @@ public final class AppEnvironment {
 				}
 				guard isSignedIn else { continue }
 				suggestionFile.keepCovers(Set(week.compactMap(\.cover)))
-				if added { onSnapshotWritten() }
+				if changed || added { onSnapshotWritten(SuggestionFile.widgetKind) }
 			}
 		}
 	}
 
 	/// Rewrites the widget's file whenever the shopping reply, the section
-	/// order, the unit system or the outbox changes, so the widget shows what
-	/// the tab would. Nothing is written before the first reply (an absent
+	/// order, the unit system or the outbox changes what the widget would
+	/// show, so the widget shows what the tab would. Nothing is written before the first reply (an absent
 	/// file and an empty list read differently) or while signed out; the
 	/// second check runs at write time because a value read just before
 	/// `signOut` can still be waiting in the stream.
@@ -120,9 +128,11 @@ public final class AppEnvironment {
 		}
 		Task { [weak self] in
 			for await snapshot in inputs {
-				guard let self, let snapshot, isSignedIn else { continue }
+				guard let self, let snapshot, isSignedIn,
+					!snapshot.sameContent(as: widgetSnapshot.read())
+				else { continue }
 				widgetSnapshot.write(snapshot)
-				onSnapshotWritten()
+				onSnapshotWritten(SnapshotFile.widgetKind)
 			}
 		}
 	}
@@ -138,8 +148,19 @@ public final class AppEnvironment {
 		device.wipe()
 		widgetSnapshot.remove()
 		suggestionFile.remove()
-		onSnapshotWritten()
+		onSnapshotWritten(SnapshotFile.widgetKind)
+		onSnapshotWritten(SuggestionFile.widgetKind)
 		isSignedIn = false
+	}
+
+	/// Sends this phone's push token unless it is the one last sent from
+	/// here: the system hands over the same token on every launch, and the
+	/// server already has it. Sign-out forgets it, so the next account gets it.
+	public func registerPush(token: String, environment: PushEnvironment) async throws {
+		let sent = "\(environment.rawValue):\(token)"
+		guard device.lastPushToken != sent else { return }
+		try await api.registerDevice(token: token, environment: environment)
+		device.lastPushToken = sent
 	}
 
 	/// Scene phase, forwarded. Waits stop in the background and restart on

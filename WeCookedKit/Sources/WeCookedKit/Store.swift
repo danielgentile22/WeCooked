@@ -29,10 +29,28 @@ public enum Family: Hashable, Sendable {
 
 /// A typed address for one server read: its cache name, its family, and how to
 /// fetch it. Adding a readable thing to the app is adding one static below.
-public struct Key<Value: Codable & Sendable>: Sendable {
+/// `Equatable`, so a reply equal to what is shown changes nothing.
+public struct Key<Value: Codable & Sendable & Equatable>: Sendable {
 	public let name: String
 	public let family: Family
+	/// False for reads not worth a file each, like a typed search: every
+	/// query would otherwise leave one behind for good.
+	public let persisted: Bool
+	/// True for reads the Store should drop from memory once no screen
+	/// watches them, like a filtered list: there is one per filter tried.
+	public let evictedWhenUnwatched: Bool
 	let load: @Sendable (APIClient) async throws -> Value
+
+	init(
+		name: String, family: Family, persisted: Bool = true, evictedWhenUnwatched: Bool = false,
+		load: @escaping @Sendable (APIClient) async throws -> Value
+	) {
+		self.name = name
+		self.family = family
+		self.persisted = persisted
+		self.evictedWhenUnwatched = evictedWhenUnwatched
+		self.load = load
+	}
 }
 
 extension Key where Value == Vocabulary {
@@ -40,8 +58,12 @@ extension Key where Value == Vocabulary {
 }
 extension Key where Value == BrowseResponse {
 	public static func recipes(_ f: BrowseFilters = BrowseFilters()) -> Self {
-		let q = f.queryItems.map { "\($0.name)=\($0.value ?? "")" }.joined(separator: "&")
-		return .init(name: "recipes?\(q)", family: .recipes) { try await $0.recipes(f) }
+		let items = f.queryItems
+		let q = items.map { "\($0.name)=\($0.value ?? "")" }.joined(separator: "&")
+		return .init(
+			name: "recipes?\(q)", family: .recipes,
+			persisted: !items.contains { $0.name == "q" }, evictedWhenUnwatched: !items.isEmpty
+		) { try await $0.recipes(f) }
 	}
 }
 extension Key where Value == RecipeResponse {
@@ -79,7 +101,7 @@ extension Key where Value == TrashResponse {
 /// certain.
 @MainActor
 public final class DiskCache {
-	private let directory: URL
+	let directory: URL
 	private var chains: [String: Task<Void, Never>] = [:]
 
 	/// `directory` should include a schema version (`.../cache/v1`); bump it
@@ -139,7 +161,7 @@ protocol AnyResource: AnyObject {
 /// the server said (or the cache said before it), `phase` is what the refresh
 /// is doing. Local optimistic edits go through `mutate`.
 @MainActor @Observable
-public final class Resource<Value: Codable & Sendable>: AnyResource {
+public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource {
 	public enum Phase: Equatable, Sendable {
 		case idle
 		case refreshing
@@ -159,6 +181,8 @@ public final class Resource<Value: Codable & Sendable>: AnyResource {
 	@ObservationIgnored var cacheNames: [String]
 	/// The Store's hook: reconcile job watchers and learn aliases.
 	@ObservationIgnored var didChange: @MainActor () -> Void = {}
+	/// The Store's hook: evict or take back a resource as `watchers` moves.
+	@ObservationIgnored var watchersChanged: @MainActor () -> Void = {}
 	@ObservationIgnored private var inflight: Task<Void, Never>?
 	/// Bumped by every local write. A reply that started before the latest
 	/// bump may not know about it, so it is dropped and the fetch repeated.
@@ -170,7 +194,7 @@ public final class Resource<Value: Codable & Sendable>: AnyResource {
 		self.api = api
 		self.cache = cache
 		self.cacheNames = [key.name]
-		self.value = cache.read(key.name, as: Value.self)
+		self.value = key.persisted ? cache.read(key.name, as: Value.self) : nil
 	}
 
 	var watchedJobs: [JobID] { (value as? any WatchesJobs)?.watchedJobs ?? [] }
@@ -183,7 +207,9 @@ public final class Resource<Value: Codable & Sendable>: AnyResource {
 	}
 
 	/// Fetch now, or join the fetch already running. Never cancels a fetch
-	/// because its caller went away: the reply still fills the cache.
+	/// because its caller went away: the reply still fills the cache. A reply
+	/// equal to the value already held is not assigned or written, so a poll
+	/// that finds nothing new re-renders nothing and wakes no feed.
 	public func revalidate() async {
 		if let inflight { await inflight.value; return }
 		phase = .refreshing
@@ -193,9 +219,11 @@ public final class Resource<Value: Codable & Sendable>: AnyResource {
 			do {
 				let fresh = try await key.load(api)
 				if started == epoch {
-					value = fresh
+					if fresh != value {
+						value = fresh
+						persist(fresh)
+					}
 					phase = .idle
-					persist(fresh)
 				} else {
 					raced = true
 				}
@@ -228,17 +256,27 @@ public final class Resource<Value: Codable & Sendable>: AnyResource {
 	}
 
 	private func persist(_ v: Value) {
+		guard key.persisted else { return }
 		for name in cacheNames { cache.write(v, name: name) }
 	}
 
 	/// Keep this resource fresh while a screen is visible: fetch on entry, then
-	/// every `interval` if given. Cancelling the calling task ends the loop.
-	/// `Store.invalidate` refetches immediately only for resources being watched.
+	/// every `interval` if given. Either way it counts as watched until the
+	/// calling task is cancelled, which ends it. `Store.invalidate` refetches
+	/// immediately only for resources being watched, and the Store keeps a
+	/// filtered list only while it is watched.
 	public func watch(every interval: Duration? = nil) async {
 		watchers += 1
-		defer { watchers -= 1 }
+		watchersChanged()
+		defer {
+			watchers -= 1
+			watchersChanged()
+		}
 		await revalidate()
-		guard let interval else { return }
+		guard let interval else {
+			while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+			return
+		}
 		while !Task.isCancelled {
 			try? await Task.sleep(for: interval)
 			if Task.isCancelled { break }
@@ -284,9 +322,31 @@ public final class Store {
 			self.learnOriginal(from: r)
 			self.reconcileWatchers()
 		}
+		r.watchersChanged = { [weak self, weak r] in
+			guard let self, let r else { return }
+			self.watchersChanged(r)
+		}
 		r.didChange()
 		return r
 	}
+
+	/// A filtered list nobody watches is dropped, so trying filters does not
+	/// pile up lists in memory. A screen that still holds a dropped one and
+	/// watches it again hands it back, unless another object took the name.
+	private func watchersChanged<V>(_ r: Resource<V>) {
+		guard r.key.evictedWhenUnwatched else { return }
+		let name = r.key.name
+		if r.watchers == 0, resources[name] === r {
+			resources[name] = nil
+			reconcileWatchers()
+		} else if r.watchers > 0, resources[name] == nil {
+			resources[name] = r
+			reconcileWatchers()
+		}
+	}
+
+	/// Test seam: whether a resource is held under `name`.
+	func holds(_ name: String) -> Bool { resources[name] != nil }
 
 	/// `.recipe(id, nil)` and `.recipe(id, original)` are one reply. The first
 	/// reply that says `isOriginal` ties the two names to one object, so a chip
@@ -316,7 +376,7 @@ public final class Store {
 	}
 
 	/// Apply `change` to every loaded resource of type `V` in `family`.
-	func patch<V: Codable & Sendable>(
+	func patch<V: Codable & Sendable & Equatable>(
 		_ type: V.Type, in family: Family, _ change: (inout V) -> Void
 	) {
 		for case let r as Resource<V> in distinctResources where r.family == family {
