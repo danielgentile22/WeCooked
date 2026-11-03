@@ -9,12 +9,12 @@
 		Ellipsis,
 		Trash2
 	} from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import Chip from '$lib/components/Chip.svelte';
 	import Banner from '$lib/components/Banner.svelte';
-	import { pollJob } from '$lib/jobs';
+	import { ignoreAbort, isAbort, jobDeps, pollJob } from '$lib/jobs';
 
 	let { data, form } = $props();
 	const r = $derived(data.recipe);
@@ -74,46 +74,54 @@
 		else if (job.status === 'failed' && !calc)
 			calc = { phase: 'failed', text: job.error_text ?? 'Could not calculate.', to_count: job.to_count };
 	});
-	let calcPolled: string | null = null;
+	// Issue #66: each poll below is keyed on its job and this recipe, so
+	// moving to another recipe (same component) or leaving the page cancels
+	// it, and a finished job reloads only this recipe's data.
+	const recipeId = $derived(r.id);
+	const calcJobId = $derived(calc?.phase === 'running' ? calc.job_id : null);
 	$effect(() => {
-		if (calc?.phase !== 'running' || calcPolled === calc.job_id) return;
-		const { job_id, to_count, recipe_id } = calc;
-		calcPolled = job_id;
-		pollJob(job_id)
+		const job_id = calcJobId;
+		const id = recipeId;
+		const running = untrack(() => (calc?.phase === 'running' ? calc : null));
+		if (!job_id || !running || running.recipe_id !== id) return;
+		const { to_count } = running;
+		const poll = new AbortController();
+		pollJob(job_id, { signal: poll.signal })
 			.then(async (job) => {
-				calcPolled = null;
-				if (recipe_id !== r.id) return;
 				if (job.status === 'done' && job.result_ref) {
 					calc = null;
-					await goto(`/recipes/${recipe_id}?v=${job.result_ref}`, {
+					await goto(`/recipes/${id}?v=${job.result_ref}`, {
 						noScroll: true,
-						invalidateAll: true
+						invalidate: [jobDeps.recipe(id)]
 					});
 				} else if (job.status === 'timeout') {
 					calc = { phase: 'timed_out', to_count };
 				} else {
 					calc = { phase: 'failed', text: job.error_text ?? 'Could not calculate.', to_count };
-					await invalidateAll();
+					await invalidate(jobDeps.recipe(id));
 				}
 			})
-			.catch(() => {
-				calcPolled = null;
-				if (recipe_id === r.id)
-					calc = { phase: 'failed', text: 'Lost track of the calculation.', to_count };
+			.catch((e) => {
+				if (!isAbort(e)) calc = { phase: 'failed', text: 'Lost track of the calculation.', to_count };
 			});
+		return () => poll.abort();
 	});
 	let retryCalcForm: HTMLFormElement | undefined = $state();
 
 	// Stale-while-revalidate refresh of an untouched variation (ADR-029).
-	let refreshPolled: string | null = null;
+	const refreshJobId = $derived(data.refresh?.status === 'pending' ? data.refresh.job_id : null);
 	$effect(() => {
-		const jid = data.refresh?.status === 'pending' ? data.refresh.job_id : null;
-		if (!jid || refreshPolled === jid) return;
-		refreshPolled = jid;
-		pollJob(jid).then(async (job) => {
-			justUpdated = job.status === 'done';
-			await invalidateAll();
-		});
+		const jid = refreshJobId;
+		const id = recipeId;
+		if (!jid) return;
+		const poll = new AbortController();
+		pollJob(jid, { signal: poll.signal })
+			.then(async (job) => {
+				justUpdated = job.status === 'done';
+				await invalidate(jobDeps.recipe(id));
+			})
+			.catch(ignoreAbort);
+		return () => poll.abort();
 	});
 
 	// Action results that hand back a job to watch or a variation to show.
@@ -222,12 +230,18 @@
 
 	// While a reconvert is pending, wait on the job and reload once, so "the US
 	// body updates within seconds" without the user doing anything.
-	let polling: string | null = null;
+	const reconvertJobId = $derived(
+		r.reconvert?.status === 'pending' ? (r.reconvert.job_id ?? null) : null
+	);
 	$effect(() => {
-		const job = r.reconvert;
-		if (job?.status !== 'pending' || !job.job_id || polling === job.job_id) return;
-		polling = job.job_id;
-		pollJob(job.job_id).then(() => invalidateAll());
+		const jid = reconvertJobId;
+		const id = recipeId;
+		if (!jid) return;
+		const poll = new AbortController();
+		pollJob(jid, { signal: poll.signal })
+			.then(() => invalidate(jobDeps.recipe(id)))
+			.catch(ignoreAbort);
+		return () => poll.abort();
 	});
 
 	// D6 tap-to-retry goes through the hidden form + use:enhance, same as the
