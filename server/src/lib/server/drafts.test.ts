@@ -5,7 +5,7 @@ import type { RecipeInput } from '$lib/tags';
 import { migrate } from './migrate';
 import { createJob, type JobRow } from './jobs';
 import { enqueueDraftConversion } from './extract';
-import type { GenerateReply } from './generate';
+import type { BodyPair, RecipeDraft } from '$lib/extract';
 import {
 	discardDraft,
 	draftView,
@@ -21,7 +21,8 @@ import {
 vi.mock('./r2', () => ({ presignGet: (key: string) => `https://r2/${key}` }));
 
 const DESCRIPTION = 'the chicken thighs and half a cabbage, under 40 minutes';
-const result = candidates as GenerateReply;
+/** A generation stored before issue #68: each candidate holds both bodies. */
+const result = candidates as { candidates: (Omit<RecipeDraft, 'body'> & { body: BodyPair })[] };
 
 let db: Database.Database;
 beforeEach(() => {
@@ -31,11 +32,17 @@ beforeEach(() => {
 
 const row = (id: string) => db.prepare('SELECT * FROM job WHERE id = ?').get(id) as JobRow;
 
-function generation(status: JobRow['status'] = 'done'): string {
+/** Since issue #68 a generation's candidates are metric only; the fixture
+ *  is the older shape with both bodies, which stored generations still have. */
+const metricOnly = {
+	candidates: result.candidates.map((c) => ({ ...c, body: { ...c.body.metric, source_units: 'metric' } }))
+};
+
+function generation(status: JobRow['status'] = 'done', stored: object = result): string {
 	const id = createJob(db, 'generate', { description: DESCRIPTION, yield_count: 2, picked: null });
 	db.prepare('UPDATE job SET status = ?, result_json = ? WHERE id = ?').run(
 		status,
-		status === 'done' ? JSON.stringify(result) : null,
+		status === 'done' ? JSON.stringify(stored) : null,
 		id
 	);
 	return id;
@@ -78,6 +85,31 @@ describe('generations (issue #41)', () => {
 			ingredients: picked.body.metric.ingredients
 		});
 		expect(listDrafts(db)).toEqual([{ id, status: 'ready', title: picked.title }]);
+	});
+
+	it('queues the conversion of the picked candidate, once, and shows it converting (issue #68)', () => {
+		const id = generation('done', metricOnly);
+		const conversions = () =>
+			db
+				.prepare(`SELECT id, input_json FROM job WHERE kind = 'reconvert' AND json_extract(input_json, '$.draft_id') = ?`)
+				.all(id) as { id: string; input_json: string }[];
+		expect(conversions()).toEqual([]);
+		pickCandidate(db, row(id), 1);
+		pickCandidate(db, row(id), 1);
+		const [job, ...more] = conversions();
+		expect(more).toEqual([]);
+		expect(JSON.parse(job.input_json)).toEqual({ draft_id: id, source: metricOnly.candidates[1].body });
+		expect((draftView(db, row(id)) as DraftView).counterpart_state).toEqual({
+			status: 'converting',
+			job_id: job.id
+		});
+	});
+
+	it('queues no conversion for a stored candidate that has both bodies', () => {
+		const id = generation();
+		pickCandidate(db, row(id), 0);
+		expect(db.prepare(`SELECT COUNT(*) AS n FROM job WHERE kind = 'reconvert'`).get()).toEqual({ n: 0 });
+		expect((draftView(db, row(id)) as DraftView).counterpart_state).toEqual({ status: 'ready', job_id: null });
 	});
 
 	it('refuses a pick out of range, before it is done, or of a different candidate', () => {

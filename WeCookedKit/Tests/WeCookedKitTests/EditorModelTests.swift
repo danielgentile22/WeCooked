@@ -633,7 +633,7 @@ struct EditorModelTests {
 
 	// MARK: Find another photo
 
-	static let coverDraft: JobID = "01TEST00000000000000000046"
+	static let coverDraft: JobID = "01TEST00000000000000000047"
 
 	static func found(_ id: ImageID) -> RecipeImage {
 		RecipeImage(

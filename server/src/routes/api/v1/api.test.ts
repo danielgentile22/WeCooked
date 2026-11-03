@@ -19,8 +19,7 @@ import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import type { JobRow } from '$lib/server/jobs';
 import { getDevice } from '$lib/server/devices';
-import type { RecipeDraft } from '$lib/extract';
-import type { GenerateReply } from '$lib/server/generate';
+import type { BodyPair, RecipeDraft } from '$lib/extract';
 import candidates from '../../../../fixtures/candidates.json';
 import type { RecipeInput } from '$lib/tags';
 
@@ -613,7 +612,13 @@ describe('/api/v1', () => {
 	// Last so its job ids shift no earlier fixture the Kit pins.
 	it('generations: create, generating, choosing, pick, save, discard (issue #41)', async () => {
 		const description = 'the chicken thighs and half a cabbage, under 40 minutes';
-		const result = candidates as GenerateReply;
+		// Issue #68: candidates are metric only; the picked one converts.
+		const result = {
+			candidates: (candidates as { candidates: (Omit<RecipeDraft, 'body'> & { body: BodyPair })[] }).candidates.map((c) => ({
+				...c,
+				body: { ...c.body.metric, source_units: 'metric' as const }
+			}))
+		};
 		for (const d of [' ', 'x'.repeat(1001), 42])
 			await fails('POST', '/generations', 400, 'Describe what you want to cook.', {
 				body: { description: d, yield_count: 2 }
@@ -658,7 +663,7 @@ describe('/api/v1', () => {
 			damage: 'tidy',
 			cuisine: 'chinese',
 			protein: 'chicken',
-			ingredients: result.candidates[0].body.metric.ingredients[0].items
+			ingredients: result.candidates[0].body.ingredients[0].items
 		});
 		await fails('POST', `/drafts/${job_id}/save`, 400, 'Pick a recipe first.', { body: input() });
 
@@ -672,6 +677,7 @@ describe('/api/v1', () => {
 
 		const picked = fixture('draft-get-picked', await ok('GET', `/drafts/${job_id}`));
 		expect(picked).toMatchObject({ status: 'done', source_text: description, warnings: [] });
+		expect(picked.counterpart_state).toMatchObject({ status: 'converting' });
 		expect(picked.initial).toMatchObject({
 			title: result.candidates[1].title,
 			source_text: description,

@@ -127,6 +127,11 @@ struct FixtureDecodingTests {
 		#expect(done.status == .done)
 		#expect(done.initial?.title == "Roast chicken thighs with caraway cabbage wedges")
 		#expect(done.initial?.sourceUrl == nil)
+		// Issue #68: a picked candidate is metric only until its conversion ends.
+		#expect(done.initial?.counterpart == nil)
+		#expect(done.counterpartState?.status == .converting)
+		let conversion = try #require(done.counterpartState?.jobId)
+		#expect(picked.watchedJobs.contains(conversion))
 		let list = try d.decode(BrowseResponse.self, from: Fixtures.data("recipes-list-generation"))
 		#expect(list.drafts.map(\.status).prefix(2) == [.choosing, .generating])
 		#expect(list.watchedJobs.contains(list.drafts[1].id))
