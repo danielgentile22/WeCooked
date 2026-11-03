@@ -89,6 +89,17 @@ struct ShoppingSnapshotTests {
 		#expect(s.display(maxLines: 4, now: Self.saved + 72 * hour) == .list(lines: ["1 ml"], footer: "as of 3 days ago"))
 	}
 
+	@Test func sameContentIgnoresWhenItWasSaved() throws {
+		let a = try Self.snapshot()
+		var b = a
+		b.savedAt = Self.saved.addingTimeInterval(3600)
+		#expect(a.sameContent(as: b))
+		#expect(!a.sameContent(as: nil))
+		b.staples += 1
+		#expect(!a.sameContent(as: b))
+		#expect(!a.sameContent(as: try Self.snapshot(units: .us)))
+	}
+
 	@Test func jsonUsesTheContractsKeysAndRoundTrips() throws {
 		let s = try Self.snapshot()
 		let data = try Wire.makeEncoder().encode(s)
@@ -197,7 +208,7 @@ struct WidgetFeedTests {
 		])
 		let env = ShoppingModelTests.env(server)
 		var writes = 0
-		env.onSnapshotWritten = { writes += 1 }
+		env.onSnapshotWritten = { _ in writes += 1 }
 		#expect(env.widgetSnapshot.read() == nil)
 
 		await env.store.resource(.shopping).revalidate()
@@ -218,5 +229,83 @@ struct WidgetFeedTests {
 		#expect(env.widgetSnapshot.read() == nil)
 		for _ in 0..<50 { await Task.yield() }
 		#expect(env.widgetSnapshot.read() == nil, "nothing rewrites it after sign-out")
+	}
+}
+
+/// The widget is reloaded only when its own file changed, and an equal file is
+/// never rewritten.
+@MainActor
+struct WidgetReloadTests {
+	@Test func anUnchangedListWritesNothingAndReloadsOnlyTheShoppingWidget() async throws {
+		let server = FakeServer(["GET /api/v1/shopping": FakeServer.fixture("shopping-get")])
+		let env = ShoppingModelTests.env(server)
+		var kinds: [String] = []
+		env.onSnapshotWritten = { kinds.append($0) }
+		let shopping = env.store.resource(.shopping)
+		await shopping.revalidate()
+		await ShoppingModelTests.until { env.widgetSnapshot.read() != nil }
+		for _ in 0..<20 { await Task.yield() }
+		#expect(kinds == [SnapshotFile.widgetKind])
+		let first = try #require(env.widgetSnapshot.read())
+
+		await shopping.revalidate()
+		shopping.mutate { $0.recipes = [] }  // a new reply, but the same unticked list
+		for _ in 0..<50 { await Task.yield() }
+		#expect(kinds == [SnapshotFile.widgetKind], "nothing the widget shows changed")
+		#expect(env.widgetSnapshot.read()?.savedAt == first.savedAt, "the file was not rewritten")
+
+		ShoppingModel(env: env).toggleUnits()
+		await ShoppingModelTests.until { kinds.count == 2 }
+		#expect(kinds == [SnapshotFile.widgetKind, SnapshotFile.widgetKind])
+	}
+
+	@Test func signOutReloadsBothWidgets() {
+		let env = ShoppingModelTests.env(FakeServer())
+		var kinds: Set<String> = []
+		env.onSnapshotWritten = { kinds.insert($0) }
+		env.signOut()
+		#expect(kinds == [SnapshotFile.widgetKind, SuggestionFile.widgetKind])
+	}
+}
+
+/// `POST /devices` is sent once per token: every launch hands the app the
+/// same token, and the server already has it.
+@MainActor
+struct PushTokenTests {
+	static let route = "POST /api/v1/devices"
+
+	@Test func theSameTokenIsSentOnce() async throws {
+		let server = FakeServer([Self.route: FakeServer.json(#"{"ok":true}"#)])
+		let defaults = DeviceStateTests.Memory()
+		let env = ShoppingModelTests.env(server, defaults: defaults)
+		try await env.registerPush(token: "ab12", environment: .sandbox)
+		try await env.registerPush(token: "ab12", environment: .sandbox)
+		#expect(server.requests == [Self.route])
+		let relaunched = ShoppingModelTests.env(server, defaults: defaults)
+		try await relaunched.registerPush(token: "ab12", environment: .sandbox)
+		#expect(server.requests == [Self.route], "the last token sent survives a relaunch")
+		try await relaunched.registerPush(token: "cd34", environment: .sandbox)
+		try await relaunched.registerPush(token: "cd34", environment: .production)
+		#expect(server.requests == [Self.route, Self.route, Self.route])
+	}
+
+	@Test func aFailedSendIsRetriedNextTime() async throws {
+		let failing = FakeServer()
+		let defaults = DeviceStateTests.Memory()
+		await #expect(throws: APIError.self) {
+			try await ShoppingModelTests.env(failing, defaults: defaults).registerPush(token: "ab12", environment: .sandbox)
+		}
+		let server = FakeServer([Self.route: FakeServer.json(#"{"ok":true}"#)])
+		try await ShoppingModelTests.env(server, defaults: defaults).registerPush(token: "ab12", environment: .sandbox)
+		#expect(server.requests == [Self.route])
+	}
+
+	@Test func signOutForgetsTheToken() async throws {
+		let server = FakeServer([Self.route: FakeServer.json(#"{"ok":true}"#)])
+		let env = ShoppingModelTests.env(server)
+		try await env.registerPush(token: "ab12", environment: .sandbox)
+		#expect(env.device.lastPushToken == "sandbox:ab12")
+		env.signOut()
+		#expect(env.device.lastPushToken == nil, "the next sign-in sends it again")
 	}
 }

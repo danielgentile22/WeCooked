@@ -61,7 +61,7 @@ struct WeCookedApp: App {
 			tokens: KeychainTokenStore.automatic(accessGroup: config.keychainGroup),
 			defaults: DefaultsStore(suiteName: config.appGroup),
 			cachesDirectory: caches)
-		env.onSnapshotWritten = { WidgetCenter.shared.reloadAllTimelines() }
+		env.onSnapshotWritten = { WidgetCenter.shared.reloadTimelines(ofKind: $0) }
 		return env
 	}
 }
