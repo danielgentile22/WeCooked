@@ -10,7 +10,9 @@ import { JobError } from './jobs';
 // maxRetries: 1 is deliberate and load-bearing (ADR-016): the SDK default of 2
 // means one transient failure silently bills three full extractions.
 // Issue #70: two attempts must fit inside the client's five minute give-up
-// (GIVE_UP_MS), with the page fetch before them and a retry-after between.
+// (GIVE_UP_MS), with the page fetch before them and the SDK's backoff
+// between. A server-sent retry-after is honoured uncapped by the SDK and can
+// still overrun; the client then shows its timeout and the job finishes late.
 export const CALL_TIMEOUT_MS = 110_000;
 
 // Lazy so the module can load (and takeQuota be tested) without a key.

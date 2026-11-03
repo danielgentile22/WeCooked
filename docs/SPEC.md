@@ -435,9 +435,10 @@ Both model and effort are environment variables so they can change without a
 deploy. The API default effort on this generation is `high`; `low` must be
 set explicitly or you get more than you asked for.
 
-The timeout is set so two attempts, the 10 s page fetch before them and the
-longest retry-after the SDK honours (60 s) fit inside the client's five
-minute give-up (issue #70).
+The timeout is set so two attempts, the 10 s page fetch before them and a
+minute between them (the SDK's default backoff is at most 8 s) fit inside
+the client's five minute give-up (issue #70). A longer retry-after sent by
+the API is honoured as sent and can still overrun.
 
 `maxRetries: 1` is deliberate and load-bearing. The SDK default of 2 means one
 transient failure silently bills three full extractions (ADR-016).

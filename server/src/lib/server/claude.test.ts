@@ -39,7 +39,7 @@ describe('daily call cap (SPEC 5.9)', () => {
 describe('per-call timeout (issue #70)', () => {
 	it('fits two attempts inside the client five minute give-up', () => {
 		// Two attempts (maxRetries: 1), the 10 s page fetch before them, and
-		// the SDK's longest honoured retry-after (60 s) between them.
+		// a minute between them: well past the SDK's 8 s default backoff.
 		expect(2 * CALL_TIMEOUT_MS + 10_000 + 60_000).toBeLessThanOrEqual(GIVE_UP_MS);
 	});
 });
