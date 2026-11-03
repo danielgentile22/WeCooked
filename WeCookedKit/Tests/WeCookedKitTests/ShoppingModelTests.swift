@@ -14,11 +14,14 @@ struct ShoppingModelTests {
 	static func env(_ server: FakeServer, defaults: any KeyValueStore = DeviceStateTests.Memory()) -> AppEnvironment {
 		let config = URLSessionConfiguration.ephemeral
 		config.protocolClasses = [StubProtocol.self]
-		return AppEnvironment(
+		let env = AppEnvironment(
 			config: AppConfig(baseURL: URL(string: "http://\(server.host)/api/v1/")!),
 			tokens: InMemoryTokenStore("t"), defaults: defaults,
 			cachesDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString),
 			session: URLSession(configuration: config))
+		// As the app does once its first frame is up.
+		env.startFeeds()
+		return env
 	}
 
 	static func reply(_ name: String = "shopping-get") throws -> ShoppingResponse {
