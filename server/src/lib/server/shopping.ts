@@ -4,6 +4,7 @@ import { JobError, createJob, type JobHandler, type JobRow } from './jobs';
 import { normaliseYield, scale } from './scale';
 import { ulid } from './ids';
 import type { IngredientGroup } from '$lib/tags';
+import { prepared } from './statements';
 
 // The shopping list (SPEC 7.6, ADR-015, ADR-034): one list forever, built by
 // one shopping_merge job that scales missing variations inline (SPEC 5.7)
@@ -78,7 +79,7 @@ const now = () => new Date().toISOString();
 
 /** ADR-034: exactly one shopping_list row, ever. Created lazily. */
 export function getListId(db: Database): string {
-	const row = db.prepare('SELECT id FROM shopping_list').get() as { id: string } | undefined;
+	const row = prepared(db, 'SELECT id FROM shopping_list').get() as { id: string } | undefined;
 	if (row) return row.id;
 	const id = ulid();
 	const ts = now();
@@ -373,13 +374,12 @@ export type ShoppingState = {
 /** Everything the Shopping tab and the 5 s poll need (ADR-033). */
 export function getShoppingState(db: Database): ShoppingState {
 	const listId = getListId(db);
-	const rows = db
-		.prepare(
-			`SELECT id, section, text_us, text_metric, from_recipes, is_manual, ticked, position
-			 FROM shopping_list_item WHERE list_id = ?
-			 ORDER BY position, id`
-		)
-		.all(listId) as {
+	const rows = prepared(
+		db,
+		`SELECT id, section, text_us, text_metric, from_recipes, is_manual, ticked, position
+		 FROM shopping_list_item WHERE list_id = ?
+		 ORDER BY position, id`
+	).all(listId) as {
 		id: string;
 		section: Section;
 		text_us: string;
@@ -399,20 +399,18 @@ export function getShoppingState(db: Database): ShoppingState {
 				).map((r) => [r.id, r.title])
 			: []
 	);
-	const picks = db
-		.prepare(
-			`SELECT slr.recipe_id, slr.yield_count, r.title, r.yield_unit
-			 FROM shopping_list_recipe slr JOIN recipe r ON r.id = slr.recipe_id
-			 WHERE slr.list_id = ? ORDER BY r.title`
-		)
-		.all(listId) as ShoppingState['picks'];
-	const job = db
-		.prepare(
-			`SELECT id, status, error_text, result_json FROM job
-			 WHERE kind = 'shopping_merge' AND list_id = ?
-			 ORDER BY created_at DESC, id DESC LIMIT 1`
-		)
-		.get(listId) as
+	const picks = prepared(
+		db,
+		`SELECT slr.recipe_id, slr.yield_count, r.title, r.yield_unit
+		 FROM shopping_list_recipe slr JOIN recipe r ON r.id = slr.recipe_id
+		 WHERE slr.list_id = ? ORDER BY r.title`
+	).all(listId) as ShoppingState['picks'];
+	const job = prepared(
+		db,
+		`SELECT id, status, error_text, result_json FROM job
+		 WHERE kind = 'shopping_merge' AND list_id = ?
+		 ORDER BY created_at DESC, id DESC LIMIT 1`
+	).get(listId) as
 		| { id: string; status: string; error_text: string | null; result_json: string | null }
 		| undefined;
 	return {

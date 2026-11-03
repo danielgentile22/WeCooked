@@ -224,7 +224,7 @@ extension View {
 	/// disappear rather than `.task`, because a NavigationStack keeps the root
 	/// view alive under a pushed one, and a `.task` there would neither stop nor
 	/// restart on return. Also refetches when the app comes back to the front.
-	func watching<V: Codable & Sendable>(
+	func watching<V: Codable & Sendable & Equatable>(
 		_ resource: Resource<V>, every interval: Duration? = nil
 	) -> some View {
 		modifier(WatchModifier(resource: resource, interval: interval))
@@ -251,7 +251,7 @@ private struct ScreenAwakeModifier: ViewModifier {
 	}
 }
 
-struct WatchModifier<V: Codable & Sendable>: ViewModifier {
+struct WatchModifier<V: Codable & Sendable & Equatable>: ViewModifier {
 	let resource: Resource<V>
 	let interval: Duration?
 	@State private var task: Task<Void, Never>?
@@ -278,12 +278,17 @@ struct WatchModifier<V: Codable & Sendable>: ViewModifier {
 /// The three states every data screen has, in one place so no screen invents a
 /// fourth: content (cached or fresh) renders immediately; a skeleton only when
 /// nothing was ever seen; an error only when there is nothing to show.
-struct Loaded<V: Codable & Sendable, Content: View>: View {
+/// `placeholder` stands in while a never-seen value loads, so a new search
+/// keeps the last results on screen instead of flashing a spinner.
+struct Loaded<V: Codable & Sendable & Equatable, Content: View>: View {
 	let resource: Resource<V>
+	var placeholder: V? = nil
 	@ViewBuilder var content: (V) -> Content
 	var body: some View {
 		if let value = resource.value {
 			content(value)
+		} else if resource.isFirstLoad, let placeholder {
+			content(placeholder)
 		} else if resource.isFirstLoad {
 			ProgressView().accessibilityLabel("Loading")
 		} else if case .failed(let e) = resource.phase {

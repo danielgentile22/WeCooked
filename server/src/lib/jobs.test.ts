@@ -7,6 +7,7 @@ const poll = (status: JobPoll['status']): JobPoll => ({
 	error_text: null,
 	result_ref: status === 'done' ? 'v1' : null
 });
+const running = poll('running');
 
 /** A fetch that replays `statuses` and records each URL; each call "takes" `ms`. */
 function fakeFetch(statuses: JobPoll['status'][], ms = 0) {
@@ -15,7 +16,7 @@ function fakeFetch(statuses: JobPoll['status'][], ms = 0) {
 		urls.push(url);
 		vi.setSystemTime(Date.now() + ms);
 		const s = statuses[Math.min(urls.length - 1, statuses.length - 1)];
-		return new Response(JSON.stringify(poll(s)));
+		return Response.json(poll(s));
 	}) as unknown as typeof fetch;
 	return { fn, urls };
 }
@@ -26,16 +27,74 @@ describe('pollJob long-poll (issue #65)', () => {
 	it('asks the server to hold the reply and re-asks straight away on a change', async () => {
 		vi.useFakeTimers({ toFake: ['Date'] });
 		const { fn, urls } = fakeFetch(['queued', 'running', 'done']);
-		expect(await pollJob('j1', fn)).toEqual(poll('done'));
+		expect(await pollJob('j1', { fetchFn: fn })).toEqual(poll('done'));
 		expect(urls).toEqual(Array(3).fill('/api/jobs/j1?wait=25'));
 	});
 
 	it('gives up at 5 minutes, never asking to wait past it', async () => {
 		vi.useFakeTimers({ toFake: ['Date'] });
 		const { fn, urls } = fakeFetch(['running'], 25_000);
-		const r = await pollJob('j1', fn);
+		const r = await pollJob('j1', { fetchFn: fn });
 		expect(r).toEqual({ status: 'timeout', error_code: null, error_text: TIMEOUT_COPY, result_ref: null });
 		expect(urls.length).toBe(12);
 		expect(urls.every((u) => u === '/api/jobs/j1?wait=25')).toBe(true);
+	});
+});
+
+describe('pollJob cancellation (issue #66)', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('stops polling and rejects once its page aborts the signal', async () => {
+		vi.useFakeTimers();
+		// The server holds each request for its whole wait (issue #65).
+		const fetchFn = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((resolve, reject) => {
+					const t = setTimeout(() => resolve(Response.json(running)), 25_000);
+					init?.signal?.addEventListener('abort', () => {
+						clearTimeout(t);
+						reject(init.signal!.reason);
+					});
+				})
+		);
+		const page = new AbortController();
+		const poll = pollJob('j1', { signal: page.signal, fetchFn: fetchFn as typeof fetch });
+		const settled = poll.then(
+			() => 'resolved',
+			(e: unknown) => (e as Error).name
+		);
+		await vi.advanceTimersByTimeAsync(25_000);
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+		page.abort();
+		expect(await settled).toBe('AbortError');
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
+
+	it('passes the signal to fetch so an in-flight request is cancelled too', async () => {
+		let seen: AbortSignal | undefined;
+		const fetchFn = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					seen = init?.signal ?? undefined;
+					seen?.addEventListener('abort', () => reject(seen!.reason));
+				})
+		);
+		const page = new AbortController();
+		const poll = pollJob('j1', { signal: page.signal, fetchFn: fetchFn as typeof fetch });
+		expect(seen).toBe(page.signal);
+		page.abort();
+		await expect(poll).rejects.toMatchObject({ name: 'AbortError' });
+		expect(fetchFn).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not fetch when the page is already gone', async () => {
+		const fetchFn = vi.fn(async () => Response.json(running));
+		const page = new AbortController();
+		page.abort();
+		await expect(
+			pollJob('j1', { signal: page.signal, fetchFn: fetchFn as typeof fetch })
+		).rejects.toMatchObject({ name: 'AbortError' });
+		expect(fetchFn).not.toHaveBeenCalled();
 	});
 });

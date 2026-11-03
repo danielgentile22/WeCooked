@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
+import { prepared } from './statements';
 import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
 import type { CoverTarget } from '$lib/extract';
 
@@ -109,7 +110,10 @@ const created = channel();
 const changed = channel();
 
 /** The cover jobs in these statuses for a draft, or for a recipe directly or
- *  through the draft that became it (issue #44). Newest first. */
+ *  through the draft that became it (issue #44). Newest first. cover_owner
+ *  (issue #64) is the draft or recipe id from input_json, null on every
+ *  other kind, so it needs no kind term (which would steer the planner off
+ *  its index). */
 export function coverJobs(
 	db: Database,
 	target: CoverTarget,
@@ -117,16 +121,15 @@ export function coverJobs(
 ): Pick<JobRow, 'id' | 'result_json'>[] {
 	const [match, id] =
 		'draft_id' in target
-			? [`json_extract(input_json, '$.draft_id') = @id`, target.draft_id]
+			? [`cover_owner = @id`, target.draft_id]
 			: [
-					`(json_extract(input_json, '$.recipe_id') = @id
-					  OR json_extract(input_json, '$.draft_id') IN (SELECT id FROM job WHERE recipe_id = @id))`,
+					`(cover_owner = @id OR cover_owner IN (SELECT id FROM job WHERE recipe_id = @id))`,
 					target.recipe_id
 				];
 	return db
 		.prepare(
 			`SELECT id, result_json FROM job
-			 WHERE kind = 'cover' AND status IN (${statuses.map(() => '?').join(',')}) AND ${match}
+			 WHERE ${match} AND status IN (${statuses.map(() => '?').join(',')})
 			 ORDER BY created_at DESC, id DESC`
 		)
 		.all(...statuses, { id }) as Pick<JobRow, 'id' | 'result_json'>[];
@@ -138,11 +141,10 @@ export const pendingCoverJob = (db: Database, target: CoverTarget): string | nul
 
 /** SPEC 6.3 polling contract, or null for an unknown job. */
 export function getJobPoll(db: Database, id: string): JobPoll | null {
-	const row = db
-		.prepare(
-			'SELECT status, error_code, error_text, recipe_id, variation_id, list_id FROM job WHERE id = ?'
-		)
-		.get(id) as
+	const row = prepared(
+		db,
+		'SELECT status, error_code, error_text, recipe_id, variation_id, list_id FROM job WHERE id = ?'
+	).get(id) as
 		| (Pick<JobPoll, 'status' | 'error_code' | 'error_text'> & {
 				recipe_id: string | null;
 				variation_id: string | null;
@@ -229,15 +231,14 @@ const BACKGROUND_SQL = BACKGROUND_KINDS.map((k) => `'${k}'`).join(', ');
 // double-run a job (SPEC 6.1). Background kinds go last (issue #63), so a
 // cover backfill never makes the cook wait; otherwise oldest first.
 function claimNext(db: Database): JobRow | undefined {
-	const job = db
-		.prepare(
-			`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
-			 WHERE id = (SELECT id FROM job WHERE status = 'queued'
-			             ORDER BY kind IN (${BACKGROUND_SQL}), created_at, id LIMIT 1)
-			   AND status = 'queued'
-			 RETURNING *`
-		)
-		.get(now()) as JobRow | undefined;
+	const job = prepared(
+		db,
+		`UPDATE job SET status = 'running', started_at = ?, attempts = attempts + 1
+		 WHERE id = (SELECT id FROM job WHERE status = 'queued'
+		             ORDER BY kind IN (${BACKGROUND_SQL}), created_at, id LIMIT 1)
+		   AND status = 'queued'
+		 RETURNING *`
+	).get(now()) as JobRow | undefined;
 	if (job) changed.emit(db);
 	return job;
 }
