@@ -32,7 +32,7 @@ import {
 	retryBuild,
 	setTicked
 } from '../shopping';
-import { saveImage } from '../images';
+import { backfillThumbnails, saveImage, THUMB_BACKFILL_LIMIT } from '../images';
 import { PUSH_ENVIRONMENTS, registerDevice, type PushEnvironment } from '../devices';
 import { BACKFILL_LIMIT, backfillCovers, findDraftCover, findRecipeCover } from '../cover';
 import { pageContent, pageImages } from '../extract';
@@ -332,6 +332,18 @@ export const routes: readonly Route[] = [
 			const limit = Number(req.query.get('limit') ?? BACKFILL_LIMIT);
 			if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('limit must be 1 to 200.');
 			return { queued: backfillCovers(db, limit) };
+		}
+	},
+
+	// Issue #73: thumbnails for images stored before uploads made them, one
+	// page per call; scripts/backfill-thumbnails.mjs walks the pages.
+	{
+		method: 'POST',
+		path: '/images/thumbnails/backfill',
+		run: (db, req) => {
+			const limit = Number(req.query.get('limit') ?? THUMB_BACKFILL_LIMIT);
+			if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('limit must be 1 to 200.');
+			return backfillThumbnails(db, limit, req.query.get('after') ?? '');
 		}
 	},
 

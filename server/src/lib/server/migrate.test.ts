@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrate } from './migrate';
@@ -61,7 +61,7 @@ describe('migrate', () => {
 	it('applies the real schema', () => {
 		const db = new Database(':memory:');
 		migrate(db, 'migrations');
-		expect(version(db)).toBe(5);
+		expect(version(db)).toBe(readdirSync('migrations').filter((f) => f.endsWith('.sql')).length);
 		const tables = db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
 			.all()
@@ -287,5 +287,34 @@ describe('hot query plans (issue #64)', () => {
 		getCalcJob(db, recipeId);
 		ensureFresh(db, variationId);
 		expect(fullScans(db, ran)).toEqual([]);
+	});
+});
+
+describe('006 (issue #73)', () => {
+	it('adds image.r2_key_thumb, null for images stored before it, and keeps covers', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'mig-'));
+		for (const f of readdirSync('migrations').filter((f) => f.endsWith('.sql') && f < '006'))
+			copyFileSync(`migrations/${f}`, join(dir, f));
+		const db = new Database(':memory:');
+		db.pragma('foreign_keys = ON');
+		migrate(db, dir);
+		db.prepare(
+			`INSERT INTO recipe (id, title, yield_unit, source_units, effort, damage, created_at, updated_at)
+			 VALUES ('r', 'Soup', 'servings', 'metric', 'quick', 'tidy', '2026', '2026')`
+		).run();
+		db.prepare(
+			`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+			 VALUES ('i', 'r', 'f', 'd', 1, 1, 'photo', '2026')`
+		).run();
+		db.prepare(`UPDATE recipe SET cover_image_id = 'i' WHERE id = 'r'`).run();
+
+		copyFileSync('migrations/006_thumbnails.sql', join(dir, '006_thumbnails.sql'));
+		migrate(db, dir);
+		expect(version(db)).toBe(6);
+		expect(db.prepare(`SELECT r2_key_display, r2_key_thumb FROM image WHERE id = 'i'`).get()).toEqual({
+			r2_key_display: 'd',
+			r2_key_thumb: null
+		});
+		expect(db.prepare(`SELECT cover_image_id FROM recipe WHERE id = 'r'`).get()).toEqual({ cover_image_id: 'i' });
 	});
 });

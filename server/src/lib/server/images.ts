@@ -1,11 +1,11 @@
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
-import { presignGet, putObject } from './r2';
+import { getObject, presignGet, putObject } from './r2';
 
 // SPEC 8.1 step 2: the client uploads a normalised 3000px JPEG; the server
-// stores it (r2_key_full) and derives a 1200px display size, plus a 2576px
-// q85 copy on demand for Claude (SPEC 5.8).
+// stores it (r2_key_full) and derives a 1200px display size and a 400px WebP
+// thumbnail (issue #73), plus a 2576px q85 copy on demand for Claude (SPEC 5.8).
 // SPEC 8.2: .rotate() honours EXIF orientation before resizing, so even an
 // upload that skipped client normalisation cannot come out sideways.
 
@@ -15,6 +15,7 @@ const opts = { limitInputPixels: 50_000_000 };
 
 export const DISPLAY_EDGE = 1200;
 export const CLAUDE_EDGE = 2576;
+export const THUMB_EDGE = 400;
 
 /**
  * ADR-009 rule 3: rotate pixels on upload, then strip EXIF. A client-canvas
@@ -23,9 +24,16 @@ export const CLAUDE_EDGE = 2576;
  * pixels and drops the metadata, GPS included (ADR-026: private photos).
  */
 export async function normaliseFull(file: Buffer): Promise<Buffer> {
-	const m = await sharp(file, opts).metadata();
-	if (!m.exif && (m.orientation ?? 1) === 1) return file;
-	return sharp(file, opts).rotate().jpeg({ quality: 90 }).toBuffer();
+	return (await normalised(file)).file;
+}
+
+/** normaliseFull plus the displayed dimensions, from one header read. A
+ *  re-encoded file is rotated, so its dimensions are the oriented ones. */
+async function normalised(upload: Buffer) {
+	const m = await sharp(upload, opts).metadata();
+	const dims = oriented(m);
+	if (!m.exif && (m.orientation ?? 1) === 1) return { file: upload, ...dims };
+	return { file: await sharp(upload, opts).rotate().jpeg({ quality: 90 }).toBuffer(), ...dims };
 }
 
 export function deriveDisplay(full: Buffer) {
@@ -58,6 +66,17 @@ export function normaliseFound(buf: Buffer) {
 		.toBuffer({ resolveWithObject: true });
 }
 
+/** Issue #73: the list-size copy Browse rows and the photo strip show. 400px
+ *  covers a 56pt row tile and a 140pt strip photo at 3x. WebP, a third the
+ *  bytes of a JPEG at this size. Stored, unlike the cover-pick copy below. */
+export function deriveThumbnail(buf: Buffer): Promise<Buffer> {
+	return sharp(buf, opts)
+		.rotate()
+		.resize(THUMB_EDGE, THUMB_EDGE, { fit: 'inside', withoutEnlargement: true })
+		.webp({ quality: 75 })
+		.toBuffer();
+}
+
 /** ADR-043: the small copy a cover pick sends Claude. Choosing a dish
  *  photo needs no detail, and four candidates ride one call. */
 export function deriveThumb(buf: Buffer): Promise<Buffer> {
@@ -70,7 +89,10 @@ export function deriveThumb(buf: Buffer): Promise<Buffer> {
 
 /** Pixel dimensions as displayed, i.e. with EXIF orientation applied. */
 export async function orientedDims(buf: Buffer): Promise<{ width: number; height: number }> {
-	const m = await sharp(buf, opts).metadata();
+	return oriented(await sharp(buf, opts).metadata());
+}
+
+function oriented(m: Metadata): { width: number; height: number } {
 	const flipped = (m.orientation ?? 1) >= 5;
 	return flipped ? { width: m.height, height: m.width } : { width: m.width, height: m.height };
 }
@@ -78,7 +100,7 @@ export async function orientedDims(buf: Buffer): Promise<{ width: number; height
 export type UploadedImage = { id: string; url: string; width: number; height: number };
 
 /**
- * Store one photo: full + display to R2, row with recipe_id NULL until a save
+ * Store one photo: full, display and thumbnail to R2 in parallel, row with recipe_id NULL until a save
  * claims it (ADR-024). Returns what the review form needs to show the thumb.
  * source_url marks a found cover (ADR-043): an image fetched from the web.
  */
@@ -89,16 +111,62 @@ export async function saveImage(
 	found: { source_url?: string } = {}
 ): Promise<UploadedImage> {
 	const id = ulid();
-	const file = await normaliseFull(upload);
-	const { width, height } = await orientedDims(file);
-	const display = await deriveDisplay(file);
+	const { file, width, height } = await normalised(upload);
+	const [display, thumb] = await Promise.all([deriveDisplay(file), deriveThumbnail(file)]);
 	const keyFull = `images/${id}/full.jpg`;
 	const keyDisplay = `images/${id}/display.jpg`;
-	await putObject(keyFull, file);
-	await putObject(keyDisplay, display.data);
+	const keyThumb = thumbKey(id);
+	await Promise.all([
+		putObject(keyFull, file),
+		putObject(keyDisplay, display.data),
+		putObject(keyThumb, thumb, 'image/webp')
+	]);
 	db.prepare(
-		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, source_url, created_at)
-		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)`
-	).run(id, keyFull, keyDisplay, width, height, role, found.source_url ?? null, new Date().toISOString());
+		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, r2_key_thumb, width, height, role, source_url, created_at)
+		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(id, keyFull, keyDisplay, keyThumb, width, height, role, found.source_url ?? null, new Date().toISOString());
 	return { id, url: presignGet(keyDisplay), width, height };
+}
+
+const thumbKey = (id: string) => `images/${id}/thumb.webp`;
+
+export const THUMB_BACKFILL_LIMIT = 25;
+
+/**
+ * Issue #73: thumbnails for images stored before they existed, one page at a
+ * time in id order. Made from the display copy (1200px is plenty for 400px,
+ * and a third the download of the full). Idempotent: only rows still without
+ * r2_key_thumb are read, and the key is set after the upload lands, so a rerun
+ * or a crash midway just redoes the unfinished rows. A row that fails is
+ * logged and passed over; `next` is the cursor for the following page, null
+ * once the last page is done. Trashed images are skipped: Trash shows no
+ * photos, and a restore falls back to the display copy.
+ */
+export async function backfillThumbnails(
+	db: Database,
+	limit = THUMB_BACKFILL_LIMIT,
+	after = ''
+): Promise<{ made: number; failed: number; next: string | null }> {
+	const rows = db
+		.prepare(
+			`SELECT id, r2_key_display FROM image
+			 WHERE r2_key_thumb IS NULL AND deleted_at IS NULL AND id > ?
+			 ORDER BY id LIMIT ?`
+		)
+		.all(after, limit) as { id: string; r2_key_display: string }[];
+	const set = db.prepare('UPDATE image SET r2_key_thumb = ? WHERE id = ?');
+	let made = 0;
+	let failed = 0;
+	for (const r of rows) {
+		try {
+			const thumb = await deriveThumbnail(await getObject(r.r2_key_display));
+			await putObject(thumbKey(r.id), thumb, 'image/webp');
+			set.run(thumbKey(r.id), r.id);
+			made++;
+		} catch (e) {
+			console.error('thumbnail backfill failed', r.id, e);
+			failed++;
+		}
+	}
+	return { made, failed, next: rows.length === limit ? rows[rows.length - 1].id : null };
 }
