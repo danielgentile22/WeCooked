@@ -147,6 +147,8 @@ export const EXTRACT_SYSTEM = `You extract recipes into structured data for a pr
 Rules:
 - Transcribe ingredients and steps faithfully. Do not improve, shorten, or
   modernise the recipe. Do not add ingredients that are not stated.
+- Keep every part of an ingredient line, including a second measurement in
+  brackets: "1 cup (226 g) unsalted butter" stays exactly that.
 - Preserve ingredient section headings ("For the sauce") as groups. If the
   recipe has no sections, return one group with a null heading.
 - Write the body once, in the units the source uses, and name them in
