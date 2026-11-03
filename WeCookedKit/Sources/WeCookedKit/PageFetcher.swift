@@ -14,11 +14,17 @@ public enum PageFetcher {
 
 	static let timeout: Duration = .seconds(15)
 
-	/// Nil after `timeout`; the server then fetches the page itself.
+	/// Nil after `timeout` or on cancellation, which also releases the web
+	/// view; the server then fetches the page itself.
 	public static func html(of url: URL) async -> String? {
 		let rules = await blockRules()
+		guard !Task.isCancelled else { return nil }
 		let loader = Loader(rules: rules)
-		return await loader.load(url, timeout: timeout)
+		return await withTaskCancellationHandler {
+			await loader.load(url, timeout: timeout)
+		} onCancel: {
+			Task { @MainActor in loader.finish(nil) }
+		}
 	}
 
 	private static var rules: WKContentRuleList?
@@ -56,7 +62,8 @@ public enum PageFetcher {
 		}
 
 		func load(_ url: URL, timeout: Duration) async -> String? {
-			await withCheckedContinuation { continuation in
+			guard !Task.isCancelled else { return nil }
+			return await withCheckedContinuation { continuation in
 				self.continuation = continuation
 				timeoutTask = Task { [weak self] in
 					try? await Task.sleep(for: timeout)
@@ -66,7 +73,9 @@ public enum PageFetcher {
 			}
 		}
 
-		private func finish(_ html: String?) {
+		/// Also the way out on cancellation. A cancel that lands before `load`
+		/// has run is caught by the check there.
+		func finish(_ html: String?) {
 			guard let continuation else { return }
 			self.continuation = nil
 			timeoutTask?.cancel()

@@ -11,11 +11,16 @@ final class FakeServer: Sendable {
 	typealias Reply = (status: Int, body: Data)
 	let host = UUID().uuidString.lowercased() + ".test"
 	private let routes: [String: Reply]
+	/// Requests with this key are held until `count` of them have arrived, or
+	/// answered 503 after two seconds: a test that a client sends them together.
+	let together: (key: String, count: Int)?
+	private let arrived = OSAllocatedUnfairLock<Int>(initialState: 0)
 	private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
 	private let last = OSAllocatedUnfairLock<(headers: [String: String], body: Data)>(initialState: ([:], Data()))
 
-	init(_ routes: [String: Reply] = [:]) {
+	init(_ routes: [String: Reply] = [:], together: (key: String, count: Int)? = nil) {
 		self.routes = routes
+		self.together = together
 		StubProtocol.servers.withLock { $0[host] = self }
 	}
 
@@ -28,6 +33,14 @@ final class FakeServer: Sendable {
 		let key = "\(request.httpMethod ?? "GET") \(url.path())" + (url.query().map { "?\($0)" } ?? "")
 		log.withLock { $0.append(key) }
 		last.withLock { $0 = (request.allHTTPHeaderFields ?? [:], Self.body(of: request)) }
+		if let together, together.key == key {
+			arrived.withLock { $0 += 1 }
+			let deadline = Date.now.addingTimeInterval(2)
+			while arrived.withLock({ $0 }) < together.count {
+				guard Date.now < deadline else { return (503, try! Fixtures.data("error")) }
+				Thread.sleep(forTimeInterval: 0.01)
+			}
+		}
 		if url.path().contains("/jobs/") { return (200, try! Fixtures.data("job-get-queued")) }
 		return routes[key] ?? (404, try! Fixtures.data("error"))
 	}
@@ -57,10 +70,15 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
 	override func startLoading() {
 		let url = request.url!
 		let server = Self.servers.withLock { $0[url.host() ?? ""] }
-		let (status, body) = server?.answer(request) ?? (404, Data())
-		let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+		guard let server, server.together != nil else { return reply(server?.answer(request) ?? (404, Data())) }
+		// Off the loading thread, so a held request does not block the next one.
+		DispatchQueue.global().async { self.reply(server.answer(self.request)) }
+	}
+
+	private func reply(_ answer: FakeServer.Reply) {
+		let response = HTTPURLResponse(url: request.url!, statusCode: answer.status, httpVersion: nil, headerFields: nil)!
 		client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-		client?.urlProtocol(self, didLoad: body)
+		client?.urlProtocol(self, didLoad: answer.body)
 		client?.urlProtocolDidFinishLoading(self)
 	}
 }

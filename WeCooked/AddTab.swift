@@ -2,7 +2,8 @@ import SwiftUI
 import WeCookedKit
 
 /// D3. One paste box, photos (library or camera, each through `JPEG.normalise`
-/// then `CaptureModel.add(jpeg:)`), Extract, and "Type it in myself". An
+/// then `CaptureModel.add(jpeg:)`, which uploads while the next one shrinks),
+/// Extract, and "Type it in myself". An
 /// extraction lands on its draft screen on the Recipes tab, so Back returns to
 /// the list where the draft card lives.
 struct AddTab: View {
@@ -34,7 +35,7 @@ struct AddTab: View {
 				}
 				PhotoSources(
 					remaining: CaptureModel.maxPhotos - livePhotos, identifier: "add.photos",
-					onJPEG: { await model.add(jpeg: $0) }
+					onJPEG: { model.add(jpeg: $0) }
 				) {
 					if isUploading {
 						HStack(spacing: 8) {

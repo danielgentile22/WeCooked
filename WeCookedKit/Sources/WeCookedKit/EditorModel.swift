@@ -19,34 +19,87 @@ public struct PendingPhoto: Identifiable, Sendable {
 @MainActor @Observable
 public final class CaptureModel {
 	public static let maxPhotos = CaptureRequest.maxImages
+	/// The longest Extract waits on a pasted link's render before sending the
+	/// link alone, which the server then fetches itself (issue #77).
+	public static let renderCap: Duration = .seconds(4)
 
-	public var text = ""
+	/// A lone link starts rendering as soon as it lands here, so Extract
+	/// usually finds the page ready.
+	public var text = "" {
+		didSet { renderIfLink() }
+	}
 	public private(set) var photos: [PendingPhoto] = []
 	public private(set) var error: String?
 	public private(set) var isSubmitting = false
 	@ObservationIgnored private let env: AppEnvironment
+	@ObservationIgnored private let render: @MainActor (URL) async -> String?
+	@ObservationIgnored private let cap: Duration
+	@ObservationIgnored private var rendering: (url: URL, page: Task<String?, Never>)?
 
-	public init(env: AppEnvironment) { self.env = env }
+	/// `render` and `renderCap` are for tests; the app renders with `PageFetcher`.
+	public init(
+		env: AppEnvironment, render: @escaping @MainActor (URL) async -> String? = { await PageFetcher.html(of: $0) },
+		renderCap: Duration = CaptureModel.renderCap
+	) {
+		self.env = env
+		self.render = render
+		self.cap = renderCap
+	}
 
 	/// Upload immediately on pick (role `capture`), as the web does; the
 	/// thumbnail shows progress and failure copy "Could not upload a photo.
-	/// Check the connection and try again."
-	public func add(jpeg: Data) async {
+	/// Check the connection and try again." Returns once the page is on the
+	/// strip, so the next pick shrinks while this one uploads (issue #77). The
+	/// task is the upload; nil when the page was refused.
+	@discardableResult
+	public func add(jpeg: Data) -> Task<Void, Never>? {
 		error = nil
 		let live = photos.filter { if case .failed = $0.state { false } else { true } }
 		guard live.count < Self.maxPhotos else {
 			error = "At most \(Self.maxPhotos) pages per recipe."
-			return
+			return nil
 		}
 		let photo = PendingPhoto(state: .uploading)
 		photos.append(photo)
-		let state: PendingPhoto.State
-		do {
-			state = .uploaded(try await env.api.uploadImage(jpeg, role: .capture))
-		} catch {
-			state = .failed(PendingPhoto.uploadFailedText)
+		let api = env.api
+		return Task {
+			let state: PendingPhoto.State
+			do {
+				state = .uploaded(try await api.uploadImage(jpeg, role: .capture))
+			} catch {
+				state = .failed(PendingPhoto.uploadFailedText)
+			}
+			if let i = photos.firstIndex(where: { $0.id == photo.id }) { photos[i].state = state }
 		}
-		if let i = photos.firstIndex(where: { $0.id == photo.id }) { photos[i].state = state }
+	}
+
+	/// Starts a render when the box holds a new lone link, and drops the old
+	/// one (its web view goes with it) when the link changes or goes.
+	private func renderIfLink() {
+		let url = CaptureRequest.link(in: text.trimmingCharacters(in: .whitespacesAndNewlines))
+		guard url != rendering?.url else { return }
+		rendering?.page.cancel()
+		rendering = url.map { url in (url, Task { await render(url) }) }
+	}
+
+	/// The rendered page if it is ready within the cap, else nil. Past the cap
+	/// the render is cancelled: the link goes up alone either way.
+	private func page(of url: URL) async -> String? {
+		if rendering?.url != url { rendering = (url, Task { await render(url) }) }
+		guard let page = rendering?.page else { return nil }
+		let cap = cap
+		return await withTaskGroup(of: String?.self) { group in
+			group.addTask {
+				await withTaskCancellationHandler { await page.value } onCancel: { page.cancel() }
+			}
+			group.addTask {
+				try? await Task.sleep(for: cap)
+				return nil
+			}
+			let first = await group.next() ?? nil
+			group.cancelAll()
+			return first
+		}
 	}
 
 	/// Client-side only, as on the web: the uploaded image row is left unclaimed.
@@ -56,7 +109,8 @@ public final class CaptureModel {
 
 	/// Text or photos, never both: any photo on the strip means the photos are
 	/// sent and the text is not. A lone link goes up with the rendered page
-	/// (see `PageFetcher`); anything else is recipe text. Returns the draft to
+	/// (see `PageFetcher`) when it is ready within `renderCap`; anything else is
+	/// recipe text. Returns the draft to
 	/// open. The caller pushes `Route.draft(job)`, where `EditorModel` waits on
 	/// the job.
 	public func extract() async -> JobID? {
@@ -71,7 +125,7 @@ public final class CaptureModel {
 				return nil
 			}
 			if let url = CaptureRequest.link(in: trimmed) {
-				let html = await PageFetcher.html(of: url)
+				let html = await page(of: url)
 				request = { try await $0.capture(.url(url, html: html, text: nil)) }
 			} else {
 				request = { try await $0.capture(.text(trimmed)) }

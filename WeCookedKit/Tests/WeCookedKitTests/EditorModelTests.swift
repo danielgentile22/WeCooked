@@ -10,22 +10,81 @@ struct CaptureModelTests {
 
 	@Test func anEmptyPasteShowsTheWebCopyAndSendsNothing() async {
 		let server = FakeServer()
-		let model = CaptureModel(env: RecipeModelTests.env(server))
+		let model = Self.model(server)
 		model.text = "  \n "
 		#expect(await model.extract() == nil)
 		#expect(model.error == "Paste some recipe text first.")
 		#expect(server.requests.isEmpty)
 	}
 
+	/// No page renders in these tests unless one asks for it.
+	static func model(_ server: FakeServer, render: @escaping @MainActor (URL) async -> String? = { _ in nil })
+		-> CaptureModel
+	{
+		CaptureModel(env: RecipeModelTests.env(server), render: render, renderCap: .milliseconds(200))
+	}
+
 	@Test func pastedTextCreatesACaptureAndClearsTheBox() async {
 		let server = FakeServer([Self.captures: FakeServer.fixture("captures")])
-		let model = CaptureModel(env: RecipeModelTests.env(server))
-		model.text = "https://www.example.com/soup"
+		let model = Self.model(server)
+		model.text = "Pancakes\n2 eggs"
 		#expect(await model.extract() == "01TEST00000000000000000020")
 		#expect(server.requests == [Self.captures])
+		#expect(String(decoding: server.lastBody, as: UTF8.self) == #"{"text":"Pancakes\n2 eggs"}"#)
 		#expect(model.text.isEmpty)
 		#expect(model.error == nil)
 		#expect(!model.isSubmitting)
+	}
+
+	/// Issue #77: the page renders from the moment the link is pasted, so
+	/// Extract usually finds it done.
+	@Test func aPastedLinkStartsRenderingBeforeExtractAndSendsThePage() async throws {
+		let server = FakeServer([Self.captures: FakeServer.fixture("captures")])
+		var asked: [URL] = []
+		let model = Self.model(server) { url in
+			asked.append(url)
+			return "<html>soup</html>"
+		}
+		model.text = "  https://www.example.com/soup\n"
+		await Task.yield()
+		#expect(asked == [URL(string: "https://www.example.com/soup")!], "rendering started on paste")
+		#expect(await model.extract() == "01TEST00000000000000000020")
+		#expect(asked.count == 1, "Extract reused the render")
+		let body = try #require(JSONSerialization.jsonObject(with: server.lastBody) as? [String: String])
+		#expect(body == ["url": "https://www.example.com/soup", "html": "<html>soup</html>"])
+	}
+
+	/// A slow page is not worth the wait: past the cap the link goes up alone
+	/// and the server fetches it.
+	@Test func aSlowRenderIsCappedAndTheLinkGoesUpWithoutThePage() async throws {
+		let server = FakeServer([Self.captures: FakeServer.fixture("captures")])
+		let model = Self.model(server) { _ in
+			try? await Task.sleep(for: .seconds(30))
+			return "<html>too late</html>"
+		}
+		model.text = "https://www.example.com/soup"
+		let started = ContinuousClock.now
+		#expect(await model.extract() == "01TEST00000000000000000020")
+		#expect(ContinuousClock.now - started < .seconds(5))
+		let body = try #require(JSONSerialization.jsonObject(with: server.lastBody) as? [String: String])
+		#expect(body == ["url": "https://www.example.com/soup"])
+	}
+
+	@Test func editingTheLinkRendersTheNewOneAndProseRendersNothing() async {
+		var asked: [String] = []
+		let model = Self.model(FakeServer()) { url in
+			asked.append(url.absoluteString)
+			return nil
+		}
+		model.text = "https://www.example.com/soup"
+		await Task.yield()
+		model.text = "https://www.example.com/soup "
+		await Task.yield()
+		model.text = "https://www.example.com/stew"
+		await Task.yield()
+		model.text = "Stew\n2 carrots"
+		await Task.yield()
+		#expect(asked == ["https://www.example.com/soup", "https://www.example.com/stew"])
 	}
 
 	@Test func photosUploadOnPickCanBeRemovedAndAreSentInsteadOfText() async {
@@ -33,9 +92,9 @@ struct CaptureModelTests {
 			Self.uploadCapture: FakeServer.fixture("image-upload"),
 			Self.captures: FakeServer.fixture("captures"),
 		])
-		let model = CaptureModel(env: RecipeModelTests.env(server))
-		await model.add(jpeg: Data([1]))
-		await model.add(jpeg: Data([2]))
+		let model = Self.model(server)
+		await model.add(jpeg: Data([1]))?.value
+		await model.add(jpeg: Data([2]))?.value
 		#expect(model.photos.count == 2)
 		guard case .uploaded = model.photos[0].state else { Issue.record("not uploaded"); return }
 		model.remove(model.photos[1].id)
@@ -46,12 +105,25 @@ struct CaptureModelTests {
 		#expect(model.photos.isEmpty)
 	}
 
+	/// Issue #77: picked pages go up together. The server answers none of the
+	/// three until all three have arrived, so one-at-a-time uploads fail here.
+	@Test func pickedPhotosUploadTogether() async {
+		let server = FakeServer(
+			[Self.uploadCapture: FakeServer.fixture("image-upload")], together: (Self.uploadCapture, 3))
+		let model = Self.model(server)
+		let uploads = [Data([1]), Data([2]), Data([3])].compactMap { model.add(jpeg: $0) }
+		#expect(model.photos.count == 3)
+		#expect(model.photos.allSatisfy { if case .uploading = $0.state { true } else { false } })
+		for upload in uploads { await upload.value }
+		#expect(model.photos.allSatisfy { if case .uploaded = $0.state { true } else { false } })
+	}
+
 	@Test func anEleventhPhotoIsRefusedWithoutAnUpload() async {
 		let server = FakeServer([Self.uploadCapture: FakeServer.fixture("image-upload")])
-		let model = CaptureModel(env: RecipeModelTests.env(server))
+		let model = Self.model(server)
 		let cap = CaptureModel.maxPhotos
-		for i in 0..<cap { await model.add(jpeg: Data([UInt8(i)])) }
-		await model.add(jpeg: Data([UInt8(cap)]))
+		for i in 0..<cap { await model.add(jpeg: Data([UInt8(i)]))?.value }
+		#expect(model.add(jpeg: Data([UInt8(cap)])) == nil)
 		#expect(model.photos.count == cap)
 		#expect(model.error == "At most \(cap) pages per recipe.")
 		#expect(server.requests.count == cap)
@@ -59,13 +131,31 @@ struct CaptureModelTests {
 
 	@Test func aFailedUploadShowsTheWebCopyAndCannotBeExtracted() async {
 		let server = FakeServer()
-		let model = CaptureModel(env: RecipeModelTests.env(server))
-		await model.add(jpeg: Data([1]))
+		let model = Self.model(server)
+		await model.add(jpeg: Data([1]))?.value
 		guard case .failed(let text) = model.photos.first?.state else { Issue.record("not failed"); return }
 		#expect(text == "Could not upload a photo. Check the connection and try again.")
 		#expect(await model.extract() == nil)
 		#expect(model.error == "Add at least one photo first.")
 		#expect(server.requests == [Self.uploadCapture])
+	}
+
+	/// Issue #77 with #67: a capture lands on its draft with the as-written
+	/// body only, and the screen shows the counterpart converting.
+	@Test func theDraftACaptureOpensShowsItsCounterpartConverting() async throws {
+		let server = FakeServer([
+			Self.captures: FakeServer.fixture("captures"),
+			"GET /api/v1/drafts/01TEST00000000000000000020": FakeServer.fixture("draft-get-converting"),
+		])
+		let env = try EditorModelTests.env(server)
+		let capture = CaptureModel(env: env, render: { _ in nil })
+		capture.text = "Lemon cake\n250 g sugar"
+		let job = try #require(await capture.extract())
+		let editor = EditorModel(origin: .draft(job), env: env)
+		await EditorModelTests.appear(editor) { editor.conversion != nil }
+		#expect(editor.conversion?.status == .converting)
+		#expect(editor.form.other == nil)
+		#expect(!editor.form.shown.ingredients.isEmpty, "the as-written body is on screen")
 	}
 }
 
