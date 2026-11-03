@@ -21,16 +21,107 @@ export function enqueueCover(db: Database, draftId: string): string | null {
 	return createJob(db, 'cover', { draft_id: draftId } satisfies CoverInput);
 }
 
+/** What withCover hands an extract handler: call onPageImages once the
+ *  server has fetched the source page itself, with the page's photos (empty
+ *  when the fetch failed), so the cover job never fetches it again. */
+export type CaptureHooks = { onPageImages: (urls: string[]) => void };
+type CaptureHandler = (job: JobRow, db: Database, hooks: CaptureHooks) => Promise<unknown>;
+
 /** Wrap an extract handler so a successful extraction queues its cover. The
  *  runner writes result_json in the same microtask chain the handler returns
- *  on, before its next tick can claim the cover job, so the title is there. */
+ *  on, before its next tick can claim the cover job, so the title is there.
+ *  The source step needs no title, so it starts before the handler runs, or
+ *  as soon as the handler has the page, and runs alongside the extraction. */
 export const withCover =
-	(handler: JobHandler): JobHandler =>
+	(handler: CaptureHandler, fetchImageFn: FetchImage = fetchImage): JobHandler =>
 	async (job, db) => {
-		const result = await handler(job, db);
+		startCoverSource(job.id, (JSON.parse(job.input_json) as CaptureInput).image_urls ?? [], fetchImageFn);
+		const onPageImages = (urls: string[]) => {
+			const input = JSON.parse(
+				(db.prepare(`SELECT input_json FROM job WHERE id = ?`).get(job.id) as { input_json: string }).input_json
+			) as CaptureInput;
+			db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
+				JSON.stringify({ ...input, image_urls: urls }),
+				job.id
+			);
+			startCoverSource(job.id, urls, fetchImageFn);
+		};
+		let result: unknown;
+		try {
+			result = await handler(job, db, { onPageImages });
+		} catch (e) {
+			sourceSteps.delete(job.id);
+			throw e;
+		}
 		enqueueCover(db, job.id);
 		return result;
 	};
+
+type FetchImage = (url: string) => Promise<Buffer | null>;
+
+/** Downloads in flight per cover search. Enough that a few dead links time
+ *  out together instead of one after another, few enough to stay polite. */
+export const COVER_DOWNLOADS = 4;
+
+/** The first `keep` usable images of urls, in rank order, with at most
+ *  COVER_DOWNLOADS downloads at once. Settles as soon as every rank above the
+ *  last one kept has finished, and starts nothing after that. */
+function firstUsable(
+	urls: string[],
+	fetchImageFn: FetchImage,
+	keep: number
+): Promise<{ url: string; full: Buffer }[]> {
+	return new Promise((resolve) => {
+		// undefined: not finished yet; null: dead or unusable.
+		const results: (Buffer | null | undefined)[] = [];
+		let next = 0;
+		let finished = 0;
+		let settled = false;
+		const settle = () => {
+			const kept: { url: string; full: Buffer }[] = [];
+			for (let i = 0; i < urls.length && kept.length < keep; i++) {
+				if (results[i] === undefined) return;
+				if (results[i]) kept.push({ url: urls[i], full: results[i]! });
+			}
+			settled = true;
+			resolve(kept);
+		};
+		const launch = () => {
+			while (!settled && next < urls.length && next - finished < COVER_DOWNLOADS) {
+				const i = next++;
+				fetchImageFn(urls[i])
+					.catch(() => null)
+					.then((full) => {
+						finished++;
+						results[i] = full;
+						settle();
+						launch();
+					});
+			}
+		};
+		launch();
+		settle();
+	});
+}
+
+/** Source steps started before their cover job, by draft id. */
+const sourceSteps = new Map<string, Promise<Found | null>>();
+// A capture that is discarded before it runs never claims its step.
+const SOURCE_STEP_TTL = 10 * 60_000;
+
+/** Start the source step for a draft: download the page's own photos while
+ *  the extraction runs. Its cover job takes the result. A no-op without
+ *  photos or when one is already running for the draft. */
+function startCoverSource(draftId: string, urls: string[], fetchImageFn: FetchImage = fetchImage): void {
+	if (urls.length === 0 || sourceSteps.has(draftId)) return;
+	sourceSteps.set(draftId, sourceFrom(urls, fetchImageFn));
+	setTimeout(() => sourceSteps.delete(draftId), SOURCE_STEP_TTL).unref?.();
+}
+
+async function sourceFrom(urls: string[], fetchImageFn: FetchImage): Promise<Found | null> {
+	const [hit] = await firstUsable(urls, fetchImageFn, 1);
+	return hit ? { full: hit.full, source_url: hit.url, origin: 'source' } : null;
+}
 
 /** What a cover points at: nothing (or a deleted image), an image found on
  *  the web, or a photo the household took. */
@@ -85,7 +176,8 @@ export function findRecipeCover(db: Database, recipeId: string): string | null {
 }
 
 /** Each search-step cover is one Claude call against the daily cap (ADR-027),
- *  and cover jobs queue ahead of fresh captures, so a backfill goes in batches. */
+ *  so a backfill goes in batches. Captures are claimed ahead of queued covers
+ *  (issue #63), so a batch never makes the cook wait. */
 export const BACKFILL_LIMIT = 20;
 
 /** The saved recipes the backfill covers: live, coverless, with no cover job
@@ -98,11 +190,10 @@ export function backfillCovers(db: Database, limit = BACKFILL_LIMIT): number {
 			 WHERE r.deleted_at IS NULL AND r.cover_image_id IS NULL
 			   AND NOT EXISTS (
 			     SELECT 1 FROM job c
-			     WHERE c.kind = 'cover'
+			     WHERE (c.cover_owner = r.id
+			            OR c.cover_owner IN (SELECT id FROM job WHERE recipe_id = r.id))
 			       AND (c.status IN ('queued', 'running')
-			            OR json_extract(c.result_json, '$.image_id') IS NOT NULL)
-			       AND (json_extract(c.input_json, '$.recipe_id') = r.id
-			            OR json_extract(c.input_json, '$.draft_id') IN (SELECT id FROM job WHERE recipe_id = r.id)))
+			            OR json_extract(c.result_json, '$.image_id') IS NOT NULL))
 			 ORDER BY r.created_at LIMIT ?`
 		)
 		.all(limit) as { id: string }[];
@@ -164,8 +255,8 @@ export async function fetchImage(
 const PICK_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
-	properties: { pick: { type: 'integer' }, reason: { type: 'string' } },
-	required: ['pick', 'reason']
+	properties: { pick: { type: 'integer' } },
+	required: ['pick']
 };
 
 const pickSystem = (title: string) =>
@@ -177,7 +268,7 @@ export async function claudePick(db: Database, title: string, thumbs: Buffer[]):
 		{ type: 'text', text: `Candidate ${i}:` },
 		{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: buf.toString('base64') } }
 	]);
-	const { pick } = await claudeCall<{ pick: number; reason: string }>(db, {
+	const { pick } = await claudeCall<{ pick: number }>(db, {
 		// `||`: the .env.example line COVER_MODEL= is set but empty.
 		model: env.COVER_MODEL || 'claude-sonnet-5-5',
 		max_tokens: 200,
@@ -190,13 +281,14 @@ export async function claudePick(db: Database, title: string, thumbs: Buffer[]):
 
 export type CoverDeps = {
 	fetchPage: (url: string) => Promise<string>;
-	fetchImage: (url: string) => Promise<Buffer | null>;
+	fetchImage: FetchImage;
 	searchImages: (query: string, count: number) => Promise<ImageHit[]>;
 	claudePick: (db: Database, title: string, thumbs: Buffer[]) => Promise<number>;
 };
 
-/** What the cover is for: title to search by, page to read, photos it named. */
-type Target = { title: string | null; url: string | null; candidates: string[] };
+/** What the cover is for: title to search by, page to read, photos it named.
+ *  candidates is undefined when nobody has read the page yet. */
+type Target = { title: string | null; url: string | null; candidates: string[] | undefined };
 type Found = { full: Buffer; source_url: string; origin: 'source' | 'search' };
 
 const NONE: CoverResult = { image_id: null, origin: null, source_url: null };
@@ -220,7 +312,7 @@ function recipeTarget(
 	return {
 		title: recipe.title,
 		url: capture.url ?? recipe.source_url,
-		candidates: capture.image_urls ?? []
+		candidates: capture.image_urls
 	};
 }
 
@@ -238,13 +330,13 @@ function resolveTarget(db: Database, input: CoverInput): Target | null {
 	return {
 		title: draftOf(job)?.title ?? null,
 		url: capture.url ?? null,
-		candidates: capture.image_urls ?? []
+		candidates: capture.image_urls
 	};
 }
 
 async function fromSource(deps: CoverDeps, target: Target): Promise<Found | null> {
-	let candidates = target.candidates;
-	if (candidates.length === 0 && target.url) {
+	let candidates = target.candidates ?? [];
+	if (!target.candidates && target.url) {
 		try {
 			candidates = pageImages(await deps.fetchPage(target.url), target.url);
 		} catch (e) {
@@ -252,11 +344,7 @@ async function fromSource(deps: CoverDeps, target: Target): Promise<Found | null
 			if (!(e instanceof JobError)) throw e;
 		}
 	}
-	for (const url of candidates) {
-		const full = await deps.fetchImage(url);
-		if (full) return { full, source_url: url, origin: 'source' };
-	}
-	return null;
+	return sourceFrom(candidates, deps.fetchImage);
 }
 
 /** The image search query for a title. */
@@ -265,12 +353,12 @@ export const coverQuery = (title: string) => (/recipe/i.test(title) ? title : `$
 async function fromSearch(db: Database, deps: CoverDeps, title: string, input: CoverInput): Promise<Found | null> {
 	const hits = await deps.searchImages(coverQuery(title), input.replace ? REPLACE_HITS : SEARCH_HITS);
 	const tried = new Set(input.exclude);
-	const kept: Found[] = [];
-	for (const hit of hits.filter((h) => !tried.has(h.image_url)).slice(0, SEARCH_ATTEMPTS)) {
-		const full = await deps.fetchImage(hit.image_url);
-		if (full) kept.push({ full, source_url: hit.image_url, origin: 'search' });
-		if (kept.length === SEARCH_KEEP) break;
-	}
+	const urls = hits.map((h) => h.image_url).filter((u) => !tried.has(u)).slice(0, SEARCH_ATTEMPTS);
+	const kept: Found[] = (await firstUsable(urls, deps.fetchImage, SEARCH_KEEP)).map(({ url, full }) => ({
+		full,
+		source_url: url,
+		origin: 'search'
+	}));
 	if (kept.length === 0) return null;
 	const thumbs = await Promise.all(kept.map((k) => deriveThumb(k.full)));
 	let pick: number;
@@ -333,11 +421,14 @@ function attach(db: Database, input: CoverInput, imageId: string): boolean {
 export function coverHandler(deps: CoverDeps): JobHandler {
 	return async (job, db): Promise<CoverResult> => {
 		const input = JSON.parse(job.input_json) as CoverInput;
+		// Claimed first so a step nobody needs any more is not kept around.
+		const early = 'draft_id' in input && !input.replace ? sourceSteps.get(input.draft_id) : undefined;
+		if (early) sourceSteps.delete((input as { draft_id: string }).draft_id);
 		const target = resolveTarget(db, input);
 		if (!target) return NONE;
 		// A replace skips the source step: the page's photo is what the cook is replacing.
 		const found =
-			(input.replace ? null : await fromSource(deps, target)) ??
+			(input.replace ? null : early ? await early : await fromSource(deps, target)) ??
 			(target.title ? await fromSearch(db, deps, target.title, input) : null);
 		if (!found) return NONE;
 		const { id } = await saveImage(db, found.full, 'photo', { source_url: found.source_url });

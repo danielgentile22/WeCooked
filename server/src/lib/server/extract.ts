@@ -449,16 +449,32 @@ const FALLBACK_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked', '
 
 /** Handler for the extract_url job kind: input_json is { url, page?, text? }.
  *  page is pageContent of the HTML the phone rendered; when present the
- *  server never fetches (issue #43). */
+ *  server never fetches (issue #43). When the server does fetch, it reports
+ *  the page's photos through onPageImages, or none if the fetch failed, so
+ *  the cover job does not fetch the page a second time (issue #72). */
 export const extractUrl = async (
 	job: JobRow,
 	db: Database,
-	fetchPageFn: (url: string) => Promise<string> = fetchPage
+	{
+		fetchPage: fetchPageFn = fetchPage,
+		onPageImages
+	}: { fetchPage?: (url: string) => Promise<string>; onPageImages?: (urls: string[]) => void } = {}
 ): Promise<RecipeDraft> => {
 	const { url, page, text } = JSON.parse(job.input_json) as CaptureInput & { url: string };
+	const readPage = async () => {
+		let html: string;
+		try {
+			html = await fetchPageFn(url);
+		} catch (e) {
+			onPageImages?.([]);
+			throw e;
+		}
+		onPageImages?.(pageImages(html, url));
+		return pageContent(html);
+	};
 	const draft = async () => {
 		try {
-			return await extractOnce(db, page ?? pageContent(await fetchPageFn(url)));
+			return await extractOnce(db, page ?? (await readPage()));
 		} catch (e) {
 			if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
 			return extractOnce(db, text);
@@ -490,16 +506,20 @@ export const extractPhotos: JobHandler = async (job, db) => {
 	const { image_ids } = JSON.parse(job.input_json) as { image_ids: string[] };
 	const rows = db
 		.prepare(
-			`SELECT id, r2_key_full FROM image
+			`SELECT id, r2_key_full, r2_key_claude FROM image
 			 WHERE id IN (${image_ids.map(() => '?').join(',')}) AND deleted_at IS NULL`
 		)
-		.all(...image_ids) as { id: string; r2_key_full: string }[];
-	const byId = new Map(rows.map((r) => [r.id, r.r2_key_full]));
-	const keys = image_ids.map((id) => byId.get(id));
-	if (image_ids.length === 0 || keys.some((k) => !k))
+		.all(...image_ids) as { id: string; r2_key_full: string; r2_key_claude: string | null }[];
+	const byId = new Map(rows.map((r) => [r.id, r]));
+	const images = image_ids.map((id) => byId.get(id));
+	if (image_ids.length === 0 || images.some((i) => !i))
 		throw new JobError('api_error', 'Capture images are missing.');
+	// Issue #71: the copy was built at upload. A capture uploaded before that
+	// has none, so derive it from the full as before.
 	const copies = await Promise.all(
-		keys.map(async (key) => deriveClaude(await getObject(key!)))
+		images.map(async (i) =>
+			i!.r2_key_claude ? getObject(i!.r2_key_claude) : deriveClaude(await getObject(i!.r2_key_full))
+		)
 	);
 	return extracted(db, job, extractOnce(db, photoBlocks(copies), 'image_unreadable'));
 };

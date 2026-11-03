@@ -7,7 +7,7 @@ import Testing
 struct ShoppingModelTests {
 	static let base = "/api/v1/shopping"
 	/// Unticked on the server in `shopping-get`.
-	static let chickpeas: ShoppingItemID = "01TEST00000000000000000029"
+	static let chickpeas: ShoppingItemID = "01TEST00000000000000000030"
 	static let patch = "PATCH \(base)/items/\(chickpeas)"
 	static let ok = FakeServer.json(#"{"ok":true}"#)
 
@@ -118,7 +118,7 @@ struct ShoppingModelTests {
 		let env = Self.env(FakeServer())
 		let model = try Self.model(env)
 		let lost = ShoppingBuild(
-			jobId: "01TEST00000000000000000040", status: .done, errorText: nil,
+			jobId: "01TEST00000000000000000041", status: .done, errorText: nil,
 			result: BuildResult(kept: 1, reset: ["2 onions", "olive oil"]))
 		model.noticed(try Self.withBuild(lost))
 		#expect(model.notice == "1 tick kept. 2 reset because the line changed: 2 onions, olive oil.")
@@ -128,7 +128,7 @@ struct ShoppingModelTests {
 		#expect(model.notice == nil)
 
 		let clean = ShoppingBuild(
-			jobId: "01TEST00000000000000000041", status: .done, errorText: nil,
+			jobId: "01TEST00000000000000000042", status: .done, errorText: nil,
 			result: BuildResult(kept: 3, reset: []))
 		model.noticed(try Self.withBuild(clean))
 		#expect(model.notice == nil)
@@ -139,11 +139,11 @@ struct ShoppingModelTests {
 		let env = Self.env(FakeServer())
 		let model = try Self.model(env)
 		model.noticed(try Self.withBuild(ShoppingBuild(
-			jobId: "01TEST00000000000000000042", status: .done, errorText: nil,
+			jobId: "01TEST00000000000000000043", status: .done, errorText: nil,
 			result: BuildResult(kept: 0, reset: ["olive oil"]))))
 		#expect(model.notice != nil)
 		model.noticed(try Self.withBuild(ShoppingBuild(
-			jobId: "01TEST00000000000000000043", status: .pending, errorText: nil, result: nil)))
+			jobId: "01TEST00000000000000000044", status: .pending, errorText: nil, result: nil)))
 		#expect(model.notice == nil)
 	}
 
@@ -160,7 +160,7 @@ struct ShoppingModelTests {
 		#expect(model.phase == .empty)
 		#expect(!model.hasList)
 
-		let job: JobID = "01TEST00000000000000000042"
+		let job: JobID = "01TEST00000000000000000043"
 		model.resource.replace(try Self.withBuild(ShoppingBuild(jobId: job, status: .pending, errorText: nil, result: nil)))
 		#expect(model.phase == .building)
 
@@ -175,7 +175,7 @@ struct ShoppingModelTests {
 		let model = try Self.model(Self.env(FakeServer()))
 		#expect(model.shareText != nil)
 		model.resource.replace(try Self.withBuild(ShoppingBuild(
-			jobId: "01TEST00000000000000000042", status: .pending, errorText: nil, result: nil)))
+			jobId: "01TEST00000000000000000043", status: .pending, errorText: nil, result: nil)))
 		#expect(model.shareText == nil)
 	}
 
@@ -205,7 +205,7 @@ struct ShoppingModelTests {
 		let model = try Self.model(env)
 		env.device.queueTick(Self.chickpeas, true)
 		model.noticed(try Self.withBuild(ShoppingBuild(
-			jobId: "01TEST00000000000000000043", status: .done, errorText: nil,
+			jobId: "01TEST00000000000000000044", status: .done, errorText: nil,
 			result: BuildResult(kept: 0, reset: ["olive oil"]))))
 		#expect(model.notice != nil)
 		await model.doneShopping()

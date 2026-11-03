@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { LoaderCircle, Info, Check, RotateCw } from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
-	import { pollJob } from '$lib/jobs';
+	import { ignoreAbort, jobDeps, pollJob } from '$lib/jobs';
 
 	let { data, form } = $props();
 
@@ -34,8 +34,17 @@
 		retryForm?.requestSubmit();
 	}
 
+	// Issue #66: keyed on the draft, so moving to another draft (same
+	// component) or leaving the page cancels the poll.
+	const draftId = $derived(data.id);
 	$effect(() => {
-		if (working) pollJob(data.id).then(() => invalidateAll());
+		if (!working) return;
+		const id = draftId;
+		const poll = new AbortController();
+		pollJob(id, { signal: poll.signal })
+			.then(() => invalidate(jobDeps.draft(id)))
+			.catch(ignoreAbort);
+		return () => poll.abort();
 	});
 
 	// Issue #67: the counterpart body fills in when the draft's conversion ends.
@@ -43,9 +52,15 @@
 		const state = 'counterpart_state' in data ? data.counterpart_state : null;
 		return state && state.status !== 'ready' ? { status: state.status, job_id: state.job_id } : null;
 	});
+	const conversionJob = $derived(conversion?.status === 'converting' ? conversion.job_id : null);
 	$effect(() => {
-		const job = conversion?.status === 'converting' ? conversion.job_id : null;
-		if (job) pollJob(job).then(() => invalidateAll());
+		if (!conversionJob) return;
+		const id = draftId;
+		const poll = new AbortController();
+		pollJob(conversionJob, { signal: poll.signal })
+			.then(() => invalidate(jobDeps.draft(id)))
+			.catch(ignoreAbort);
+		return () => poll.abort();
 	});
 	let conversionRetry: HTMLFormElement | undefined = $state();
 
@@ -172,6 +187,7 @@
 			action="?/save"
 			error={form?.error ?? null}
 			coverJobId={data.cover_job_id}
+			coverDependency={jobDeps.draft(data.id)}
 			findCover={data.status === 'done'}
 			{conversion}
 			onretry={() => conversionRetry?.requestSubmit()}

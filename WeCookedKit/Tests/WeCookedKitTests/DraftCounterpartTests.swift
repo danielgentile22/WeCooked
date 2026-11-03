@@ -7,7 +7,7 @@ import Testing
 /// counterpart fills in from the draft's conversion job.
 @MainActor
 struct DraftCounterpartTests {
-	static let draft: JobID = "01TEST00000000000000000021"
+	static let draft: JobID = "01TEST00000000000000000022"
 	static let conversion: JobID = "01TEST0000000000000000CONV"
 
 	static func view(_ fixture: String) throws -> DraftView {

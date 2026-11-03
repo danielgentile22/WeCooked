@@ -57,20 +57,21 @@ const input = (): RecipeInput => ({
 	cover_image_id: null
 });
 
+// Scale writes the metric body only; US comes from a queued reconvert.
 const scaledResult = (n: number) => ({
 	body: {
-		source_units: 'metric',
-		us: {
-			ingredients: [{ heading: null, items: [`${n} oz tinned chickpeas`] }],
-			steps: ['Bake at 375°F.']
-		},
-		metric: {
-			ingredients: [{ heading: null, items: [`${n * 100} g tinned chickpeas`] }],
-			steps: ['Bake at 190°C.']
-		}
+		ingredients: [{ heading: null, items: [`${n * 100} g tinned chickpeas`] }],
+		steps: ['Bake at 190°C.']
 	},
 	scaling_note: 'Salt scaled sublinearly.'
 });
+
+const reconvertJobs = (variationId: string) =>
+	db
+		.prepare(
+			`SELECT status, input_json FROM job WHERE kind = 'reconvert' AND variation_id = ?`
+		)
+		.all(variationId) as { status: string; input_json: string }[];
 
 const jobRow = (id: string) => db.prepare(`SELECT * FROM job WHERE id = ?`).get(id) as JobRow;
 const variations = (recipeId: string) =>
@@ -115,7 +116,7 @@ describe('requestScale (SPEC 7.5: only the button spends money)', () => {
 });
 
 describe('scale handler: new variation (SPEC 5.5)', () => {
-	it('saves a real variation with both bodies and the scaling note', async () => {
+	it('saves a real variation with the metric body, the scaling note, and a queued US reconvert', async () => {
 		const rid = createRecipe(db, input());
 		const { job_id } = requestScale(db, rid, 6) as { job_id: string };
 		vi.mocked(claudeCall).mockResolvedValue(scaledResult(21));
@@ -135,11 +136,15 @@ describe('scale handler: new variation (SPEC 5.5)', () => {
 		expect(jobRow(job_id).variation_id).toBe(scaled.id);
 		const bodies = db
 			.prepare(
-				`SELECT unit_system, ingredients_json FROM body WHERE variation_id = ? ORDER BY unit_system`
+				`SELECT unit_system, is_source, ingredients_json FROM body WHERE variation_id = ? ORDER BY unit_system`
 			)
-			.all(scaled.id) as { unit_system: string; ingredients_json: string }[];
-		expect(bodies.map((b) => b.unit_system)).toEqual(['metric', 'us']);
+			.all(scaled.id) as { unit_system: string; is_source: number; ingredients_json: string }[];
+		expect(bodies.map((b) => [b.unit_system, b.is_source])).toEqual([['metric', 1]]);
 		expect(bodies[0].ingredients_json).toContain('2100 g');
+		// The US body is written by the reconvert job, the same path saving uses.
+		expect(reconvertJobs(scaled.id).map((j) => [j.status, JSON.parse(j.input_json)])).toEqual([
+			['queued', { variation_id: scaled.id, target_units: 'us' }]
+		]);
 
 		const call = vi.mocked(claudeCall).mock.calls[0][1];
 		expect(call.system).toBe(SCALE_SYSTEM);
@@ -148,6 +153,9 @@ describe('scale handler: new variation (SPEC 5.5)', () => {
 		expect(content).toContain('from 4 servings to 6 servings');
 		expect(content).toContain('400 g tinned chickpeas'); // metric body, scaling reasons in metric
 		expect(content).not.toContain(RANGE_WARNING);
+		// One body per call: the schema asks for metric only.
+		const schema = call.schema as { properties: { body: { properties: object } } };
+		expect(Object.keys(schema.properties.body.properties).sort()).toEqual(['ingredients', 'steps']);
 	});
 
 	it('leads with a warning outside 0.25x to 4x', async () => {
@@ -238,6 +246,13 @@ describe('scale handler: stale refresh (SPEC 7.5, ADR-029)', () => {
 			)
 			.get(vid) as { ingredients_json: string };
 		expect(metric.ingredients_json).toContain('2800 g');
+		// The old US text stays visible behind the converting banner until the
+		// queued reconvert replaces it, exactly as after a hand edit.
+		const us = db
+			.prepare(`SELECT is_source FROM body WHERE variation_id = ? AND unit_system = 'us'`)
+			.get(vid) as { is_source: number };
+		expect(us.is_source).toBe(0);
+		expect(reconvertJobs(vid).map((j) => j.status)).toEqual(['queued']);
 		// scaled from the CURRENT original (500 g), version 2
 		expect(vi.mocked(claudeCall).mock.calls[0][1].messages[0].content).toContain('500 g');
 	});
@@ -373,6 +388,9 @@ describe('getRecipe with variations (SPEC 7.4/7.5)', () => {
 		expect(scaled.is_original).toBe(false);
 		expect(scaled.scaling_note).toBe('Salt scaled sublinearly.');
 		expect(scaled.bodies.metric?.ingredients[0].items).toEqual(['2100 g tinned chickpeas']);
+		// The US body is converting: the toggle shows the existing pending state.
+		expect(scaled.bodies.us).toBeNull();
+		expect(scaled.reconvert?.status).toBe('pending');
 
 		// editing the original marks the scaled variation stale, not the original
 		updateRecipe(db, rid, {

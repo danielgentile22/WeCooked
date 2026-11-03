@@ -14,6 +14,7 @@ import { bearerToken, gate } from '$lib/server/gate';
 import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '$lib/server/session';
 import { claudeCall } from '$lib/server/claude';
 import { scale } from '$lib/server/scale';
+import { reconvert } from '$lib/server/reconvert';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import type { JobRow } from '$lib/server/jobs';
@@ -315,11 +316,7 @@ describe('/api/v1', () => {
 		expect(busy.recipe.reconvert).toMatchObject({ status: 'pending' });
 
 		vi.mocked(claudeCall).mockResolvedValueOnce({
-			body: {
-				source_units: 'metric',
-				us: { ingredients: [{ heading: null, items: ['2 onions', '28 oz canned chickpeas'] }], steps: ['Fry.'] },
-				metric: { ingredients: [{ heading: null, items: ['2 onions', '800 g tinned chickpeas'] }], steps: ['Fry.'] }
-			},
+			body: { ingredients: [{ heading: null, items: ['2 onions', '800 g tinned chickpeas'] }], steps: ['Fry.'] },
 			scaling_note: 'Doubled; simmer a little longer.'
 		});
 		finishJob(job_id, await scale(job(job_id)!, db));
@@ -331,8 +328,23 @@ describe('/api/v1', () => {
 		expect(
 			fixture('recipe-calculate-existing', await ok('POST', `/recipes/${recipeId}/calculate`, { body: { to_count: 8 } }))
 		).toEqual({ variation_id: scaled });
+		// Scale writes metric only; the US body is converting (#69).
+		const converting = fixture(
+			'recipe-get-variation-converting',
+			await ok('GET', `/recipes/${recipeId}`, { query: `v=${scaled}` })
+		);
+		expect(converting.recipe.bodies.us).toBeNull();
+		expect(converting.recipe.reconvert).toMatchObject({ status: 'pending' });
+		const usJob = converting.recipe.reconvert.job_id as string;
+		vi.mocked(claudeCall).mockResolvedValueOnce({
+			ingredients: [{ heading: null, items: ['2 onions', '28 oz canned chickpeas'] }],
+			steps: ['Fry.']
+		});
+		finishJob(usJob, await reconvert(job(usJob)!, db));
+
 		const v = fixture('recipe-get-variation', await ok('GET', `/recipes/${recipeId}`, { query: `v=${scaled}` }));
-		expect(v.recipe).toMatchObject({ variation_id: scaled, is_original: false, yield_count: 8 });
+		expect(v.recipe).toMatchObject({ variation_id: scaled, is_original: false, yield_count: 8, reconvert: null });
+		expect(v.recipe.bodies.us).not.toBeNull();
 		expect(v.recipe.variations).toHaveLength(2);
 	});
 

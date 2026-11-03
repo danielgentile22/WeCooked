@@ -15,6 +15,7 @@ import {
 import { createJob } from '$lib/server/jobs';
 import type { GenerateInput } from '$lib/extract';
 import { findDraftCover } from '$lib/server/cover';
+import { jobDeps } from '$lib/jobs';
 
 // The draft review page (SPEC 6.5): the job row is the draft. Done jobs seed
 // the form from result_json; failed jobs open it empty with the source text
@@ -32,7 +33,8 @@ function generationJob(id: string): JobRow {
 	return job;
 }
 
-export const load: PageServerLoad = ({ params }) => {
+export const load: PageServerLoad = ({ params, depends }) => {
+	depends(jobDeps.draft(params.id));
 	const job = draftJob(params.id);
 	if (job.recipe_id) redirect(303, `/recipes/${job.recipe_id}`);
 	return draftView(db, job);

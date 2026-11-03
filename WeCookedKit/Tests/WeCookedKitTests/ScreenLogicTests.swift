@@ -121,9 +121,9 @@ struct ShoppingLayoutTests {
 		#expect(ShoppingLayout.progress(items: items, pending: [id: true]).ticked == 2)
 	}
 
-	static let chickpeas: ShoppingItemID = "01TEST00000000000000000029"
-	static let oliveOil: ShoppingItemID = "01TEST00000000000000000030"
-	static let binBags: ShoppingItemID = "01TEST00000000000000000031"
+	static let chickpeas: ShoppingItemID = "01TEST00000000000000000030"
+	static let oliveOil: ShoppingItemID = "01TEST00000000000000000031"
+	static let binBags: ShoppingItemID = "01TEST00000000000000000032"
 
 	static func shareText(
 		_ fixture: String = "shopping-get", units: UnitSystem = .metric, pending: [ShoppingItemID: Bool] = [:]

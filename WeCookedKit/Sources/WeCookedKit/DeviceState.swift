@@ -14,6 +14,7 @@ import Observation
 //   wc-draft:job|recipe|manual                 `editorDraft(...)`
 //   shoppingBuildSeen                          `seenBuild`
 //   (none: ticks were online-only)             `pendingTicks`, the outbox
+//   (none: push is native)                     `lastPushToken`
 
 public protocol KeyValueStore: Sendable {
 	func data(forKey key: String) -> Data?
@@ -72,6 +73,9 @@ public final class DeviceState {
 	public var units: UnitSystem { didSet { save(units, "units") } }
 	/// The last shopping build whose rebuild banner was shown.
 	public var seenBuild: JobID? { didSet { save(seenBuild, "seenBuild") } }
+	/// `<environment>:<token>` as last accepted by `POST /devices`; see
+	/// `AppEnvironment.registerPush`.
+	public var lastPushToken: String? { didSet { save(lastPushToken, "lastPushToken") } }
 	/// Ticks the server has not acknowledged yet, as target states. Idempotent
 	/// to replay; see `ShoppingModel`.
 	public private(set) var pendingTicks: [ShoppingItemID: Bool] {
@@ -94,6 +98,7 @@ public final class DeviceState {
 		}
 		units = load("units", UnitSystem.metric)
 		seenBuild = load("seenBuild", JobID?.none)
+		lastPushToken = load("lastPushToken", String?.none)
 		pendingTicks = load("pendingTicks", [:])
 		strikeBook = load("strikes", [:])
 	}
@@ -154,5 +159,6 @@ public final class DeviceState {
 		strikeBook = [:]
 		pendingTicks = [:]
 		seenBuild = nil
+		lastPushToken = nil
 	}
 }

@@ -354,3 +354,24 @@ describe('the draft counterpart (issue #67)', () => {
 		expect(conversion(id)).toBeUndefined();
 	});
 });
+
+describe('capture cards', () => {
+	it('titles a capture by its extraction, else its first pasted line, else its link', () => {
+		const paste = createJob(db, 'extract_paste', {
+			text: `\n\n  Brown butter cake\n${'200 g flour\n'.repeat(200)}`
+		});
+		const long = createJob(db, 'extract_paste', { text: 'x'.repeat(500) });
+		const url = createJob(db, 'extract_url', { url: 'https://example.com/stew' });
+		const done = createJob(db, 'extract_paste', { text: 'whatever' });
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(
+			JSON.stringify({ title: 'Chickpea stew' }),
+			done
+		);
+		db.prepare(`UPDATE job SET status = 'failed' WHERE id = ?`).run(url);
+		const cards = new Map(listDrafts(db).map((c) => [c.id, c]));
+		expect(cards.get(paste)).toEqual({ id: paste, status: 'extracting', title: 'Brown butter cake' });
+		expect(cards.get(long)?.title).toBe('x'.repeat(80));
+		expect(cards.get(url)).toEqual({ id: url, status: 'failed', title: 'https://example.com/stew' });
+		expect(cards.get(done)).toEqual({ id: done, status: 'ready', title: 'Chickpea stew' });
+	});
+});

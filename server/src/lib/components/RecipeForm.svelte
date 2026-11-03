@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import {
 		Plus,
 		X,
@@ -17,7 +17,7 @@
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
-	import { pollJob } from '$lib/jobs';
+	import { ignoreAbort, pollJob } from '$lib/jobs';
 	import {
 		adoptCounterpart,
 		loadedBodies,
@@ -54,6 +54,8 @@
 		// The cover job still looking for a photo, if any (issue #44): followed
 		// here, and its result merged into the open form.
 		coverJobId = null as string | null,
+		// The host's load dependency (jobDeps) a finished cover job reloads (issue #66).
+		coverDependency = null as string | null,
 		// Whether the host has a ?/findCover action ("Find another photo").
 		findCover = false,
 		// The counterpart body's regeneration state (ADR-028), edit page only.
@@ -333,16 +335,21 @@
 	});
 	type CoverSearch = { status: 'idle' | 'pending' } | { status: 'failed'; text: string };
 	let coverSearch = $state<CoverSearch>({ status: 'idle' });
+	// Derived so a reload that keeps the same job does not restart its poll.
+	const coverJob = $derived(coverJobId);
 	$effect(() => {
-		if (coverJobId) {
+		const jobId = coverJob;
+		if (jobId) {
 			coverSearch = { status: 'pending' };
-			let live = true;
-			pollJob(coverJobId).then(() => {
-				if (live) invalidateAll();
-			});
-			return () => {
-				live = false;
-			};
+			// Leaving the form cancels the poll (issue #66).
+			const poll = new AbortController();
+			const dependency = untrack(() => coverDependency);
+			pollJob(jobId, { signal: poll.signal })
+				.then(() => {
+					if (dependency) return invalidate(dependency);
+				})
+				.catch(ignoreAbort);
+			return () => poll.abort();
 		}
 		if (untrack(() => coverSearch.status) === 'pending') coverSearch = { status: 'idle' };
 	});

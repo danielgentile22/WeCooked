@@ -232,6 +232,9 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA synchronous = NORMAL;   -- safe with WAL + Litestream
+PRAGMA cache_size = -32000;    -- 32 MB page cache (issue #64)
+PRAGMA temp_store = MEMORY;    -- sorts stay in memory (issue #64)
+-- after migrating, at startup: PRAGMA optimize = 0x10002;
 
 CREATE TABLE recipe (
   id                TEXT PRIMARY KEY,
@@ -309,6 +312,8 @@ CREATE TABLE image (
                                   -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
+  r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
+                                  -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
   height         INTEGER NOT NULL,
   role           TEXT NOT NULL CHECK (role IN ('capture','photo')),
@@ -337,7 +342,8 @@ CREATE TABLE job (
   started_at   TEXT,
   finished_at  TEXT
 );
-CREATE INDEX job_pending ON job(status, created_at) WHERE status IN ('queued','running');
+-- The job and image read indexes, and the cover_owner column, are in
+-- migrations/005_hot_indexes.sql (issue #64); it replaced job_pending.
 
 CREATE TABLE job_quota (
   day   TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' in America/New_York
@@ -441,7 +447,7 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 | Kind | Input | Output | Approx cost |
 |---|---|---|---|
 | `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft`, as-written body only (issue #67) | $0.05 to $0.09 |
-| `scale` | source body + target yield | `BodyPair` + scaling note | ~$0.06 |
+| `scale` | source body + target yield | metric body + scaling note (#69) | ~$0.06 |
 | `reconvert` | one edited body, or a draft's as-written body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
 | `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
@@ -449,7 +455,7 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 
 ### 5.3 Shared output shapes
 
-`BodyPair` is the unit that `scale` and `generate` produce. Every saved
+`BodyPair` is the unit that `generate` produces. Every saved
 recipe body exists in both unit systems (ADR-019, amended by issue #67:
 `extract` writes the as-written body only, and the draft's conversion job
 writes the counterpart).
@@ -671,7 +677,11 @@ The client polls one job for the whole thing.
 
 ### 5.8 Images sent to Claude
 
-- Long edge resized to **2576 px**, JPEG quality 85.
+- Long edge resized to **1568 px**, JPEG quality 85. Issue #71 lowered this
+  from 2576 after a benchmark: on a two-page spread with 7pt footnotes,
+  1568 read every fact 2576 did, about 2 s faster and with half the bytes.
+- Built when a capture photo is uploaded and stored as `r2_key_claude`, so the
+  photo job only downloads it (issue #71). A recipe photo gets none.
 - Never send the raw camera file: iPhone photos are 12 to 24 MP and over 10 MB,
   the API caps at 10 MB, and the server downscales anyway, so full resolution
   buys nothing and costs latency and tokens.
@@ -707,10 +717,22 @@ queued --> running --> done
 ```
 
 Created by an API route, drained by an in-process runner. Concurrency 2 (two
-users, and Opus latency is moderate). The runner polls the table every 500 ms
-and takes work with a transactional claim (`UPDATE job SET status='running' ...
-WHERE id = ? AND status='queued'`), so a future second process cannot double-run
-a job.
+users, and Opus latency is moderate). Creating a job wakes the runner at once,
+and a slot that frees claims the next job straight away; a 500 ms poll stays as
+the safety net. The runner takes work with a transactional claim (`UPDATE job
+SET status='running' ... WHERE id = ? AND status='queued'`), so a future second
+process cannot double-run a job.
+
+Claim order puts the cook first (issue #63): captures, generations, scales and
+shopping merges are claimed ahead of the background kinds (`cover`,
+`reconvert`), oldest first within each group, so a cover backfill never makes
+the cook wait. The push sent after a job (issue #42) is fire and forget and
+does not hold a slot.
+
+Finished background jobs are pruned 30 days after they finish, at boot and
+daily. A cover job that found an image is kept: it is the record that stops
+the backfill putting back a cover the cook removed. Capture and generation
+jobs back drafts and are never pruned.
 
 ### 6.2 Startup recovery
 
@@ -1091,7 +1113,8 @@ The camera file never reaches the server intact, on purpose:
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
-   1200 px long edge, and a 2576 px quality-85 JPEG for Claude.
+   1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
+   (`r2_key_claude`, section 5.8).
 
 **Deliberate deviation, stated plainly:** "store the original" means the
 normalised 3000 px JPEG, not the untouched camera file. The true original is not
