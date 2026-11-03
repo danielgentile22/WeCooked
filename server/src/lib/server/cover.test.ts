@@ -506,7 +506,14 @@ describe('parallel candidate downloads (issue #72)', () => {
 
 describe('page images and the early source step (issue #72)', () => {
 	const body = { ingredients: [{ heading: null, items: ['egg'] }], steps: ['fry'] };
-	const extracted = { title: 'Shakshuka', body: { source_units: 'metric', ...body } } as RecipeDraft;
+	// A reply as Claude sends it: effort_override, not effort (issue #70).
+	const extracted = {
+		title: 'Shakshuka',
+		prep_minutes: 10,
+		cook_minutes: 15,
+		body: { source_units: 'metric', ...body },
+		tags: { meal_type: [], cuisine: null, protein: null, effort_override: null, damage: 'tidy' }
+	} as unknown as RecipeDraft;
 
 	it('a server-fetched URL capture hands the page images to the cover job, which never refetches', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(extracted);

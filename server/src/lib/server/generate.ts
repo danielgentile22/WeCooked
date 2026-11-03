@@ -4,8 +4,7 @@ import {
 	type GenerateInput,
 	type GenerateResult,
 	type BodyPair,
-	type RecipeDraft,
-	type StoredDraft
+	type RecipeDraft
 } from '$lib/extract';
 import { claudeCall } from './claude';
 import {
@@ -13,7 +12,9 @@ import {
 	CONVERSION_RULES,
 	RECIPE_DRAFT_SCHEMA,
 	RECIPE_RULES,
-	RECIPE_SHAPE_RULES
+	RECIPE_SHAPE_RULES,
+	fromReply,
+	type ExtractReply
 } from './extract';
 import { JobError, type JobHandler } from './jobs';
 
@@ -44,7 +45,7 @@ ${CONVERSION_RULES}
 ${RECIPE_RULES}`;
 
 /** What Claude answers a generation with: candidates with both bodies. */
-export type GenerateReply = { candidates: (Omit<StoredDraft, 'body'> & { body: BodyPair })[] };
+export type GenerateReply = { candidates: (Omit<ExtractReply, 'body'> & { body: BodyPair })[] };
 
 // Generation still writes both bodies in one call; extraction writes only the
 // as-written one (issue #67).
@@ -78,7 +79,7 @@ export const generate: JobHandler = async (job, db) => {
 		messages: [{ role: 'user', content: `Description: ${description}\nYield: ${yield_count}` }],
 		schema: GENERATE_SCHEMA
 	});
-	const candidates: RecipeDraft[] = reply.candidates.map(parseDraft);
+	const candidates: RecipeDraft[] = reply.candidates.map((c) => parseDraft(fromReply(c)));
 	if (candidates.length !== CANDIDATE_COUNT || !candidates.every(hasRecipe))
 		throw new JobError(
 			'api_error',

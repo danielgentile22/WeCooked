@@ -47,6 +47,17 @@ describe('generate (issue #41)', () => {
 		await expect(generate(jobRow, db)).rejects.toMatchObject({ code: 'api_error' });
 	});
 
+	it('derives each candidate effort from its minutes and override (issue #70)', async () => {
+		const reply = fixture();
+		reply.candidates[0].tags.effort_override = 'project';
+		reply.candidates[1].prep_minutes = 5;
+		reply.candidates[1].cook_minutes = 10;
+		vi.mocked(claudeCall).mockResolvedValue(reply);
+		const result = (await generate(jobRow, db)) as GenerateResult;
+		expect(result.candidates.map((c) => c.tags.effort)).toEqual(['project', 'quick', 'weeknight']);
+		expect(result.candidates[0].tags).not.toHaveProperty('effort_override');
+	});
+
 	it('builds both prompts on the shared recipe rules', () => {
 		expect(EXTRACT_SYSTEM.endsWith(RECIPE_RULES)).toBe(true);
 		expect(GENERATE_SYSTEM.endsWith(RECIPE_RULES)).toBe(true);
