@@ -427,15 +427,31 @@ const FALLBACK_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked', '
 
 /** Handler for the extract_url job kind: input_json is { url, page?, text? }.
  *  page is pageContent of the HTML the phone rendered; when present the
- *  server never fetches (issue #43). */
+ *  server never fetches (issue #43). When the server does fetch, it reports
+ *  the page's photos through onPageImages, or none if the fetch failed, so
+ *  the cover job does not fetch the page a second time (issue #72). */
 export const extractUrl = async (
 	job: JobRow,
 	db: Database,
-	fetchPageFn: (url: string) => Promise<string> = fetchPage
+	{
+		fetchPage: fetchPageFn = fetchPage,
+		onPageImages
+	}: { fetchPage?: (url: string) => Promise<string>; onPageImages?: (urls: string[]) => void } = {}
 ): Promise<RecipeDraft> => {
 	const { url, page, text } = JSON.parse(job.input_json) as CaptureInput & { url: string };
+	const readPage = async () => {
+		let html: string;
+		try {
+			html = await fetchPageFn(url);
+		} catch (e) {
+			onPageImages?.([]);
+			throw e;
+		}
+		onPageImages?.(pageImages(html, url));
+		return pageContent(html);
+	};
 	try {
-		return await extract(db, page ?? pageContent(await fetchPageFn(url)));
+		return await extract(db, page ?? (await readPage()));
 	} catch (e) {
 		if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
 		return extract(db, text);

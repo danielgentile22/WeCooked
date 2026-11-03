@@ -466,20 +466,20 @@ describe('extract_url fallback (issue #39)', () => {
 	it('extracts from the page when it is readable, ignoring the caption', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
 		const page = async () => '<p>Shakshuka from the page</p>';
-		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: page });
 		expect(sentContent()).toEqual(['Shakshuka from the page']);
 	});
 
 	it('falls back to the text when the page is blocked', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
-		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, blocked);
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: blocked });
 		expect(sentContent()).toEqual([caption]);
 	});
 
 	it('fails as before when the page is blocked and there is no text', async () => {
 		vi.mocked(claudeCall).mockReset();
 		await expect(
-			extractUrl(jobRow({ url: 'https://example.com/r' }), db, blocked)
+			extractUrl(jobRow({ url: 'https://example.com/r' }), db, { fetchPage: blocked })
 		).rejects.toMatchObject({ code: 'fetch_blocked' });
 		expect(claudeCall).not.toHaveBeenCalled();
 	});
@@ -489,14 +489,14 @@ describe('extract_url fallback (issue #39)', () => {
 		empty.body.metric.ingredients = [{ heading: null, items: [] }];
 		vi.mocked(claudeCall).mockReset().mockResolvedValueOnce(empty).mockResolvedValueOnce(draft());
 		const page = async () => '<p>Log in to see this reel</p>';
-		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, page);
+		await extractUrl(jobRow({ url: 'https://example.com/r', text: caption }), db, { fetchPage: page });
 		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
 	});
 
 	it('extracts from the phone-rendered page without fetching (issue #43)', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(draft());
 		const fetchSpy = vi.fn(async () => '<p>server copy</p>');
-		await extractUrl(jobRow({ url: 'https://example.com/r', page: 'Rendered page' }), db, fetchSpy);
+		await extractUrl(jobRow({ url: 'https://example.com/r', page: 'Rendered page' }), db, { fetchPage: fetchSpy });
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sentContent()).toEqual(['Rendered page']);
 	});
@@ -509,7 +509,7 @@ describe('extract_url fallback (issue #39)', () => {
 		await extractUrl(
 			jobRow({ url: 'https://example.com/r', page: 'Log in to see this reel', text: caption }),
 			db,
-			fetchSpy
+			{ fetchPage: fetchSpy }
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sentContent()).toEqual(['Log in to see this reel', caption]);
