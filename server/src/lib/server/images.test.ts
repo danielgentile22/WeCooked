@@ -69,9 +69,9 @@ describe('image pipeline (SPEC 8.1, 8.2)', () => {
 		expect((await deriveDisplay(small)).info.width).toBe(600);
 	});
 
-	// SPEC 5.8 + 8.2: the Claude copy is 2576 max and rotated, so a sideways
-	// EXIF upload cannot reach the model sideways even via this path.
-	it('Claude copy caps the long edge at 2576 and bakes rotation in', async () => {
+	// SPEC 5.8 + 8.2: the Claude copy is CLAUDE_EDGE max and rotated, so a
+	// sideways EXIF upload cannot reach the model sideways even via this path.
+	it('Claude copy caps the long edge at CLAUDE_EDGE and bakes rotation in', async () => {
 		const big = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: '#888' } })
 			.jpeg()
 			.withMetadata({ orientation: 6 })
@@ -90,6 +90,44 @@ describe('image pipeline (SPEC 8.1, 8.2)', () => {
 			.png()
 			.toBuffer();
 		await expect(deriveDisplay(bomb)).rejects.toThrow(/pixel limit/i);
+	});
+
+	// Issue #71: a capture's Claude copy is built at upload, so the photo job
+	// only downloads it. A plain photo never goes to Claude and gets none.
+	describe('saveImage', () => {
+		const db = () => {
+			const d = new Database(':memory:');
+			migrate(d, 'migrations');
+			return d;
+		};
+		const page = () =>
+			sharp({ create: { width: 3000, height: 2250, channels: 3, background: '#eee' } })
+				.jpeg()
+				.toBuffer();
+		const stored = () => new Map(vi.mocked(putObject).mock.calls.map(([k, b]) => [k, b]));
+
+		it('stores a Claude copy for a capture and records its key', async () => {
+			vi.mocked(putObject).mockClear();
+			const d = db();
+			const { id } = await saveImage(d, await page(), 'capture');
+			const key = `images/${id}/claude.jpg`;
+			const m = await sharp(stored().get(key) as Buffer).metadata();
+			expect(Math.max(m.width, m.height)).toBe(CLAUDE_EDGE);
+			expect(m.format).toBe('jpeg');
+			expect(d.prepare('SELECT r2_key_claude FROM image WHERE id = ?').get(id)).toEqual({ r2_key_claude: key });
+		});
+
+		it('stores no Claude copy for a recipe photo', async () => {
+			vi.mocked(putObject).mockClear();
+			const d = db();
+			const { id } = await saveImage(d, await page(), 'photo');
+			expect([...stored().keys()]).toEqual([
+				`images/${id}/full.jpg`,
+				`images/${id}/display.jpg`,
+				`images/${id}/thumb.webp`
+			]);
+			expect(d.prepare('SELECT r2_key_claude FROM image WHERE id = ?').get(id)).toEqual({ r2_key_claude: null });
+		});
 	});
 });
 

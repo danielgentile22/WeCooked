@@ -19,7 +19,7 @@ struct StoreTests {
 	/// A poller that never finishes; these tests are about values, not jobs.
 	static func idlePoller() -> JobPoller {
 		JobPoller(
-			fetch: { _ in JobPoll(status: .running, errorCode: nil, errorText: nil, resultRef: nil) },
+			fetch: { _, _ in JobPoll(status: .running, errorCode: nil, errorText: nil, resultRef: nil) },
 			sleep: { try await Task.sleep(for: $0) }, now: { .now })
 	}
 	static func store(_ cache: DiskCache = tempCache()) -> Store {
@@ -212,7 +212,7 @@ struct StoreWatcherTests {
 	/// briefly, so the test observes the wait while it is alive.
 	static func poller(_ gate: Gate) -> JobPoller {
 		JobPoller(
-			fetch: { _ in
+			fetch: { _, _ in
 				_ = gate.polls.next()
 				let done = gate.open.withLock { $0 }
 				return JobPoll(status: done ? .done : .running, errorCode: nil, errorText: nil, resultRef: nil)

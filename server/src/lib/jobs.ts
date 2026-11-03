@@ -33,22 +33,55 @@ export type JobPoll = {
 // SPEC 6.3: the poll gives up at 5 minutes "with a timeout message".
 export const TIMEOUT_COPY = 'Still working after 5 minutes. Try again in a bit.';
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Issue #65: each request asks the server to hold the reply this many seconds,
+// answering early the moment the status changes, so no client-side sleep.
+const LONG_POLL_S = 25;
+const GIVE_UP_MS = 5 * 60_000;
+
+export type PollOptions = {
+	/** Abort when the page that started the poll goes away (issue #66). */
+	signal?: AbortSignal;
+	fetchFn?: typeof fetch;
+};
 
 /**
- * Poll GET /api/jobs/:id every 1.5 s, backing off to 5 s after 30 s, giving
- * up at 5 minutes with status 'timeout' (SPEC 6.3). Resolves on done/failed.
+ * Long-poll GET /api/jobs/:id (issue #65) until the job is done or failed,
+ * giving up at 5 minutes with status 'timeout' (SPEC 6.3). Rejects with an
+ * AbortError once `signal` aborts, so a cancelled poll never reaches the
+ * caller's reload (issue #66).
  */
-export async function pollJob(id: string, fetchFn: typeof fetch = fetch): Promise<JobPoll> {
+export async function pollJob(
+	id: string,
+	{ signal, fetchFn = fetch }: PollOptions = {}
+): Promise<JobPoll> {
 	const start = Date.now();
 	for (;;) {
-		const res = await fetchFn(`/api/jobs/${id}`);
+		signal?.throwIfAborted();
+		const left = GIVE_UP_MS - (Date.now() - start);
+		if (left <= 0)
+			return { status: 'timeout', error_code: null, error_text: TIMEOUT_COPY, result_ref: null };
+		const wait = Math.min(LONG_POLL_S, Math.ceil(left / 1000));
+		const res = await fetchFn(`/api/jobs/${id}?wait=${wait}`, { signal });
 		if (!res.ok) throw new Error(`Job poll failed: ${res.status}`);
 		const job: JobPoll = await res.json();
 		if (job.status === 'done' || job.status === 'failed') return job;
-		const elapsed = Date.now() - start;
-		if (elapsed >= 5 * 60_000)
-			return { status: 'timeout', error_code: null, error_text: TIMEOUT_COPY, result_ref: null };
-		await sleep(elapsed < 30_000 ? 1500 : 5000);
 	}
 }
+
+export const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+/** `.catch` for a poll: a cancelled poll is silent, anything else still surfaces. */
+export const ignoreAbort = (e: unknown) => {
+	if (!isAbort(e)) throw e;
+};
+
+/**
+ * Named load dependencies (SvelteKit `depends`) a finished job invalidates,
+ * so it reruns only the loads that show what the job changed (issue #66).
+ * A key carries its id, so a poll left over from another page matches nothing.
+ */
+export const jobDeps = {
+	drafts: 'app:drafts',
+	draft: (id: string) => `app:draft:${id}`,
+	recipe: (id: string) => `app:recipe:${id}`,
+	shopping: 'app:shopping'
+} as const;

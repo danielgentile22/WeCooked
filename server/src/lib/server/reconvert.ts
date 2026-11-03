@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
-import type { BodyText } from '$lib/tags';
+import { otherUnits, type BodyText, type UnitSystem } from '$lib/tags';
 import { claudeCall } from './claude';
-import { BODY_SCHEMA, CONVERSION_RULES } from './extract';
+import { BODY_SCHEMA, CONVERSION_RULES, type DraftConversionInput } from './extract';
 import { JobError, type JobHandler } from './jobs';
 import { ulid } from './ids';
 
@@ -20,12 +20,40 @@ the SAME recipe in the other unit system.
 
 ${CONVERSION_RULES}`;
 
-/** Handler for the reconvert job kind: input_json is { variation_id, target_units }. */
+/** One body, converted into the other system. */
+function convert(db: Database, from: UnitSystem, body: { ingredients_json: string; steps_json: string }) {
+	const to = otherUnits(from);
+	return claudeCall<BodyText>(db, {
+		system: RECONVERT_SYSTEM,
+		messages: [
+			{
+				role: 'user',
+				content:
+					`Convert this recipe from ${from === 'us' ? 'US' : 'metric'} to ` +
+					`${to === 'us' ? 'US' : 'metric'} units.\n\n` +
+					`Ingredients:\n${body.ingredients_json}\n\nSteps:\n${body.steps_json}`
+			}
+		],
+		schema: BODY_SCHEMA
+	});
+}
+
+type VariationInput = { variation_id: string; target_units: UnitSystem };
+
+/** Handler for the reconvert job kind. input_json is { variation_id,
+ *  target_units } for a saved variation, whose counterpart body it writes;
+ *  or a DraftConversionInput for a draft (issue #67), whose counterpart it
+ *  returns as result_json. */
 export const reconvert: JobHandler = async (job, db) => {
-	const { variation_id, target_units } = JSON.parse(job.input_json) as {
-		variation_id: string;
-		target_units: 'us' | 'metric';
-	};
+	const input = JSON.parse(job.input_json) as VariationInput | DraftConversionInput;
+	if ('draft_id' in input) {
+		const { source_units, ingredients, steps } = input.source;
+		return convert(db, source_units, {
+			ingredients_json: JSON.stringify(ingredients),
+			steps_json: JSON.stringify(steps)
+		});
+	}
+	const { variation_id, target_units } = input;
 	const src = db
 		.prepare(
 			`SELECT unit_system, ingredients_json, steps_json FROM body
@@ -41,19 +69,7 @@ export const reconvert: JobHandler = async (job, db) => {
 	// body with machine output — the exact failure ADR-028 exists to prevent.
 	if (src.unit_system === target_units) return null;
 
-	const body = await claudeCall<BodyText>(db, {
-		system: RECONVERT_SYSTEM,
-		messages: [
-			{
-				role: 'user',
-				content:
-					`Convert this recipe from ${src.unit_system === 'us' ? 'US' : 'metric'} to ` +
-					`${target_units === 'us' ? 'US' : 'metric'} units.\n\n` +
-					`Ingredients:\n${src.ingredients_json}\n\nSteps:\n${src.steps_json}`
-			}
-		],
-		schema: BODY_SCHEMA
-	});
+	const body = await convert(db, src.unit_system, src);
 
 	const ts = new Date().toISOString();
 	db.prepare(

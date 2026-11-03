@@ -506,7 +506,7 @@ export type ShoppingState = { list_id: string; items: ShoppingItem[];
 - Limits: body over 8 MiB gives 413; empty gives 400 (`api/images/+server.ts:13-16`). sharp's `limitInputPixels` is 50,000,000 (line 14).
 - `normaliseFull` returns the input untouched if it has no EXIF and orientation 1; otherwise it rotates and re-encodes as q90 JPEG, which strips EXIF and GPS (lines 25-29).
 - Display copy: long edge 1200 (`DISPLAY_EDGE`), q85, fit inside, no enlargement (lines 31-37).
-- Claude copy: long edge 2576 (`CLAUDE_EDGE`), q85, derived at extraction time and not stored (lines 42-48).
+- Claude copy: long edge 1568 (`CLAUDE_EDGE`), q85, built at upload for captures only and stored as `r2_key_claude` (issue #71). The photo job derives one from the full for a capture that has none.
 - R2 keys: `images/{ulid}/full.jpg` and `images/{ulid}/display.jpg` (lines 72-73).
 - The row is inserted with `recipe_id NULL` and the role. It is claimed on save (`setImages`).
 

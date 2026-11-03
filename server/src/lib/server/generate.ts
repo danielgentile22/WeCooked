@@ -1,6 +1,20 @@
-import { hasRecipe, type GenerateInput, type GenerateResult } from '$lib/extract';
+import {
+	hasRecipe,
+	parseDraft,
+	type GenerateInput,
+	type GenerateResult,
+	type BodyPair,
+	type RecipeDraft,
+	type StoredDraft
+} from '$lib/extract';
 import { claudeCall } from './claude';
-import { RECIPE_DRAFT_SCHEMA, RECIPE_RULES, RECIPE_SHAPE_RULES } from './extract';
+import {
+	BODY_SCHEMA,
+	CONVERSION_RULES,
+	RECIPE_DRAFT_SCHEMA,
+	RECIPE_RULES,
+	RECIPE_SHAPE_RULES
+} from './extract';
 import { JobError, type JobHandler } from './jobs';
 
 // The generate call (issue #41): three candidate recipes from a description,
@@ -21,15 +35,36 @@ Rules:
   it to US.
 - Preserve ingredient section headings ("For the sauce") as groups when a
   recipe has parts. Otherwise return one group with a null heading.
+- Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 ${RECIPE_SHAPE_RULES}
 - source_text is null. extraction_warnings is empty.
 
+${CONVERSION_RULES}
+
 ${RECIPE_RULES}`;
+
+/** What Claude answers a generation with: candidates with both bodies. */
+export type GenerateReply = { candidates: (Omit<StoredDraft, 'body'> & { body: BodyPair })[] };
+
+// Generation still writes both bodies in one call; extraction writes only the
+// as-written one (issue #67).
+const CANDIDATE_SCHEMA = {
+	...RECIPE_DRAFT_SCHEMA,
+	properties: {
+		...RECIPE_DRAFT_SCHEMA.properties,
+		body: {
+			type: 'object',
+			additionalProperties: false,
+			properties: { source_units: { enum: ['us', 'metric'] }, us: BODY_SCHEMA, metric: BODY_SCHEMA },
+			required: ['source_units', 'us', 'metric']
+		}
+	}
+};
 
 const GENERATE_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
-	properties: { candidates: { type: 'array', items: RECIPE_DRAFT_SCHEMA } },
+	properties: { candidates: { type: 'array', items: CANDIDATE_SCHEMA } },
 	required: ['candidates']
 };
 
@@ -38,16 +73,17 @@ export const CANDIDATE_COUNT = 3;
 /** Handler for the generate job kind: input_json is GenerateInput. */
 export const generate: JobHandler = async (job, db) => {
 	const { description, yield_count } = JSON.parse(job.input_json) as GenerateInput;
-	const result = await claudeCall<GenerateResult>(db, {
+	const reply = await claudeCall<GenerateReply>(db, {
 		system: GENERATE_SYSTEM,
 		messages: [{ role: 'user', content: `Description: ${description}\nYield: ${yield_count}` }],
 		schema: GENERATE_SCHEMA
 	});
-	const { candidates } = result;
+	const candidates: RecipeDraft[] = reply.candidates.map(parseDraft);
 	if (candidates.length !== CANDIDATE_COUNT || !candidates.every(hasRecipe))
 		throw new JobError(
 			'api_error',
 			`Expected three recipes, got ${candidates.length} with ${candidates.filter(hasRecipe).length} usable.`
 		);
+	const result: GenerateResult = { candidates };
 	return result;
 };

@@ -317,6 +317,29 @@ public final class EditorModel {
 		}
 	}
 
+	/// A draft's counterpart while it is converting or failed (issue #67),
+	/// read from the draft reply. Nil once ready, and for recipes.
+	public var conversion: CounterpartState? {
+		guard case .draft(let job) = origin,
+			case .draft(let d) = env.store.resource(.draft(job)).value,
+			let state = d.counterpartState, state.status != .ready
+		else { return nil }
+		return state
+	}
+
+	/// "Tap to retry" on the failed conversion banner. The refetched draft
+	/// names the requeued job, which the Store then waits on.
+	public func retryConversion() async {
+		guard case .draft(let job) = origin else { return }
+		issues = []
+		do {
+			try await env.api.retryDraftConversion(job)
+			await env.store.resource(.draft(job)).revalidate()
+		} catch {
+			issues = [.server(APIError.wrapping(error).message)]
+		}
+	}
+
 	/// The counterpart body's regeneration, read from the recipe reply the
 	/// editor was seeded from. Nil for drafts and new recipes.
 	public var reconvert: PendingWork? {

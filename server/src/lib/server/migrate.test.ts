@@ -290,10 +290,10 @@ describe('hot query plans (issue #64)', () => {
 	});
 });
 
-describe('006 (issue #73)', () => {
+describe('007 (issue #73)', () => {
 	it('adds image.r2_key_thumb, null for images stored before it, and keeps covers', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'mig-'));
-		for (const f of readdirSync('migrations').filter((f) => f.endsWith('.sql') && f < '006'))
+		for (const f of readdirSync('migrations').filter((f) => f.endsWith('.sql') && f < '007'))
 			copyFileSync(`migrations/${f}`, join(dir, f));
 		const db = new Database(':memory:');
 		db.pragma('foreign_keys = ON');
@@ -308,9 +308,9 @@ describe('006 (issue #73)', () => {
 		).run();
 		db.prepare(`UPDATE recipe SET cover_image_id = 'i' WHERE id = 'r'`).run();
 
-		copyFileSync('migrations/006_thumbnails.sql', join(dir, '006_thumbnails.sql'));
+		copyFileSync('migrations/007_thumbnails.sql', join(dir, '007_thumbnails.sql'));
 		migrate(db, dir);
-		expect(version(db)).toBe(6);
+		expect(version(db)).toBe(7);
 		expect(db.prepare(`SELECT r2_key_display, r2_key_thumb FROM image WHERE id = 'i'`).get()).toEqual({
 			r2_key_display: 'd',
 			r2_key_thumb: null

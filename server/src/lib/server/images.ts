@@ -5,7 +5,8 @@ import { getObject, presignGet, putObject } from './r2';
 
 // SPEC 8.1 step 2: the client uploads a normalised 3000px JPEG; the server
 // stores it (r2_key_full) and derives a 1200px display size and a 400px WebP
-// thumbnail (issue #73), plus a 2576px q85 copy on demand for Claude (SPEC 5.8).
+// thumbnail (issue #73). A capture also gets the copy Claude reads (SPEC 5.8),
+// built here at upload (issue #71).
 // SPEC 8.2: .rotate() honours EXIF orientation before resizing, so even an
 // upload that skipped client normalisation cannot come out sideways.
 
@@ -14,7 +15,7 @@ import { getObject, presignGet, putObject } from './r2';
 const opts = { limitInputPixels: 50_000_000 };
 
 export const DISPLAY_EDGE = 1200;
-export const CLAUDE_EDGE = 2576;
+export const CLAUDE_EDGE = 1568; // issue #71 benchmark, was 2576
 export const THUMB_EDGE = 400;
 
 /**
@@ -44,13 +45,13 @@ export function deriveDisplay(full: Buffer) {
 		.toBuffer({ resolveWithObject: true });
 }
 
-/** SPEC 5.8: the copy Claude reads. Long edge 2576, q85; never below q80,
- *  this is a page of printed text. Derived from the stored full at extraction
- *  time, not stored: an extraction happens once per capture. */
-export function deriveClaude(full: Buffer): Promise<Buffer> {
+/** SPEC 5.8: the copy Claude reads. Long edge CLAUDE_EDGE, q85; never below
+ *  q80, this is a page of printed text. Built when a capture is uploaded
+ *  (issue #71); `edge` exists for the benchmark that chose CLAUDE_EDGE. */
+export function deriveClaude(full: Buffer, edge = CLAUDE_EDGE): Promise<Buffer> {
 	return sharp(full, opts)
 		.rotate()
-		.resize(CLAUDE_EDGE, CLAUDE_EDGE, { fit: 'inside', withoutEnlargement: true })
+		.resize(edge, edge, { fit: 'inside', withoutEnlargement: true })
 		.jpeg({ quality: 85 })
 		.toBuffer();
 }
@@ -116,15 +117,28 @@ export async function saveImage(
 	const keyFull = `images/${id}/full.jpg`;
 	const keyDisplay = `images/${id}/display.jpg`;
 	const keyThumb = thumbKey(id);
+	const keyClaude = role === 'capture' ? `images/${id}/claude.jpg` : null;
 	await Promise.all([
 		putObject(keyFull, file),
 		putObject(keyDisplay, display.data),
-		putObject(keyThumb, thumb, 'image/webp')
+		putObject(keyThumb, thumb, 'image/webp'),
+		keyClaude ? deriveClaude(file).then((c) => putObject(keyClaude, c)) : null
 	]);
 	db.prepare(
-		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, r2_key_thumb, width, height, role, source_url, created_at)
-		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
-	).run(id, keyFull, keyDisplay, keyThumb, width, height, role, found.source_url ?? null, new Date().toISOString());
+		`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, r2_key_thumb, r2_key_claude, width, height, role, source_url, created_at)
+		 VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(
+		id,
+		keyFull,
+		keyDisplay,
+		keyThumb,
+		keyClaude,
+		width,
+		height,
+		role,
+		found.source_url ?? null,
+		new Date().toISOString()
+	);
 	return { id, url: presignGet(keyDisplay), width, height };
 }
 

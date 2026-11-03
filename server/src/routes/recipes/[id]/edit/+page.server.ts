@@ -4,8 +4,10 @@ import db from '$lib/server/db';
 import { getRecipe, retryReconvert, updateRecipe } from '$lib/server/recipes';
 import { findRecipeCover } from '$lib/server/cover';
 import { presignGet } from '$lib/server/r2';
+import { jobDeps } from '$lib/jobs';
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, depends }) => {
+	depends(jobDeps.recipe(params.id));
 	// ?v= edits a specific variation's body (hand edits at the stove, SPEC 7.5);
 	// without it, the original.
 	const recipe = getRecipe(db, params.id, url.searchParams.get('v') ?? undefined);

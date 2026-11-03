@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import RecipeForm from '$lib/components/RecipeForm.svelte';
 	import { otherUnits } from '$lib/tags';
+	import { jobDeps } from '$lib/jobs';
 
 	let { data, form } = $props();
 
@@ -30,6 +31,7 @@
 			error={form?.error ?? null}
 			baseline={data.recipe.content_version}
 			coverJobId={data.recipe.cover_job_id}
+			coverDependency={jobDeps.recipe(data.recipe.id)}
 			findCover
 			reconvert={data.recipe.reconvert}
 			onretry={() => retryForm?.requestSubmit()}

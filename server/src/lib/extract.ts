@@ -1,4 +1,4 @@
-// RecipeDraft: the extract job's result_json shape (SPEC 5.4), and the
+// RecipeDraft: the extract job's result_json shape (SPEC 5.4, issue #67), and the
 // mapping that seeds the review form from it. Shared so the drafts page
 // (client) never has to import server code for types.
 
@@ -7,6 +7,7 @@ import type {
 	BodyText,
 	IngredientGroup,
 	MealType,
+	UnitSystem,
 	Cuisine,
 	Protein,
 	Effort,
@@ -61,8 +62,14 @@ export function asUrl(text: string): string | null {
 	return null;
 }
 
+/** A draft's as-written body: the recipe in the units its source uses
+ *  (issue #67). This is all an extraction asks Claude for. */
+export type AsWrittenBody = BodyText & { source_units: UnitSystem };
+
+/** Both bodies from one call: how generation still writes, and how every
+ *  draft was stored before issue #67. */
 export type BodyPair = {
-	source_units: 'us' | 'metric';
+	source_units: UnitSystem;
 	us: BodyText;
 	metric: BodyText;
 };
@@ -74,7 +81,11 @@ export type RecipeDraft = {
 	prep_minutes: number | null;
 	cook_minutes: number | null;
 	source_text: string | null;
-	body: BodyPair;
+	body: AsWrittenBody;
+	/** The counterpart, only when the same call wrote it (a generation, or a
+	 *  draft stored before issue #67). Otherwise the draft's conversion job
+	 *  writes it, and DraftView.counterpart_state reports where that is. */
+	counterpart?: BodyText;
 	tags: {
 		meal_type: MealType[];
 		cuisine: Cuisine | null;
@@ -86,25 +97,44 @@ export type RecipeDraft = {
 	extraction_warnings: string[];
 };
 
+/** A recipe draft whose body may be a BodyPair. */
+export type StoredDraft = Omit<RecipeDraft, 'body'> & { body: AsWrittenBody | BodyPair };
+
+/** Splits a BodyPair into the as-written body and its counterpart. Drafts
+ *  stored before issue #67 and generation candidates come in this shape. */
+export function parseDraft(d: StoredDraft): RecipeDraft {
+	const pair = d.body as Partial<BodyPair> | undefined;
+	if (!pair?.us || !pair.metric) return d as RecipeDraft;
+	const { source_units } = d.body;
+	const both = d.body as BodyPair;
+	return {
+		...d,
+		body: { source_units, ...both[source_units] },
+		counterpart: both[otherUnits(source_units)]
+	};
+}
+
 /** A done generate job's result_json: exactly three candidates. */
 export type GenerateResult = { candidates: RecipeDraft[] };
 
 /** True when the draft's source body actually contains ingredient lines. */
 export function hasRecipe(d: RecipeDraft): boolean {
-	return d.body[d.body.source_units].ingredients.some((g) =>
+	return d.body.ingredients.some((g) =>
 		g.items.some((i) => i.trim() !== '')
 	);
 }
 
 /**
- * Seed the review form from a done extraction: the body matching
- * source_units becomes the editable body, the other one rides along as the
- * known-good counterpart (ADR-019). If the user edits before saving, the form
- * drops the counterpart and the server reconverts instead.
+ * Seed the review form from a done extraction: the as-written body becomes
+ * the editable body, and the counterpart, once there is one, rides along as
+ * known-good (ADR-019). If the user edits before saving, the form drops the
+ * counterpart and the server reconverts instead.
  */
-export function draftToInput(d: RecipeDraft): Partial<RecipeInput> {
-	const body = d.body[d.body.source_units];
-	const counterpart = d.body[otherUnits(d.body.source_units)];
+export function draftToInput(
+	d: RecipeDraft,
+	counterpart: BodyText | null = d.counterpart ?? null
+): Partial<RecipeInput> {
+	const { source_units, ...body } = d.body;
 	return {
 		counterpart,
 		title: d.title,
@@ -113,7 +143,7 @@ export function draftToInput(d: RecipeDraft): Partial<RecipeInput> {
 		prep_minutes: d.prep_minutes,
 		cook_minutes: d.cook_minutes,
 		source_text: d.source_text,
-		source_units: d.body.source_units,
+		source_units,
 		meal_types: d.tags.meal_type,
 		cuisine: d.tags.cuisine,
 		protein: d.tags.protein,

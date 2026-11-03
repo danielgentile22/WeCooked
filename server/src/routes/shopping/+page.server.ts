@@ -2,9 +2,13 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import db from '$lib/server/db';
 import { shoppingView } from '$lib/server/views';
+import { jobDeps } from '$lib/jobs';
 import { addManual, doneShopping, requestBuild, retryBuild } from '$lib/server/shopping';
 
-export const load: PageServerLoad = async () => shoppingView(db);
+export const load: PageServerLoad = async ({ depends }) => {
+	depends(jobDeps.shopping);
+	return shoppingView(db);
+};
 
 export const actions: Actions = {
 	// SPEC 7.6: one shopping_merge job for the whole build (ADR-027).

@@ -7,12 +7,12 @@ import Testing
 /// model tests share one job id across the choosing, generating and picked
 /// states of the same row. The recorded fixtures cover the server's own shapes.
 enum GenerationJSON {
-	static let job: JobID = "01TEST00000000000000000030"
+	static let job: JobID = "01TEST00000000000000000031"
 	static let description = "the chicken thighs and half a cabbage, under 40 minutes"
 
 	static let choosing = """
 		{
-		  "id": "01TEST00000000000000000030",
+		  "id": "01TEST00000000000000000031",
 		  "status": "done",
 		  "description": "the chicken thighs and half a cabbage, under 40 minutes",
 		  "yield_count": 2,
@@ -53,7 +53,7 @@ enum GenerationJSON {
 
 	static let generating = """
 		{
-		  "id": "01TEST00000000000000000030",
+		  "id": "01TEST00000000000000000031",
 		  "kind": "generate",
 		  "status": "running",
 		  "error_text": null,
@@ -67,7 +67,7 @@ enum GenerationJSON {
 	/// The row after picking index 1: an ordinary draft seeded from that candidate.
 	static let picked = """
 		{
-		  "id": "01TEST00000000000000000030",
+		  "id": "01TEST00000000000000000031",
 		  "kind": "generate",
 		  "status": "done",
 		  "error_text": null,
@@ -151,10 +151,10 @@ struct GenerationWireTests {
 		guard case .draft(let picked) = try d.decode(DraftLookup.self, from: GenerationJSON.data(GenerationJSON.picked))
 		else { Issue.record("expected .draft"); return }
 		#expect(picked.initial?.title == "Braised chicken with cabbage and mustard")
-		let savedAndCandidates = #"{"recipe_id":"01TEST00000000000000000022","candidates":[]}"#
+		let savedAndCandidates = #"{"recipe_id":"01TEST00000000000000000023","candidates":[]}"#
 		guard case .saved(let id) = try d.decode(DraftLookup.self, from: Data(savedAndCandidates.utf8))
 		else { Issue.record("expected .saved to win"); return }
-		#expect(id == "01TEST00000000000000000022")
+		#expect(id == "01TEST00000000000000000023")
 	}
 
 	@Test func draftCardStatusKnowsTheGenerationStatuses() throws {

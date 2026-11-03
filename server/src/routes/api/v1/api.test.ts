@@ -14,12 +14,14 @@ import { bearerToken, gate } from '$lib/server/gate';
 import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '$lib/server/session';
 import { claudeCall } from '$lib/server/claude';
 import { scale } from '$lib/server/scale';
+import { reconvert } from '$lib/server/reconvert';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
 import { getObject } from '$lib/server/r2';
 import type { JobRow } from '$lib/server/jobs';
 import { getDevice } from '$lib/server/devices';
-import type { GenerateResult, RecipeDraft } from '$lib/extract';
+import type { RecipeDraft } from '$lib/extract';
+import type { GenerateReply } from '$lib/server/generate';
 import candidates from '../../../../fixtures/candidates.json';
 import type { RecipeInput } from '$lib/tags';
 
@@ -77,18 +79,26 @@ afterAll(() => {
 /** Move the clock on, so created_at orders rows the way real use would. */
 const tick = () => vi.setSystemTime(Date.now() + 60_000);
 
-type Call = { body?: unknown; query?: string; bytes?: Buffer; ip?: string; deviceId?: string };
+type Call = {
+	body?: unknown;
+	query?: string;
+	bytes?: Buffer;
+	ip?: string;
+	deviceId?: string;
+	ifNoneMatch?: string;
+};
 
 async function call(method: Method, path: string, opts: Call = {}) {
 	const reply = await dispatch(db, routes, method, path, {
 		query: new URLSearchParams(opts.query),
 		ip: opts.ip ?? '10.0.0.1',
 		deviceId: opts.deviceId,
+		ifNoneMatch: opts.ifNoneMatch,
 		json: async () => opts.body,
 		bytes: async () => opts.bytes ?? Buffer.alloc(0)
 	});
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return reply as { status: number; body: any };
+	return reply as { status: number; body: any; headers?: Record<string, string> };
 }
 
 async function ok(method: Method, path: string, opts: Call = {}) {
@@ -174,14 +184,8 @@ const draftResult = (): RecipeDraft => ({
 	source_text: 'Grandma, handwritten card',
 	body: {
 		source_units: 'metric',
-		us: {
-			ingredients: [{ heading: null, items: ['1 cup sugar', '2 lemons'] }],
-			steps: ['Bake.']
-		},
-		metric: {
-			ingredients: [{ heading: null, items: ['200 g sugar', '2 lemons'] }],
-			steps: ['Bake.']
-		}
+		ingredients: [{ heading: null, items: ['200 g sugar', '2 lemons'] }],
+		steps: ['Bake.']
 	},
 	tags: { meal_type: ['dessert'], cuisine: 'british', protein: null, effort: 'project', damage: 'tidy' },
 	damage_reasoning: 'One bowl and a tin.',
@@ -343,11 +347,7 @@ describe('/api/v1', () => {
 		expect(busy.recipe.reconvert).toMatchObject({ status: 'pending' });
 
 		vi.mocked(claudeCall).mockResolvedValueOnce({
-			body: {
-				source_units: 'metric',
-				us: { ingredients: [{ heading: null, items: ['2 onions', '28 oz canned chickpeas'] }], steps: ['Fry.'] },
-				metric: { ingredients: [{ heading: null, items: ['2 onions', '800 g tinned chickpeas'] }], steps: ['Fry.'] }
-			},
+			body: { ingredients: [{ heading: null, items: ['2 onions', '800 g tinned chickpeas'] }], steps: ['Fry.'] },
 			scaling_note: 'Doubled; simmer a little longer.'
 		});
 		finishJob(job_id, await scale(job(job_id)!, db));
@@ -355,12 +355,30 @@ describe('/api/v1', () => {
 		expect(poll).toMatchObject({ status: 'done', error_code: null });
 		const scaled = poll.result_ref as string;
 		await fails('GET', '/jobs/missing', 404, 'No such job.');
+		// Issue #65: a finished job answers a long-poll at once; a bad wait is refused.
+		expect(await ok('GET', `/jobs/${job_id}`, { query: 'wait=25' })).toEqual(poll);
+		await fails('GET', `/jobs/${job_id}`, 400, 'Wait must be a number of seconds.', { query: 'wait=soon' });
 
 		expect(
 			fixture('recipe-calculate-existing', await ok('POST', `/recipes/${recipeId}/calculate`, { body: { to_count: 8 } }))
 		).toEqual({ variation_id: scaled });
+		// Scale writes metric only; the US body is converting (#69).
+		const converting = fixture(
+			'recipe-get-variation-converting',
+			await ok('GET', `/recipes/${recipeId}`, { query: `v=${scaled}` })
+		);
+		expect(converting.recipe.bodies.us).toBeNull();
+		expect(converting.recipe.reconvert).toMatchObject({ status: 'pending' });
+		const usJob = converting.recipe.reconvert.job_id as string;
+		vi.mocked(claudeCall).mockResolvedValueOnce({
+			ingredients: [{ heading: null, items: ['2 onions', '28 oz canned chickpeas'] }],
+			steps: ['Fry.']
+		});
+		finishJob(usJob, await reconvert(job(usJob)!, db));
+
 		const v = fixture('recipe-get-variation', await ok('GET', `/recipes/${recipeId}`, { query: `v=${scaled}` }));
-		expect(v.recipe).toMatchObject({ variation_id: scaled, is_original: false, yield_count: 8 });
+		expect(v.recipe).toMatchObject({ variation_id: scaled, is_original: false, yield_count: 8, reconvert: null });
+		expect(v.recipe.bodies.us).not.toBeNull();
 		expect(v.recipe.variations).toHaveLength(2);
 	});
 
@@ -463,6 +481,21 @@ describe('/api/v1', () => {
 			`UPDATE job SET status = 'failed', error_code = 'fetch_blocked', error_text = ?, finished_at = ? WHERE id = ?`
 		).run('This site blocks automated readers.', new Date().toISOString(), urlJob);
 		finishJob(photoJob, draftResult());
+		// Issue #67: the extraction queued its conversion. A fixed id, so no
+		// later fixture's ids shift.
+		const conversion = '01TEST0000000000000000CONV';
+		db.prepare(
+			`INSERT INTO job (id, kind, status, input_json, created_at) VALUES (?, 'reconvert', 'queued', ?, ?)`
+		).run(conversion, JSON.stringify({ draft_id: photoJob, source: draftResult().body }), new Date().toISOString());
+		const converting = fixture('draft-get-converting', await ok('GET', `/drafts/${photoJob}`));
+		expect(converting.counterpart_state).toEqual({ status: 'converting', job_id: conversion });
+		expect(converting.initial.counterpart).toBeNull();
+		db.prepare(`UPDATE job SET status = 'failed', error_code = 'api_error' WHERE id = ?`).run(conversion);
+		const unconverted = fixture('draft-get-conversion-failed', await ok('GET', `/drafts/${photoJob}`));
+		expect(unconverted.counterpart_state).toEqual({ status: 'failed', job_id: conversion });
+		expect(await ok('POST', `/drafts/${photoJob}/retry-conversion`)).toEqual({ ok: true });
+		expect(job(conversion)).toMatchObject({ status: 'queued', error_code: null });
+		finishJob(conversion, { ingredients: [{ heading: null, items: ['1 cup sugar', '2 lemons'] }], steps: ['Bake.'] });
 
 		const browse = fixture('recipes-list', await ok('GET', '/recipes'));
 		expect(browse.drafts.map((d: { status: string }) => d.status)).toEqual(['ready', 'extracting', 'failed']);
@@ -474,7 +507,12 @@ describe('/api/v1', () => {
 		expect((await ok('GET', '/recipes', { query: 'q=stew' })).recipes[0].id).toBe(recipeId);
 
 		const ready = fixture('draft-get-ready', await ok('GET', `/drafts/${photoJob}`));
-		expect(ready).toMatchObject({ status: 'done', warnings: ['Step 3 was cut off in the photo.'] });
+		expect(ready).toMatchObject({
+			status: 'done',
+			warnings: ['Step 3 was cut off in the photo.'],
+			counterpart_state: { status: 'ready', job_id: null }
+		});
+		expect(ready.initial.counterpart.ingredients[0].items).toEqual(['1 cup sugar', '2 lemons']);
 		expect(ready.initial).toMatchObject({ title: 'Lemon drizzle cake', source_url: null });
 		expect(ready.initial.images).toHaveLength(1);
 		const failed = fixture('draft-get-failed', await ok('GET', `/drafts/${urlJob}`));
@@ -533,6 +571,33 @@ describe('/api/v1', () => {
 		expect(state.list.build).toMatchObject({ job_id, status: 'done', result: { kept: 0, reset: [] } });
 		expect(state.list.picks).toEqual([{ recipe_id: recipeId, yield_count: 6, title: 'Chickpea stew', yield_unit: 'servings' }]);
 		expect(state.recipes.map((r: { title: string }) => r.title)).toContain('Lemon drizzle cake');
+
+		// Issue #75: the 5 s poll asks for the list only, and revalidates.
+		const listOnly = await call('GET', '/shopping', { query: 'only=list' });
+		expect(listOnly).toMatchObject({ status: 200, body: { list: state.list } });
+		fixture('shopping-get-list', listOnly.body);
+		expect(Object.keys(listOnly.body)).toEqual(['list']);
+		const etag = listOnly.headers?.etag as string;
+		expect(etag).toMatch(/^"[\w-]+"$/);
+		const unchanged = { status: 304, body: undefined, headers: { etag } };
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: `"other", W/${etag}` })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: '"other"' })).toMatchObject({ status: 200 });
+		const full = await call('GET', '/shopping');
+		expect(full.headers?.etag).toMatch(/^"[\w-]+"$/);
+		expect(full.headers?.etag).not.toBe(etag);
+		expect(await call('GET', '/shopping', { ifNoneMatch: full.headers?.etag })).toMatchObject({ status: 304 });
+		// The other phone's tick changes the tag; untick it and the old one is good again.
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: false } })).toEqual({ ok: true });
+		const ticked = await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag });
+		expect(ticked.status).toBe(200);
+		expect(ticked.body.list.items[0]).toMatchObject({ id: onions, ticked: false });
+		expect(ticked.headers?.etag).not.toBe(etag);
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: true } })).toEqual({ ok: true });
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		await fails('GET', '/shopping', 400, 'Unknown view.', { query: 'only=recipes' });
+		// Only the shopping read is conditional.
+		expect((await call('GET', '/trash', { ifNoneMatch: etag })).headers).toBeUndefined();
 
 		const retry = await ok('POST', '/shopping/retry');
 		expect(job(retry.job_id)).toMatchObject({ kind: 'shopping_merge', status: 'queued' });
@@ -608,7 +673,7 @@ describe('/api/v1', () => {
 	// Last so its job ids shift no earlier fixture the Kit pins.
 	it('generations: create, generating, choosing, pick, save, discard (issue #41)', async () => {
 		const description = 'the chicken thighs and half a cabbage, under 40 minutes';
-		const result = candidates as GenerateResult;
+		const result = candidates as GenerateReply;
 		for (const d of [' ', 'x'.repeat(1001), 42])
 			await fails('POST', '/generations', 400, 'Describe what you want to cook.', {
 				body: { description: d, yield_count: 2 }

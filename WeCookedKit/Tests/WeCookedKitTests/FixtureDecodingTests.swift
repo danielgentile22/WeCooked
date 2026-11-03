@@ -20,6 +20,8 @@ struct FixtureDecodingTests {
 		"draft-get-failed": DraftLookup.self,
 		"draft-cover-refresh": JobReply.self,
 		"draft-get-cover": DraftLookup.self,
+		"draft-get-conversion-failed": DraftLookup.self,
+		"draft-get-converting": DraftLookup.self,
 		"draft-get-ready": DraftLookup.self,
 		"draft-get-saved": DraftLookup.self,
 		"draft-get-choosing": DraftLookup.self,
@@ -39,6 +41,7 @@ struct FixtureDecodingTests {
 		"recipe-get-busy": RecipeResponse.self,
 		"recipe-get-cover": RecipeResponse.self,
 		"recipe-get-variation": RecipeResponse.self,
+		"recipe-get-variation-converting": RecipeResponse.self,
 		"recipe-get": RecipeResponse.self,
 		"recipe-update": UpdatedRecipe.self,
 		"recipes-list": BrowseResponse.self,
@@ -47,6 +50,7 @@ struct FixtureDecodingTests {
 		"shopping-build": JobReply.self,
 		"shopping-get-empty": ShoppingResponse.self,
 		"shopping-get": ShoppingResponse.self,
+		"shopping-get-list": ShoppingListReply.self,
 		"tags": Vocabulary.self,
 		"trash-get": TrashResponse.self,
 		"trash-restore-recipe": RestoreReply.self,
@@ -96,7 +100,7 @@ struct FixtureDecodingTests {
 		let d = Wire.makeDecoder()
 		let saved = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-saved"))
 		guard case .saved(let id) = saved else { Issue.record("expected .saved"); return }
-		#expect(id == "01TEST00000000000000000022")
+		#expect(id == "01TEST00000000000000000023")
 		let failed = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-failed"))
 		guard case .draft(let view) = failed else { Issue.record("expected .draft"); return }
 		#expect(view.status == .failed)
@@ -107,7 +111,7 @@ struct FixtureDecodingTests {
 		let d = Wire.makeDecoder()
 		let choosing = try d.decode(DraftLookup.self, from: Fixtures.data("draft-get-choosing"))
 		guard case .choosing(let g) = choosing else { Issue.record("expected .choosing"); return }
-		#expect(g.id == "01TEST00000000000000000039")
+		#expect(g.id == "01TEST00000000000000000040")
 		#expect(g.yieldCount == 2)
 		#expect(g.candidates.map(\.title) == [
 			"Chicken and cabbage stir-fry with ginger",

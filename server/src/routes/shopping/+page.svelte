@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 	import { enhance } from '$app/forms';
 	import {
 		Check,
@@ -14,7 +15,7 @@
 		Trash2
 	} from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
-	import { pollJob } from '$lib/jobs';
+	import { jobDeps, pollJob } from '$lib/jobs';
 	import type { ShoppingItem, ShoppingState } from '$lib/server/shopping';
 
 	let { data } = $props();
@@ -23,8 +24,13 @@
 	// can refresh it without a full page invalidation (ADR-033).
 	// svelte-ignore state_referenced_locally -- the $effect below re-syncs it
 	let list = $state<ShoppingState>(data.list);
+	// The ETag of the last list-only poll reply, when `list` is still exactly
+	// that reply (issue #75). Any other write to `list` clears it, so a 304
+	// never keeps a list the server did not send.
+	let listTag: string | null = null;
 	$effect(() => {
 		list = data.list;
+		listTag = null;
 	});
 
 	const SECTION_LABELS: Record<string, string> = {
@@ -99,6 +105,7 @@
 				if (!ok) return;
 				const sent = list.items.find((i) => i.id === id);
 				if (sent) sent.ticked = ticked;
+				listTag = null;
 				// A second tap made while this one was in flight stays queued.
 				if (outbox[id] === ticked) delete outbox[id];
 				saveOutbox();
@@ -113,9 +120,17 @@
 		await flush();
 		const before = settled;
 		try {
-			const res = await fetch('/api/v1/shopping');
+			// List only, and conditional: a 304 means nothing changed (issue #75).
+			// Setting If-None-Match by hand also keeps the browser cache out of it.
+			const res = await fetch('/api/v1/shopping?only=list', {
+				headers: listTag ? { 'if-none-match': listTag } : {},
+				cache: 'no-store'
+			});
 			// A reply that raced a settling tick may predate it; the next poll is fresh.
-			if (res.ok && settled === before) list = (await res.json()).list;
+			if (res.status === 200 && settled === before) {
+				list = (await res.json()).list;
+				listTag = res.headers.get('etag');
+			}
 		} catch {
 			// offline blip: the next poll tries again
 		}
@@ -187,12 +202,15 @@
 	});
 
 	// SPEC 6.3 job polling for a fast flip; the 5 s poll is the backstop.
+	// Issue #66: leaving the page cancels the poll.
 	const watched = new Set<string>();
+	const polls = new AbortController();
+	onDestroy(() => polls.abort());
 	function watchBuild(jobId: string) {
 		if (watched.has(jobId)) return;
 		watched.add(jobId);
-		pollJob(jobId)
-			.then(() => invalidateAll())
+		pollJob(jobId, { signal: polls.signal })
+			.then(() => invalidate(jobDeps.shopping))
 			.catch(() => watched.delete(jobId));
 	}
 

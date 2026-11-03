@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import {
 		Plus,
 		X,
@@ -17,8 +17,15 @@
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
 	import { uploadPhoto, type FormImage } from '$lib/images';
-	import { pollJob } from '$lib/jobs';
-	import { loadedBodies, payload, selection, swapBodies, type FormState } from '$lib/recipeForm';
+	import { ignoreAbort, pollJob } from '$lib/jobs';
+	import {
+		adoptCounterpart,
+		loadedBodies,
+		payload,
+		selection,
+		swapBodies,
+		type FormState
+	} from '$lib/recipeForm';
 	import {
 		MEAL_TYPES,
 		CUISINES,
@@ -26,6 +33,7 @@
 		EFFORTS,
 		DAMAGES,
 		cleanIngredients,
+		otherUnits,
 		type RecipeInput,
 		type UnitSystem
 	} from '$lib/tags';
@@ -46,10 +54,14 @@
 		// The cover job still looking for a photo, if any (issue #44): followed
 		// here, and its result merged into the open form.
 		coverJobId = null as string | null,
+		// The host's load dependency (jobDeps) a finished cover job reloads (issue #66).
+		coverDependency = null as string | null,
 		// Whether the host has a ?/findCover action ("Find another photo").
 		findCover = false,
 		// The counterpart body's regeneration state (ADR-028), edit page only.
 		reconvert = null as { status: 'pending' | 'failed' } | null,
+		// A draft's counterpart still converting or failed (issue #67), drafts only.
+		conversion = null as { status: 'converting' | 'failed' } | null,
 		onretry = undefined as (() => void) | undefined,
 		// Which variation the body edits land on (SPEC 7.5), edit page only.
 		variationId = null as string | null
@@ -170,6 +182,7 @@
 	function restore(saved: Autosave): FormState {
 		const form = { ...fromInitial(), ...saved.form };
 		syncImages(form, fresh, null);
+		adoptCounterpart(form, loaded);
 		return form;
 	}
 	// svelte-ignore state_referenced_locally
@@ -202,6 +215,7 @@
 			else {
 				if (next.baseline !== seen.baseline) recipeChanged = true;
 				syncImages(draft, next.form, seen.form);
+				adoptCounterpart(draft, loaded);
 			}
 			seen = next;
 		});
@@ -321,16 +335,21 @@
 	});
 	type CoverSearch = { status: 'idle' | 'pending' } | { status: 'failed'; text: string };
 	let coverSearch = $state<CoverSearch>({ status: 'idle' });
+	// Derived so a reload that keeps the same job does not restart its poll.
+	const coverJob = $derived(coverJobId);
 	$effect(() => {
-		if (coverJobId) {
+		const jobId = coverJob;
+		if (jobId) {
 			coverSearch = { status: 'pending' };
-			let live = true;
-			pollJob(coverJobId).then(() => {
-				if (live) invalidateAll();
-			});
-			return () => {
-				live = false;
-			};
+			// Leaving the form cancels the poll (issue #66).
+			const poll = new AbortController();
+			const dependency = untrack(() => coverDependency);
+			pollJob(jobId, { signal: poll.signal })
+				.then(() => {
+					if (dependency) return invalidate(dependency);
+				})
+				.catch(ignoreAbort);
+			return () => poll.abort();
 		}
 		if (untrack(() => coverSearch.status) === 'pending') coverSearch = { status: 'idle' };
 	});
@@ -527,6 +546,19 @@
 				</button>
 			{/each}
 		</div>
+		{#if editing && conversion && !draft.other}
+			<!-- Issue #67: the draft's counterpart is still being written. -->
+			{@const units = otherUnits(loaded.source_units) === 'us' ? 'US' : 'metric'}
+			{#if conversion.status === 'converting'}
+				<Banner role="status" icon={LoaderCircle} text="Converting to {units}…" />
+			{:else}
+				<Banner
+					text="Couldn't convert to {units}."
+					action={onretry ? 'Retry' : null}
+					onaction={onretry}
+				/>
+			{/if}
+		{/if}
 		{#if editing && reconvert && draft.shown_units !== loaded.source_units}
 			<!-- D6: the counterpart is being regenerated from the last edit. -->
 			{#if reconvert.status === 'pending'}

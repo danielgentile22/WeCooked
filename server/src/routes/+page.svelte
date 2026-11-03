@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import {
 		Search,
@@ -10,7 +11,7 @@
 		Layers
 	} from '@lucide/svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import { pollJob } from '$lib/jobs';
+	import { jobDeps, pollJob } from '$lib/jobs';
 	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
 
 	let { data } = $props();
@@ -27,13 +28,16 @@
 
 	// Watch running extractions so their cards flip without a manual refresh
 	// (SPEC 6.3 polling; survives a locked phone because the job does).
+	// Issue #66: leaving the page cancels them, so an old poll never reloads another page.
 	const watched = new Set<string>();
+	const polls = new AbortController();
+	onDestroy(() => polls.abort());
 	$effect(() => {
 		for (const d of data.drafts) {
 			if ((d.status !== 'extracting' && d.status !== 'generating') || watched.has(d.id)) continue;
 			watched.add(d.id);
-			pollJob(d.id)
-				.then(() => invalidateAll())
+			pollJob(d.id, { signal: polls.signal })
+				.then(() => invalidate(jobDeps.drafts))
 				.catch(() => watched.delete(d.id));
 		}
 	});
