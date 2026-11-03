@@ -1,7 +1,11 @@
 // Real-network latency benchmark for recipe creation. Not part of the suite.
-// Runs the real extract_paste and generate handlers N times against the model
-// given as the first argument, using ANTHROPIC_API_KEY from server/.env, and
-// prints wall time per call. Each run costs real API calls.
+// Runs the real extract_paste, generate, scale and shopping_merge handlers N
+// times against the model given as the first argument, using ANTHROPIC_API_KEY
+// from server/.env, and prints wall time per case. Each run costs real API
+// calls (a build of three new yields is four calls).
+//
+// Pick cases with the third argument (scale,shopping_build). BENCH_SHOW=1
+// prints the merge output, for comparing list quality across changes.
 //
 //   node server/scripts/model-bench.mjs claude-opus-5 3
 //   node server/scripts/model-bench.mjs claude-haiku-5-5 3
@@ -22,7 +26,7 @@ import Database from 'better-sqlite3';
 
 const [model, runsArg = '3', casesArg = 'extract_paste,generate'] = process.argv.slice(2);
 if (!model) {
-	console.error('usage: node server/scripts/model-bench.mjs <model> [runs] [extract_paste,generate,cover]');
+	console.error('usage: node server/scripts/model-bench.mjs <model> [runs] [extract_paste,generate,scale,shopping_build,cover]');
 	process.exit(2);
 }
 const runs = Number(runsArg);
@@ -78,19 +82,96 @@ const GENERATE = {
 	picked: null
 };
 
+// Three recipes for scale and the build: one metric, one US-sourced, one
+// sharing ingredients with the first so the merge has lines to combine.
+const recipe = (title, source_units, items, counterpart, steps) => ({
+	title,
+	yield_count: 4,
+	yield_unit: 'servings',
+	prep_minutes: 15,
+	cook_minutes: 40,
+	source_text: null,
+	source_url: null,
+	notes: null,
+	source_units,
+	meal_types: [],
+	cuisine: null,
+	protein: null,
+	effort: 'weeknight',
+	damage: 'messy',
+	ingredients: [{ heading: null, items }],
+	steps,
+	counterpart: { ingredients: [{ heading: null, items: counterpart }], steps },
+	image_ids: [],
+	cover_image_id: null
+});
+const RECIPES = [
+	recipe(
+		'Chickpea and spinach stew',
+		'metric',
+		['2 tbsp olive oil', '1 onion, diced', '3 cloves garlic', '1 tsp ground cumin', '800 g tinned chickpeas', '400 g tinned tomatoes', '200 g spinach', '1 tsp salt'],
+		['2 tbsp olive oil', '1 onion, diced', '3 cloves garlic', '1 tsp ground cumin', '28 oz canned chickpeas', '14 oz canned tomatoes', '7 oz spinach', '1 tsp salt'],
+		['Soften the onion and garlic in the oil, 8 minutes.', 'Add cumin, chickpeas and tomatoes; simmer 20 minutes in a 24 cm pan.', 'Wilt in the spinach and season.']
+	),
+	recipe(
+		'Weeknight chili',
+		'us',
+		['1 lb ground beef', '1 onion, diced', '2 cloves garlic', '2 tbsp chili powder', '1 (15 oz) can kidney beans', '1 (14.5 oz) can diced tomatoes', '1 tsp kosher salt'],
+		['450 g beef mince', '1 onion, diced', '2 cloves garlic', '2 tbsp chilli powder', '400 g tinned kidney beans', '400 g tinned chopped tomatoes', '1 tsp kosher salt'],
+		['Brown the beef with the onion in a Dutch oven, 10 minutes.', 'Stir in garlic and chili powder, then beans and tomatoes.', 'Simmer 30 minutes until thick.']
+	),
+	recipe(
+		'Garlic roast potatoes',
+		'metric',
+		['1 kg potatoes', '3 tbsp olive oil', '6 cloves garlic', '1 tsp salt', '2 sprigs rosemary'],
+		['2 1/4 lb potatoes', '3 tbsp olive oil', '6 cloves garlic', '1 tsp salt', '2 sprigs rosemary'],
+		['Parboil the potatoes 8 minutes.', 'Toss with oil, garlic and rosemary in a 30 x 40 cm tin.', 'Roast at 220°C for 45 minutes.']
+	)
+];
+
 process.chdir(root);
 const vite = await createServer({ logLevel: 'error', server: { middlewareMode: true }, appType: 'custom' });
 try {
 	const { extractPaste } = await vite.ssrLoadModule('/src/lib/server/extract.ts');
 	const { generate } = await vite.ssrLoadModule('/src/lib/server/generate.ts');
 	const { migrate } = await vite.ssrLoadModule('/src/lib/server/migrate.ts');
+	const { scale } = await vite.ssrLoadModule('/src/lib/server/scale.ts');
+	const { shoppingMerge, requestBuild, getShoppingState } = await vite.ssrLoadModule(
+		'/src/lib/server/shopping.ts'
+	);
+	const { createRecipe } = await vite.ssrLoadModule('/src/lib/server/recipes.ts');
 	const db = new Database(':memory:');
 	migrate(db, `${root}migrations`);
 
 	const job = (input) => ({ id: 'bench', input_json: JSON.stringify(input) });
+	// Each run scales to a yield no earlier run made, so nothing is reused.
+	let yieldStep = 0;
+	const nextYield = () => 5 + ++yieldStep;
+	const ids = RECIPES.map((r) => createRecipe(db, r));
 	const cases = [
 		['extract_paste', () => extractPaste(job({ text: PASTE }), db)],
-		['generate', () => generate(job(GENERATE), db)]
+		['generate', () => generate(job(GENERATE), db)],
+		[
+			'scale',
+			async () => {
+				await scale(job({ recipe_id: ids[0], to_count: nextYield() }), db);
+				return { title: 'scaled' };
+			}
+		],
+		[
+			'shopping_build',
+			async () => {
+				const n = nextYield();
+				const { job_id } = requestBuild(db, ids.map((recipe_id) => ({ recipe_id, yield_count: n })));
+				await shoppingMerge(db.prepare('SELECT * FROM job WHERE id = ?').get(job_id), db);
+				db.prepare(`UPDATE job SET status = 'done' WHERE id = ?`).run(job_id);
+				const items = getShoppingState(db).items;
+				if (process.env.BENCH_SHOW)
+					for (const i of items)
+						console.log(`\t${i.section}\t${i.text_metric}\t|\t${i.text_us}\t|\t${i.from_titles.join(', ')}`);
+				return { title: `${items.length} lines` };
+			}
+		]
 	];
 	if (wanted.includes('cover')) cases.push(...(await coverCases(db)));
 	for (const [name, fn] of cases.filter(([n]) => wanted.some((w) => n.startsWith(w)))) {

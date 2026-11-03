@@ -1,8 +1,9 @@
 import type { Database } from 'better-sqlite3';
-import type { BodyText, IngredientGroup, UnitSystem } from '$lib/tags';
+import type { BodyText, UnitSystem } from '$lib/tags';
 import { claudeCall } from './claude';
 import { BODY_SCHEMA, CONVERSION_RULES } from './extract';
 import { JobError, createJob, type JobHandler } from './jobs';
+import { enqueueReconvert } from './recipes';
 import { ulid } from './ids';
 
 // The scale call (SPEC 5.5, ADR-012): scaling is not multiplication. One
@@ -11,27 +12,14 @@ import { ulid } from './ids';
 //   { variation_id }         refresh a stale untouched variation in place
 // Both read the ORIGINAL variation's metric body at run time (staleness is
 // measured against the original, and grams scale cleanly where cups do not).
-
-export type BodyPair = {
-	source_units: UnitSystem;
-	us: BodyText;
-	metric: BodyText;
-};
+// The call writes the metric body only (#62: one body per call); the US body
+// comes from a reconvert queued in the same write, the path saving uses.
 
 export const SCALE_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
 	properties: {
-		body: {
-			type: 'object',
-			additionalProperties: false,
-			properties: {
-				source_units: { enum: ['us', 'metric'] },
-				us: BODY_SCHEMA,
-				metric: BODY_SCHEMA
-			},
-			required: ['source_units', 'us', 'metric']
-		},
+		body: BODY_SCHEMA,
 		scaling_note: { type: 'string' }
 	},
 	required: ['body', 'scaling_note']
@@ -48,7 +36,7 @@ export const SCALE_SYSTEM = `You rescale recipes for a private two-person recipe
   ("until the edges pull away"), because scaled times are genuinely uncertain.
 - Rewrite the STEPS as well as the ingredients: quantities, tins, and times all
   appear in step text and must agree with the ingredient list.
-- Produce both US and metric bodies.
+- Produce the scaled recipe in metric units only.
 - In scaling_note, in one to three short lines, name what did NOT scale
   linearly and anything the cook must watch. This is the part that makes the
   result trustworthy.
@@ -138,7 +126,7 @@ export const scale: JobHandler = async (job, db) => {
 	}
 
 	const ratio = toCount / src.yield_count;
-	const result = await claudeCall<{ body: BodyPair; scaling_note: string }>(db, {
+	const result = await claudeCall<{ body: BodyText; scaling_note: string }>(db, {
 		system: SCALE_SYSTEM,
 		messages: [
 			{
@@ -174,29 +162,29 @@ export const scale: JobHandler = async (job, db) => {
 				 VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)`
 			).run(vid, recipeId, toCount, src.content_version, result.scaling_note, ts, ts);
 		}
-		const upsert = db.prepare(
+		// Scaling reasons in metric, so metric is the closest thing a
+		// machine-scaled variation has to an as-written body.
+		db.prepare(
 			`INSERT INTO body (id, variation_id, unit_system, is_source, ingredients_json,
 			   steps_json, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			 VALUES (?, ?, 'metric', 1, ?, ?, ?, ?)
 			 ON CONFLICT(variation_id, unit_system) DO UPDATE SET
-			   is_source = excluded.is_source, ingredients_json = excluded.ingredients_json,
+			   is_source = 1, ingredients_json = excluded.ingredients_json,
 			   steps_json = excluded.steps_json, updated_at = excluded.updated_at`
+		).run(
+			ulid(),
+			vid,
+			JSON.stringify(result.body.ingredients),
+			JSON.stringify(result.body.steps),
+			ts,
+			ts
 		);
-		for (const units of ['us', 'metric'] as const) {
-			const b = result.body[units];
-			upsert.run(
-				ulid(),
-				vid,
-				units,
-				// Scaling reasons in metric, so metric is the closest thing a
-				// machine-scaled variation has to an as-written body.
-				units === 'metric' ? 1 : 0,
-				JSON.stringify(b.ingredients as IngredientGroup[]),
-				JSON.stringify(b.steps),
-				ts,
-				ts
-			);
-		}
+		// A refresh keeps the old US text visible behind the converting banner
+		// until the reconvert lands, as after a hand edit (ADR-019, ADR-028).
+		db.prepare(
+			`UPDATE body SET is_source = 0 WHERE variation_id = ? AND unit_system = 'us'`
+		).run(vid);
+		enqueueReconvert(db, vid, 'us');
 		db.prepare(`UPDATE job SET variation_id = ? WHERE id = ?`).run(vid, job.id);
 		return vid;
 	})();

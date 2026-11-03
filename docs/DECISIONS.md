@@ -1053,6 +1053,22 @@ the API wrapper, checked before each call, env var renamed to
 `DAILY_CALL_CAP`. This keeps the 50 meaning what it says for every future
 compound job.
 
+**Amended 2026-11-03 (#69).** Inside the one job, the missing scales now run
+concurrently, then the merge runs once. Each scale still saves in its own
+transaction, and the job waits for every scale to settle before it fails, so
+"variations saved before the failure persist" still holds. Each scale also
+writes the metric body only and queues a US reconvert, the same path saving
+uses. The merge refers to recipes by number (1, 2, 3) and the code maps the
+numbers back to recipe ids. The merge input is metric lines only (as-written
+lines when a body has no metric yet): in a comparison on the same three
+recipes, three runs each, metric-only merged the same lines as metric plus
+US and ran in 5 to 11 s against 10 to 12 s. Its US text came back as
+decimal pounds ("1.75 lb tinned kidney beans") until the prompt asked for US
+shopping units; with that line it matched the US-input variant ("2 (15 oz)
+cans kidney beans"). Measured end to end with the final prompt, a build of
+three new yields went from 28.8 s to 10.8 s, and one scale from 7.5 s to
+5.0 s (Sonnet 5.5 at low effort, three runs each, `model-bench.mjs`).
+
 ---
 
 ## ADR-028: `is_source` means "the body a human last authored"

@@ -1,0 +1,88 @@
+{
+  "calcJob": null,
+  "recipe": {
+    "based_on_content_version": 2,
+    "bodies": {
+      "metric": {
+        "ingredients": [
+          {
+            "heading": null,
+            "items": [
+              "2 onions",
+              "800 g tinned chickpeas"
+            ]
+          }
+        ],
+        "steps": [
+          "Fry."
+        ]
+      },
+      "us": null
+    },
+    "content_version": 2,
+    "cook_minutes": 30,
+    "cover_image_id": "01TEST00000000000000000002",
+    "cover_job_id": null,
+    "cuisine": "middle-eastern",
+    "damage": "messy",
+    "effort": "weeknight",
+    "hand_edited": false,
+    "id": "01TEST00000000000000000003",
+    "images": [
+      {
+        "height": 30,
+        "id": "01TEST00000000000000000002",
+        "source_url": null,
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000002/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=78081ad7b3c72e9bb7d6e56dbc10f416ce07d594a68e6249bc91ac4cdf200f68",
+        "width": 40
+      }
+    ],
+    "ingredients": [
+      {
+        "heading": null,
+        "items": [
+          "2 onions",
+          "800 g tinned chickpeas"
+        ]
+      }
+    ],
+    "is_original": false,
+    "meal_types": [
+      "dinner"
+    ],
+    "notes": "Better the next day.",
+    "prep_minutes": 10,
+    "protein": "beans",
+    "reconvert": {
+      "job_id": "01TEST00000000000000000015",
+      "status": "pending"
+    },
+    "scaling_note": "Doubled; simmer a little longer.",
+    "source_text": "Ottolenghi, Simple, p.112",
+    "source_units": "metric",
+    "source_url": null,
+    "stale": false,
+    "steps": [
+      "Fry."
+    ],
+    "title": "Chickpea stew",
+    "variation_id": "01TEST00000000000000000013",
+    "variations": [
+      {
+        "id": "01TEST00000000000000000004",
+        "is_original": true,
+        "stale": false,
+        "yield_count": 4
+      },
+      {
+        "id": "01TEST00000000000000000013",
+        "is_original": false,
+        "stale": false,
+        "yield_count": 8
+      }
+    ],
+    "yield_count": 8,
+    "yield_unit": "servings"
+  },
+  "refresh": null
+}

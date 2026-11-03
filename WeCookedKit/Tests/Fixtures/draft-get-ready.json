@@ -2,7 +2,7 @@
   "cover_job_id": null,
   "damage_reasoning": "One bowl and a tin.",
   "error_text": null,
-  "id": "01TEST00000000000000000021",
+  "id": "01TEST00000000000000000022",
   "initial": {
     "cook_minutes": 45,
     "counterpart": {
@@ -25,9 +25,9 @@
     "effort": "project",
     "images": [
       {
-        "id": "01TEST00000000000000000020",
+        "id": "01TEST00000000000000000021",
         "source_url": null,
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000020/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=187d948c95c4cb239eef36e24aa176ea993d653e25a2da43a7add21baff86d07"
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000021/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=f07412b7ba2a167029498b485097bc1cbf5a3bfac3eada563dfecb5b6a14e7ca"
       }
     ],
     "ingredients": [
