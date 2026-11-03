@@ -1013,6 +1013,14 @@ with the S3 client already needed for uploads.
 defeats the browser cache. Round the signing timestamp to the day, so URLs
 are stable for 24 hours, which covers a cooking session.
 
+**Amendment, 2026-11-03 (issue #74).** Every presigned GET also signs a
+`response-cache-control` override of `private, max-age=31536000, immutable`,
+so R2 answers each photo, including ones stored before the change, with a
+lifetime that stops browsers and the iOS image store revalidating it. A photo
+key never gets new bytes, so immutable holds, and private keeps shared caches
+out. The signing key is derived once per UTC day. The decision itself is
+unchanged: the bucket stays private and every URL is still presigned.
+
 ---
 
 ## ADR-027: One build job; the quota counts Claude calls

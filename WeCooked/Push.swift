@@ -33,7 +33,9 @@ final class PushCoordinator {
 	}
 
 	/// Every launch while signed in. Idempotent: the server upserts by device
-	/// id, so registration follows the phone rather than the install.
+	/// id, so registration follows the phone rather than the install, and the
+	/// token is only sent when it differs from the last one sent
+	/// (`AppEnvironment.registerPush`).
 	func registerIfAuthorized() {
 		Task {
 			switch await center.notificationSettings().authorizationStatus {
@@ -62,8 +64,7 @@ final class PushCoordinator {
 		#endif
 		Task {
 			do {
-				try await env.api.registerDevice(token: token, environment: environment)
-				log.info("registered push token")
+				try await env.registerPush(token: token, environment: environment)
 			} catch {
 				log.error("push registration failed: \(error)")
 			}

@@ -232,6 +232,9 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA synchronous = NORMAL;   -- safe with WAL + Litestream
+PRAGMA cache_size = -32000;    -- 32 MB page cache (issue #64)
+PRAGMA temp_store = MEMORY;    -- sorts stay in memory (issue #64)
+-- after migrating, at startup: PRAGMA optimize = 0x10002;
 
 CREATE TABLE recipe (
   id                TEXT PRIMARY KEY,
@@ -337,7 +340,8 @@ CREATE TABLE job (
   started_at   TEXT,
   finished_at  TEXT
 );
-CREATE INDEX job_pending ON job(status, created_at) WHERE status IN ('queued','running');
+-- The job and image read indexes, and the cover_owner column, are in
+-- migrations/005_hot_indexes.sql (issue #64); it replaced job_pending.
 
 CREATE TABLE job_quota (
   day   TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' in America/New_York
@@ -692,10 +696,22 @@ queued --> running --> done
 ```
 
 Created by an API route, drained by an in-process runner. Concurrency 2 (two
-users, and Opus latency is moderate). The runner polls the table every 500 ms
-and takes work with a transactional claim (`UPDATE job SET status='running' ...
-WHERE id = ? AND status='queued'`), so a future second process cannot double-run
-a job.
+users, and Opus latency is moderate). Creating a job wakes the runner at once,
+and a slot that frees claims the next job straight away; a 500 ms poll stays as
+the safety net. The runner takes work with a transactional claim (`UPDATE job
+SET status='running' ... WHERE id = ? AND status='queued'`), so a future second
+process cannot double-run a job.
+
+Claim order puts the cook first (issue #63): captures, generations, scales and
+shopping merges are claimed ahead of the background kinds (`cover`,
+`reconvert`), oldest first within each group, so a cover backfill never makes
+the cook wait. The push sent after a job (issue #42) is fire and forget and
+does not hold a slot.
+
+Finished background jobs are pruned 30 days after they finish, at boot and
+daily. A cover job that found an image is kept: it is the record that stops
+the backfill putting back a cover the cook removed. Capture and generation
+jobs back drafts and are never pruned.
 
 ### 6.2 Startup recovery
 

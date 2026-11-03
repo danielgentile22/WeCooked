@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from './migrate';
-import { createJob, recoverInterrupted, startRunner, JobError, type JobRow } from './jobs';
+import { createJob, pruneJobs, recoverInterrupted, startRunner, JobError, type JobRow } from './jobs';
 import { ERROR_COPY } from '$lib/jobs';
 
 function testDb() {
@@ -119,6 +119,103 @@ describe('job runner (SPEC 6)', () => {
 		expect(row(db, id).status).toBe('done');
 		expect(log).toHaveBeenCalledWith(expect.stringContaining(id), expect.any(Error));
 		log.mockRestore();
+	});
+
+	it('a created job wakes the runner without waiting for the timer (issue #63)', async () => {
+		const db = testDb();
+		const ran: string[] = [];
+		// A timer that never fires inside the test: only the wakeup can start the job.
+		const runner = startRunner(db, { extract_paste: async (job) => void ran.push(job.id) }, 60_000);
+		try {
+			const id = createJob(db, 'extract_paste', { text: 'x' });
+			await vi.waitFor(() => expect(row(db, id).status).toBe('done'), { timeout: 1000, interval: 5 });
+			expect(ran).toEqual([id]);
+		} finally {
+			runner.stop();
+		}
+	});
+
+	it('a stopped runner is not woken by a created job (issue #63)', async () => {
+		const db = testDb();
+		const runner = startRunner(db, { extract_paste: async () => 'ok' }, 60_000);
+		runner.stop();
+		const id = createJob(db, 'extract_paste', {});
+		await new Promise((r) => setTimeout(r, 20));
+		expect(row(db, id).status).toBe('queued');
+	});
+
+	it('claims captures and generations ahead of queued background jobs (issue #63)', async () => {
+		const db = testDb();
+		const background = [
+			createJob(db, 'cover', { recipe_id: 'r1' }),
+			createJob(db, 'cover', { recipe_id: 'r2' }),
+			createJob(db, 'reconvert', { variation_id: 'v1' })
+		];
+		const paste = createJob(db, 'extract_paste', { text: 'x' });
+		const gen = createJob(db, 'generate', { description: 'y' });
+		// Distinct creation times: ids made in one millisecond do not sort in order.
+		[...background, paste, gen].forEach((id, i) =>
+			db.prepare('UPDATE job SET created_at = ? WHERE id = ?').run(`2026-11-01T00:00:0${i}Z`, id)
+		);
+		const order: string[] = [];
+		const record = async (job: JobRow) => void order.push(job.id);
+		const runner = startRunner(db, { cover: record, reconvert: record, extract_paste: record, generate: record });
+		runner.stop();
+		await runner.tick();
+		expect(order.slice(0, 2).sort()).toEqual([paste, gen].sort());
+		expect(order.slice(2)).toEqual(background);
+	});
+
+	it('a hanging afterJob does not hold a job slot (issue #63)', async () => {
+		const db = testDb();
+		const ids = [1, 2, 3].map((n) => createJob(db, 'reconvert', { n }));
+		const pushes: string[] = [];
+		const runner = startRunner(db, { reconvert: async () => 'ok' }, 500, (job) => {
+			pushes.push(job.id);
+			return new Promise<void>(() => {}); // a push send that never answers
+		});
+		runner.stop();
+		await runner.tick();
+		expect(ids.map((id) => row(db, id).status)).toEqual(['done', 'done', 'done']);
+		expect(pushes.sort()).toEqual([...ids].sort());
+	});
+
+	it('prunes old finished background jobs and keeps everything else (issue #63)', () => {
+		const db = testDb();
+		const DAY = 24 * 60 * 60 * 1000;
+		const at = Date.parse('2026-11-01T00:00:00Z');
+		const finish = (id: string, status: string, daysAgo: number, result: unknown = null) =>
+			db
+				.prepare('UPDATE job SET status = ?, finished_at = ?, result_json = ? WHERE id = ?')
+				.run(status, new Date(at - daysAgo * DAY).toISOString(), JSON.stringify(result), id);
+		const job = (kind: Parameters<typeof createJob>[1], status: string, daysAgo: number, result?: unknown) => {
+			const id = createJob(db, kind, {});
+			if (status !== 'queued') finish(id, status, daysAgo, result);
+			return id;
+		};
+		const pruned = [
+			job('reconvert', 'done', 40),
+			job('reconvert', 'failed', 40),
+			job('cover', 'done', 40, { image_id: null }),
+			job('cover', 'failed', 40)
+		];
+		const kept = [
+			job('reconvert', 'done', 5), // inside the retention period
+			job('reconvert', 'queued', 0),
+			// A found cover is the record that keeps the backfill from
+			// putting back a cover the cook removed.
+			job('cover', 'done', 40, { image_id: 'img1' }),
+			// Captures and generations back drafts: never pruned.
+			job('extract_paste', 'done', 400),
+			job('extract_url', 'failed', 400),
+			job('extract_photos', 'done', 400),
+			job('generate', 'done', 400),
+			job('scale', 'done', 400),
+			job('shopping_merge', 'done', 400)
+		];
+		expect(pruneJobs(db, at)).toBe(pruned.length);
+		const left = (db.prepare('SELECT id FROM job').all() as { id: string }[]).map((r) => r.id);
+		expect(left.sort()).toEqual(kept.sort());
 	});
 
 	it('startup recovery fails running jobs with interrupted and retry copy', () => {

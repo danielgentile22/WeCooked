@@ -70,6 +70,14 @@ struct SuggestionSnapshotTests {
 		#expect(days.allSatisfy { $0.pick?.id == "a" })
 	}
 
+	@Test func sameContentIgnoresWhenItWasSaved() {
+		let a = SuggestionSnapshot(recipes: [Self.pick("a"), Self.pick("b")], savedAt: Self.saved)
+		let b = SuggestionSnapshot(recipes: [Self.pick("b"), Self.pick("a")], savedAt: .now)
+		#expect(a.sameContent(as: b))
+		#expect(!a.sameContent(as: nil))
+		#expect(!a.sameContent(as: SuggestionSnapshot(recipes: [Self.pick("a")], savedAt: Self.saved)))
+	}
+
 	@Test func roundTripsThroughTheWireCoders() throws {
 		let s = SuggestionSnapshot(recipes: [Self.pick("a", .project)], savedAt: Self.saved)
 		let data = try Wire.makeEncoder().encode(s)
@@ -121,5 +129,33 @@ struct SuggestionFileTests {
 		let file = SuggestionFileTests.file()
 		file.writeCover(try JPEGTests.image(width: 10, height: 10, type: .png), named: name)
 		#expect(file.hasCover(named: name))
+	}
+}
+
+@MainActor
+struct SuggestionFeedTests {
+	@Test func aChangeTheWidgetDoesNotShowWritesNothingAndReloadsOnlyItsKind() async throws {
+		let env = ShoppingModelTests.env(FakeServer())
+		var kinds: [String] = []
+		env.onSnapshotWritten = { kinds.append($0) }
+		var reply = try Wire.makeDecoder().decode(BrowseResponse.self, from: Fixtures.data("recipes-list"))
+		for i in reply.recipes.indices { reply.recipes[i].coverUrl = nil }  // no cover downloads
+		let list = env.store.resource(.recipes())
+		list.replace(reply)
+		await ShoppingModelTests.until { env.suggestionFile.read() != nil }
+		for _ in 0..<50 { await Task.yield() }
+		#expect(Set(kinds) == [SuggestionFile.widgetKind])
+		let count = kinds.count
+		let first = try #require(env.suggestionFile.read())
+
+		list.mutate { $0.drafts = [] }  // drafts are not in the widget
+		for _ in 0..<50 { await Task.yield() }
+		#expect(kinds.count == count)
+		#expect(env.suggestionFile.read()?.savedAt == first.savedAt)
+
+		list.mutate { $0.recipes[0].title = "Renamed" }
+		await ShoppingModelTests.until { kinds.count > count }
+		#expect(env.suggestionFile.read()?.recipes.contains { $0.title == "Renamed" } == true)
+		#expect(Set(kinds) == [SuggestionFile.widgetKind])
 	}
 }

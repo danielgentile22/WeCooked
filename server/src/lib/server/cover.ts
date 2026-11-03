@@ -176,7 +176,8 @@ export function findRecipeCover(db: Database, recipeId: string): string | null {
 }
 
 /** Each search-step cover is one Claude call against the daily cap (ADR-027),
- *  and cover jobs queue ahead of fresh captures, so a backfill goes in batches. */
+ *  so a backfill goes in batches. Captures are claimed ahead of queued covers
+ *  (issue #63), so a batch never makes the cook wait. */
 export const BACKFILL_LIMIT = 20;
 
 /** The saved recipes the backfill covers: live, coverless, with no cover job
@@ -189,11 +190,10 @@ export function backfillCovers(db: Database, limit = BACKFILL_LIMIT): number {
 			 WHERE r.deleted_at IS NULL AND r.cover_image_id IS NULL
 			   AND NOT EXISTS (
 			     SELECT 1 FROM job c
-			     WHERE c.kind = 'cover'
+			     WHERE (c.cover_owner = r.id
+			            OR c.cover_owner IN (SELECT id FROM job WHERE recipe_id = r.id))
 			       AND (c.status IN ('queued', 'running')
-			            OR json_extract(c.result_json, '$.image_id') IS NOT NULL)
-			       AND (json_extract(c.input_json, '$.recipe_id') = r.id
-			            OR json_extract(c.input_json, '$.draft_id') IN (SELECT id FROM job WHERE recipe_id = r.id)))
+			            OR json_extract(c.result_json, '$.image_id') IS NOT NULL))
 			 ORDER BY r.created_at LIMIT ?`
 		)
 		.all(limit) as { id: string }[];
