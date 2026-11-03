@@ -1539,6 +1539,21 @@ cover and the found one it displaces is soft-deleted. Each tap is one Brave
 query and one Claude call, so the server refuses a second while one is
 pending.
 
+**Amended 2026-11-03 (issue #72).** Covers arrive sooner. Candidate images
+download up to four at a time, and the highest ranked usable image still
+wins when downloads finish out of order; nothing new starts once the winner
+is known, so a few dead links cost one timeout, not one each. When the server
+fetches a URL capture's page itself, it saves the page's photos into the
+capture's `input_json` (an empty list when the fetch failed), and the cover
+job never fetches that page again: one request per publisher, not two. The
+source step needs no title, so it starts when the capture job starts and runs
+alongside the extraction; the cover job queued after the extraction takes its
+result. The pick asks for the index only, with no reason field. A benchmark
+(`model-bench.mjs <model> 3 cover`, nine sets with a known answer, built from
+Brave hits checked by eye) scored Sonnet 5.5 27 of 27 and Haiku 5.5 24 of 27:
+Haiku took huevos rancheros for shakshuka on every run, at about the same
+speed (1.5 s against 1.6 s). `COVER_MODEL` stays Sonnet 5.5.
+
 ---
 
 ## ADR-044: Push through Apple directly, the widget through a file
