@@ -258,7 +258,16 @@ extension APIClient {
 		let _: OK = try await send("POST", "devices", body: json(body))
 	}
 
-	public func job(_ id: JobID) async throws -> JobPoll { try await send("GET", "jobs/\(id)") }
+	/// The job's status. With a `wait` the server holds the reply until the
+	/// status changes or the wait elapses (issue #65); whole seconds, rounded up.
+	public func job(_ id: JobID, wait: Duration? = nil) async throws -> JobPoll {
+		var query: [URLQueryItem] = []
+		if let wait {
+			let seconds = Double(wait.components.seconds) + Double(wait.components.attoseconds) / 1e18
+			query.append(URLQueryItem(name: "wait", value: String(Int(seconds.rounded(.up)))))
+		}
+		return try await send("GET", "jobs/\(id)", query: query)
+	}
 
 	public enum ImageRole: String, Sendable { case photo, capture }
 	/// Raw JPEG bytes, no multipart. The caller has already downsized to a
