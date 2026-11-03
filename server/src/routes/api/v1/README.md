@@ -35,7 +35,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |
 | POST | /devices | `{device_id, push_token, environment}`: `push_token` is the APNs token as hex, `environment` is `sandbox` or `production` | `{ok:true}`; upserts by `device_id`, so re-registering every launch is safe | 400 missing device id, bad push token, unknown environment |
-| GET | /shopping | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}` | |
+| GET | /shopping?only= | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}`; `?only=list` (the 5 s poll) replies `{list}` alone. Both carry an `ETag`, and a request whose `If-None-Match` matches gets an empty 304 | 400 unknown `only` |
 | POST | /shopping/build | `{picks: {recipe_id, yield_count}[]}` | `{job_id}` | 400 |
 | POST | /shopping/retry | | `{job_id}` | |
 | POST | /shopping/manual | `{text}` | `{ok:true}` | 400 |

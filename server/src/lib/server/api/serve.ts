@@ -11,8 +11,12 @@ export async function serve(event: RequestEvent, path: string): Promise<Response
 		// Fly-Client-IP, not the socket address, or every client is Fly's proxy.
 		ip: request.headers.get('fly-client-ip') ?? event.getClientAddress(),
 		deviceId: deviceIdHeader(request.headers.get('x-device-id')),
+		ifNoneMatch: request.headers.get('if-none-match') ?? undefined,
 		json: () => request.json().catch(() => undefined),
 		bytes: async () => Buffer.from(await request.arrayBuffer())
 	});
-	return json(reply.body, { status: reply.status });
+	// no-cache: a client cache may keep a tagged reply but must ask before reusing it.
+	const headers = reply.headers ? { ...reply.headers, 'cache-control': 'private, no-cache' } : undefined;
+	if (reply.status === 304) return new Response(null, { status: 304, headers });
+	return json(reply.body, { status: reply.status, headers });
 }

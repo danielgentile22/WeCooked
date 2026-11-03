@@ -76,18 +76,26 @@ afterAll(() => {
 /** Move the clock on, so created_at orders rows the way real use would. */
 const tick = () => vi.setSystemTime(Date.now() + 60_000);
 
-type Call = { body?: unknown; query?: string; bytes?: Buffer; ip?: string; deviceId?: string };
+type Call = {
+	body?: unknown;
+	query?: string;
+	bytes?: Buffer;
+	ip?: string;
+	deviceId?: string;
+	ifNoneMatch?: string;
+};
 
 async function call(method: Method, path: string, opts: Call = {}) {
 	const reply = await dispatch(db, routes, method, path, {
 		query: new URLSearchParams(opts.query),
 		ip: opts.ip ?? '10.0.0.1',
 		deviceId: opts.deviceId,
+		ifNoneMatch: opts.ifNoneMatch,
 		json: async () => opts.body,
 		bytes: async () => opts.bytes ?? Buffer.alloc(0)
 	});
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return reply as { status: number; body: any };
+	return reply as { status: number; body: any; headers?: Record<string, string> };
 }
 
 async function ok(method: Method, path: string, opts: Call = {}) {
@@ -508,6 +516,33 @@ describe('/api/v1', () => {
 		expect(state.list.build).toMatchObject({ job_id, status: 'done', result: { kept: 0, reset: [] } });
 		expect(state.list.picks).toEqual([{ recipe_id: recipeId, yield_count: 6, title: 'Chickpea stew', yield_unit: 'servings' }]);
 		expect(state.recipes.map((r: { title: string }) => r.title)).toContain('Lemon drizzle cake');
+
+		// Issue #75: the 5 s poll asks for the list only, and revalidates.
+		const listOnly = await call('GET', '/shopping', { query: 'only=list' });
+		expect(listOnly).toMatchObject({ status: 200, body: { list: state.list } });
+		fixture('shopping-get-list', listOnly.body);
+		expect(Object.keys(listOnly.body)).toEqual(['list']);
+		const etag = listOnly.headers?.etag as string;
+		expect(etag).toMatch(/^"[\w-]+"$/);
+		const unchanged = { status: 304, body: undefined, headers: { etag } };
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: `"other", W/${etag}` })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: '"other"' })).toMatchObject({ status: 200 });
+		const full = await call('GET', '/shopping');
+		expect(full.headers?.etag).toMatch(/^"[\w-]+"$/);
+		expect(full.headers?.etag).not.toBe(etag);
+		expect(await call('GET', '/shopping', { ifNoneMatch: full.headers?.etag })).toMatchObject({ status: 304 });
+		// The other phone's tick changes the tag; untick it and the old one is good again.
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: false } })).toEqual({ ok: true });
+		const ticked = await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag });
+		expect(ticked.status).toBe(200);
+		expect(ticked.body.list.items[0]).toMatchObject({ id: onions, ticked: false });
+		expect(ticked.headers?.etag).not.toBe(etag);
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: true } })).toEqual({ ok: true });
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		await fails('GET', '/shopping', 400, 'Unknown view.', { query: 'only=recipes' });
+		// Only the shopping read is conditional.
+		expect((await call('GET', '/trash', { ifNoneMatch: etag })).headers).toBeUndefined();
 
 		const retry = await ok('POST', '/shopping/retry');
 		expect(job(retry.job_id)).toMatchObject({ kind: 'shopping_merge', status: 'queued' });

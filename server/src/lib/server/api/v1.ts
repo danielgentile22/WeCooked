@@ -28,6 +28,7 @@ import {
 	addManual,
 	doneShopping,
 	getListId,
+	getShoppingState,
 	requestBuild,
 	retryBuild,
 	setTicked
@@ -344,7 +345,19 @@ export const routes: readonly Route[] = [
 		}
 	},
 
-	{ method: 'GET', path: '/shopping', run: (db) => shoppingView(db) },
+	{
+		method: 'GET',
+		path: '/shopping',
+		conditional: true,
+		// ?only=list is the poll's shape (issue #75): the pickable recipes only
+		// change when a recipe does, so the 5 s poll leaves them out.
+		run: (db, req) => {
+			const only = req.query.get('only');
+			if (only === null) return shoppingView(db);
+			if (only === 'list') return { list: getShoppingState(db) };
+			throw bad('Unknown view.');
+		}
+	},
 	{
 		method: 'POST',
 		path: '/shopping/build',
