@@ -481,16 +481,20 @@ export const extractPhotos: JobHandler = async (job, db) => {
 	const { image_ids } = JSON.parse(job.input_json) as { image_ids: string[] };
 	const rows = db
 		.prepare(
-			`SELECT id, r2_key_full FROM image
+			`SELECT id, r2_key_full, r2_key_claude FROM image
 			 WHERE id IN (${image_ids.map(() => '?').join(',')}) AND deleted_at IS NULL`
 		)
-		.all(...image_ids) as { id: string; r2_key_full: string }[];
-	const byId = new Map(rows.map((r) => [r.id, r.r2_key_full]));
-	const keys = image_ids.map((id) => byId.get(id));
-	if (image_ids.length === 0 || keys.some((k) => !k))
+		.all(...image_ids) as { id: string; r2_key_full: string; r2_key_claude: string | null }[];
+	const byId = new Map(rows.map((r) => [r.id, r]));
+	const images = image_ids.map((id) => byId.get(id));
+	if (image_ids.length === 0 || images.some((i) => !i))
 		throw new JobError('api_error', 'Capture images are missing.');
+	// Issue #71: the copy was built at upload. A capture uploaded before that
+	// has none, so derive it from the full as before.
 	const copies = await Promise.all(
-		keys.map(async (key) => deriveClaude(await getObject(key!)))
+		images.map(async (i) =>
+			i!.r2_key_claude ? getObject(i!.r2_key_claude) : deriveClaude(await getObject(i!.r2_key_full))
+		)
 	);
 	return extract(db, photoBlocks(copies), 'image_unreadable');
 };
