@@ -17,6 +17,7 @@ import { scale } from '$lib/server/scale';
 import { reconvert } from '$lib/server/reconvert';
 import { applyMerge, getListId } from '$lib/server/shopping';
 import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
+import { getObject } from '$lib/server/r2';
 import type { JobRow } from '$lib/server/jobs';
 import { getDevice } from '$lib/server/devices';
 import type { BodyPair, RecipeDraft } from '$lib/extract';
@@ -77,18 +78,26 @@ afterAll(() => {
 /** Move the clock on, so created_at orders rows the way real use would. */
 const tick = () => vi.setSystemTime(Date.now() + 60_000);
 
-type Call = { body?: unknown; query?: string; bytes?: Buffer; ip?: string; deviceId?: string };
+type Call = {
+	body?: unknown;
+	query?: string;
+	bytes?: Buffer;
+	ip?: string;
+	deviceId?: string;
+	ifNoneMatch?: string;
+};
 
 async function call(method: Method, path: string, opts: Call = {}) {
 	const reply = await dispatch(db, routes, method, path, {
 		query: new URLSearchParams(opts.query),
 		ip: opts.ip ?? '10.0.0.1',
 		deviceId: opts.deviceId,
+		ifNoneMatch: opts.ifNoneMatch,
 		json: async () => opts.body,
 		bytes: async () => opts.bytes ?? Buffer.alloc(0)
 	});
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return reply as { status: number; body: any };
+	return reply as { status: number; body: any; headers?: Record<string, string> };
 }
 
 async function ok(method: Method, path: string, opts: Call = {}) {
@@ -253,6 +262,25 @@ describe('/api/v1', () => {
 		photoId = img.id;
 	});
 
+	it('POST /images/thumbnails/backfill', async () => {
+		db.prepare(
+			`INSERT INTO image (id, recipe_id, r2_key_full, r2_key_display, width, height, role, created_at)
+			 VALUES ('legacy', NULL, 'images/legacy/full.jpg', 'images/legacy/display.jpg', 40, 30, 'photo', '2026')`
+		).run();
+		vi.mocked(getObject).mockResolvedValueOnce(await jpeg());
+		await fails('POST', '/images/thumbnails/backfill', 400, 'limit must be 1 to 200.', { query: 'limit=0' });
+		expect(await ok('POST', '/images/thumbnails/backfill')).toEqual({ made: 1, failed: 0, next: null });
+		expect(db.prepare(`SELECT r2_key_thumb FROM image WHERE id = 'legacy'`).get()).toEqual({
+			r2_key_thumb: 'images/legacy/thumb.webp'
+		});
+		expect(await ok('POST', '/images/thumbnails/backfill', { query: 'after=legacy' })).toEqual({
+			made: 0,
+			failed: 0,
+			next: null
+		});
+		db.prepare(`DELETE FROM image WHERE id = 'legacy'`).run();
+	});
+
 	it('POST /recipes', async () => {
 		await fails('POST', '/recipes', 400, 'Title is required.', { body: input({ title: ' ' }) });
 		await fails('POST', '/recipes', 400, 'Malformed JSON.', { body: [1] });
@@ -273,6 +301,9 @@ describe('/api/v1', () => {
 		expect(view.recipe).toMatchObject({ title: 'Chickpea stew', is_original: true, reconvert: null });
 		expect(view.recipe.images[0]).toMatchObject({ id: photoId, width: 40, height: 30 });
 		expect(view.recipe.images[0].r2_key_full).toBeUndefined();
+		// Issue #73: the photo strip reads the thumbnail, the cover the display copy.
+		expect(view.recipe.images[0].url).toMatch(/display\.jpg/);
+		expect(view.recipe.images[0].thumb_url).toMatch(/thumb\.webp/);
 		expect(view).toMatchObject({ refresh: null, calcJob: null });
 		variationId = view.recipe.variation_id;
 		await fails('GET', '/recipes/missing', 404, 'Recipe not found');
@@ -469,6 +500,8 @@ describe('/api/v1', () => {
 		expect(browse.drafts.map((d: { status: string }) => d.status)).toEqual(['ready', 'extracting', 'failed']);
 		expect(browse.recipes.map((r: { title: string }) => r.title)).toEqual(['Quick omelette', 'Chickpea stew']);
 		expect(browse.recipes[1].cover_url).toMatch(/display\.jpg/);
+		expect(browse.recipes[1].cover_thumb_url).toMatch(/thumb\.webp/);
+		expect(browse.recipes[0]).toMatchObject({ cover_url: null, cover_thumb_url: null });
 		expect((await ok('GET', '/recipes', { query: 'effort=quick' })).recipes).toHaveLength(1);
 		expect((await ok('GET', '/recipes', { query: 'q=stew' })).recipes[0].id).toBe(recipeId);
 
@@ -537,6 +570,33 @@ describe('/api/v1', () => {
 		expect(state.list.build).toMatchObject({ job_id, status: 'done', result: { kept: 0, reset: [] } });
 		expect(state.list.picks).toEqual([{ recipe_id: recipeId, yield_count: 6, title: 'Chickpea stew', yield_unit: 'servings' }]);
 		expect(state.recipes.map((r: { title: string }) => r.title)).toContain('Lemon drizzle cake');
+
+		// Issue #75: the 5 s poll asks for the list only, and revalidates.
+		const listOnly = await call('GET', '/shopping', { query: 'only=list' });
+		expect(listOnly).toMatchObject({ status: 200, body: { list: state.list } });
+		fixture('shopping-get-list', listOnly.body);
+		expect(Object.keys(listOnly.body)).toEqual(['list']);
+		const etag = listOnly.headers?.etag as string;
+		expect(etag).toMatch(/^"[\w-]+"$/);
+		const unchanged = { status: 304, body: undefined, headers: { etag } };
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: `"other", W/${etag}` })).toEqual(unchanged);
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: '"other"' })).toMatchObject({ status: 200 });
+		const full = await call('GET', '/shopping');
+		expect(full.headers?.etag).toMatch(/^"[\w-]+"$/);
+		expect(full.headers?.etag).not.toBe(etag);
+		expect(await call('GET', '/shopping', { ifNoneMatch: full.headers?.etag })).toMatchObject({ status: 304 });
+		// The other phone's tick changes the tag; untick it and the old one is good again.
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: false } })).toEqual({ ok: true });
+		const ticked = await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag });
+		expect(ticked.status).toBe(200);
+		expect(ticked.body.list.items[0]).toMatchObject({ id: onions, ticked: false });
+		expect(ticked.headers?.etag).not.toBe(etag);
+		expect(await ok('PATCH', `/shopping/items/${onions}`, { body: { ticked: true } })).toEqual({ ok: true });
+		expect(await call('GET', '/shopping', { query: 'only=list', ifNoneMatch: etag })).toEqual(unchanged);
+		await fails('GET', '/shopping', 400, 'Unknown view.', { query: 'only=recipes' });
+		// Only the shopping read is conditional.
+		expect((await call('GET', '/trash', { ifNoneMatch: etag })).headers).toBeUndefined();
 
 		const retry = await ok('POST', '/shopping/retry');
 		expect(job(retry.job_id)).toMatchObject({ kind: 'shopping_merge', status: 'queued' });

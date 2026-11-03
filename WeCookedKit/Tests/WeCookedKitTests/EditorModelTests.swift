@@ -637,7 +637,8 @@ struct EditorModelTests {
 
 	static func found(_ id: ImageID) -> RecipeImage {
 		RecipeImage(
-			id: id, url: URL(string: "https://example.com/\(id).jpg")!, width: 40, height: 30,
+			id: id, url: URL(string: "https://example.com/\(id).jpg")!,
+			thumbUrl: URL(string: "https://example.com/\(id).webp")!, width: 40, height: 30,
 			sourceUrl: URL(string: "https://site.example/\(id).jpg"))
 	}
 

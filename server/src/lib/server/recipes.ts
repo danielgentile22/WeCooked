@@ -401,6 +401,7 @@ export type RecipeImage = {
 	id: string;
 	r2_key_full: string;
 	r2_key_display: string;
+	r2_key_thumb: string; // the display copy until the thumbnail backfill reaches it
 	width: number;
 	height: number;
 	source_url: string | null;
@@ -496,7 +497,8 @@ export function getRecipe(db: Database, id: string, variationId?: string): Recip
 	).map((m) => m.meal_type);
 	const images = db
 		.prepare(
-			`SELECT id, r2_key_full, r2_key_display, width, height, source_url FROM image
+			`SELECT id, r2_key_full, r2_key_display, COALESCE(r2_key_thumb, r2_key_display) AS r2_key_thumb,
+			        width, height, source_url FROM image
 			 WHERE recipe_id = ? AND deleted_at IS NULL ORDER BY created_at`
 		)
 		.all(id) as RecipeImage[];
@@ -590,6 +592,7 @@ export type BrowseRow = {
 	effort: string;
 	damage: string;
 	cover_key: string | null; // r2_key_display of the cover, presigned by the route
+	cover_thumb_key: string | null; // its thumbnail, or the display copy before the backfill
 };
 
 /**
@@ -634,7 +637,8 @@ export function listRecipes(db: Database, f: BrowseFilters = {}): BrowseRow[] {
 
 	return db
 		.prepare(
-			`SELECT r.id, r.title, r.effort, r.damage, c.r2_key_display AS cover_key
+			`SELECT r.id, r.title, r.effort, r.damage, c.r2_key_display AS cover_key,
+			        COALESCE(c.r2_key_thumb, c.r2_key_display) AS cover_thumb_key
 			 FROM recipe r
 			 LEFT JOIN image c ON c.id = r.cover_image_id AND c.deleted_at IS NULL
 			 WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC`

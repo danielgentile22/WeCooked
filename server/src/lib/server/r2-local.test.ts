@@ -34,6 +34,12 @@ describe('local image store (IMAGE_STORE=local)', () => {
 		expect(presignGet(key)).toBe(`http://localhost:5173/dev-images/${key}`);
 	});
 
+	it('stores a WebP thumbnail too (issue #73)', async () => {
+		const thumb = 'images/01J9Z8Y7X6W5V4T3S2R1Q0P9N8/thumb.webp';
+		await putObject(thumb, new Uint8Array([1, 2]), 'image/webp');
+		expect(new Uint8Array(await getObject(thumb))).toEqual(new Uint8Array([1, 2]));
+	});
+
 	it('rejects keys that could escape the directory', async () => {
 		for (const bad of ['../x.jpg', 'images/../../etc/passwd.jpg', '/etc/x.jpg', 'images/a/..jpg', 'images/a/b.png']) {
 			await expect(putObject(bad, new Uint8Array([1]))).rejects.toThrow(/Unsafe image key/);

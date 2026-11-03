@@ -312,6 +312,9 @@ CREATE TABLE image (
                                   -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
+  r2_key_thumb   TEXT,            -- long edge 400, WebP, for Browse rows and the
+                                  -- photo strip (migration 007, issue #73); NULL
+                                  -- until the backfill reaches an older image
   r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
                                   -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
@@ -1126,8 +1129,12 @@ The camera file never reaches the server intact, on purpose:
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
-   1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
-   (`r2_key_claude`, section 5.8).
+   1200 px long edge, `r2_key_thumb` at 400 px long edge (WebP quality 75),
+   and for a capture a 1568 px quality-85 JPEG for Claude (`r2_key_claude`,
+   section 5.8), and upload the copies in parallel. Lists (Browse rows, the
+   photo strip) show the thumbnail; the cover shows the display copy.
+   `POST /api/v1/images/thumbnails/backfill`, walked by
+   `server/scripts/backfill-thumbnails.mjs`, gives older images a thumbnail.
 
 **Deliberate deviation, stated plainly:** "store the original" means the
 normalised 3000 px JPEG, not the untouched camera file. The true original is not
