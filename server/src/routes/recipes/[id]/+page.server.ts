@@ -4,8 +4,10 @@ import db from '$lib/server/db';
 import { retryReconvert, deleteVariation, deleteRecipe } from '$lib/server/recipes';
 import { keepMine, recalcVariation, requestScale, retryScale } from '$lib/server/scale';
 import { recipeView } from '$lib/server/views';
+import { jobDeps } from '$lib/jobs';
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, depends }) => {
+	depends(jobDeps.recipe(params.id));
 	const view = recipeView(db, params.id, url.searchParams.get('v') ?? undefined);
 	if (!view) error(404, 'Recipe not found');
 	return view;
