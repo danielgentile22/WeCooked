@@ -23,13 +23,17 @@
 		const files = picked.slice(0, Math.max(0, MAX_PHOTOS - photos.length - uploading));
 		uploadError = files.length < picked.length ? `At most ${MAX_PHOTOS} pages per recipe.` : null;
 		uploading += files.length;
-		// Uploads overlap (issue #77); each page joins the strip in pick order.
-		for (const upload of uploadPhotos(files, 'capture')) {
-			try {
-				photos.push(await upload);
-			} catch {
+		// Uploads overlap (issue #77); each page joins the strip in pick order,
+		// and a failure shows at once, not after the pages before it.
+		const uploads = uploadPhotos(files, 'capture').map((upload) =>
+			upload.catch(() => {
 				uploadError = 'Could not upload a photo. Check the connection and try again.';
-			}
+				return null;
+			})
+		);
+		for (const upload of uploads) {
+			const image = await upload;
+			if (image) photos.push(image);
 			uploading -= 1;
 		}
 	}
