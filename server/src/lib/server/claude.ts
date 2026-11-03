@@ -11,9 +11,23 @@ import { JobError } from './jobs';
 // means one transient failure silently bills three full extractions.
 // Issue #70: two attempts must fit inside the client's five minute give-up
 // (GIVE_UP_MS), with the page fetch before them and the SDK's backoff
-// between. A server-sent retry-after is honoured uncapped by the SDK and can
-// still overrun; the client then shows its timeout and the job finishes late.
+// between. The SDK would honour a server-sent retry-after uncapped, so
+// withoutRetryAfter drops it and the wait is always the SDK's own backoff
+// (8 s at most).
 export const CALL_TIMEOUT_MS = 110_000;
+
+/** fetch for the SDK with the retry-after headers removed from every reply,
+ *  so no retry waits longer than the SDK's default backoff. */
+export const withoutRetryAfter =
+	(fetchFn: typeof fetch = fetch): typeof fetch =>
+	async (...args) => {
+		const res = await fetchFn(...args);
+		if (!res.headers.has('retry-after') && !res.headers.has('retry-after-ms')) return res;
+		const headers = new Headers(res.headers);
+		headers.delete('retry-after');
+		headers.delete('retry-after-ms');
+		return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+	};
 
 // Lazy so the module can load (and takeQuota be tested) without a key.
 let _client: Anthropic | undefined;
@@ -21,7 +35,8 @@ const client = () =>
 	(_client ??= new Anthropic({
 		apiKey: env.ANTHROPIC_API_KEY,
 		maxRetries: 1,
-		timeout: CALL_TIMEOUT_MS
+		timeout: CALL_TIMEOUT_MS,
+		fetch: withoutRetryAfter()
 	}));
 
 // 'YYYY-MM-DD' in America/New_York (SPEC 5.9); en-CA formats as ISO.
