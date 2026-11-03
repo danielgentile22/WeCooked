@@ -44,9 +44,9 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | GET | /trash | | `{trash: {recipes, variations}}` | |
 | POST | /trash/recipes/:id/restore | | `{restored:true, displaced:false}` | |
 | POST | /trash/variations/:id/restore | | `{restored:true, displaced}` | 400 |
-| GET | /jobs/:id | | `JobPoll {status, error_code, error_text, result_ref}` | 404 |
+| GET | /jobs/:id?wait=seconds | | `JobPoll {status, error_code, error_text, result_ref}` | 400 bad wait, 404 |
 | POST | /images?role=photo\|capture | raw JPEG bytes | `{id, url, width, height}` | 400, 413 over 8 MiB |
 
 Found covers (issue #44, ADR-043): after a capture or a pick, a background `cover` job looks for a photo of the dish and, when it finds one, adds it to the draft as the last image and names it `cover_image_id`. Its `source_url` is where it was fetched from; photos the household took have `source_url: null`. Save it like any photo: send its id in `image_ids` and, if it is still the cover, as `cover_image_id`. The draft does not wait for it, so poll `GET /drafts/:id` again to see a late one.
 
-Job ids are polled with `GET /jobs/:id` (1.5 s, backing off to 5 s). Image URLs are presigned for 7 days and change daily; cache by image id.
+Job ids are long-polled with `GET /jobs/:id?wait=25` (issue #65): the server holds the reply until the status changes or 25 s pass, so ask again as soon as one comes back. Without `wait` it answers at once; poll that way at 1.5 s, backing off to 5 s. Image URLs are presigned for 7 days and change daily; cache by image id.

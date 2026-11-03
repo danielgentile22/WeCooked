@@ -332,6 +332,9 @@ describe('/api/v1', () => {
 		expect(poll).toMatchObject({ status: 'done', error_code: null });
 		const scaled = poll.result_ref as string;
 		await fails('GET', '/jobs/missing', 404, 'No such job.');
+		// Issue #65: a finished job answers a long-poll at once; a bad wait is refused.
+		expect(await ok('GET', `/jobs/${job_id}`, { query: 'wait=25' })).toEqual(poll);
+		await fails('GET', `/jobs/${job_id}`, 400, 'Wait must be a number of seconds.', { query: 'wait=soon' });
 
 		expect(
 			fixture('recipe-calculate-existing', await ok('POST', `/recipes/${recipeId}/calculate`, { body: { to_count: 8 } }))

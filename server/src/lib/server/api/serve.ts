@@ -11,6 +11,7 @@ export async function serve(event: RequestEvent, path: string): Promise<Response
 		// Fly-Client-IP, not the socket address, or every client is Fly's proxy.
 		ip: request.headers.get('fly-client-ip') ?? event.getClientAddress(),
 		deviceId: deviceIdHeader(request.headers.get('x-device-id')),
+		signal: request.signal,
 		json: () => request.json().catch(() => undefined),
 		bytes: async () => Buffer.from(await request.arrayBuffer())
 	});

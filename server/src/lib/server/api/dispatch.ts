@@ -13,6 +13,8 @@ export type ApiRequest = {
 	ip: string;
 	/** The phone's install id from X-Device-Id (issue #42), already parsed. */
 	deviceId: string | undefined;
+	/** Aborts when the client goes away, so a long-poll stops holding on. */
+	signal?: AbortSignal;
 	/** The JSON body, or undefined when it is empty or malformed. */
 	json(): Promise<unknown>;
 	bytes(): Promise<Buffer>;
