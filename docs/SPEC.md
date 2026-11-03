@@ -312,6 +312,9 @@ CREATE TABLE image (
                                   -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
+  r2_key_thumb   TEXT,            -- long edge 400, WebP, for Browse rows and the
+                                  -- photo strip (migration 007, issue #73); NULL
+                                  -- until the backfill reaches an older image
   r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
                                   -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
@@ -446,17 +449,19 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 
 | Kind | Input | Output | Approx cost |
 |---|---|---|---|
-| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft` | $0.05 to $0.09 |
-| `scale` | source body + target yield | `BodyPair` + scaling note | ~$0.06 |
-| `reconvert` | one edited body | the counterpart body | ~$0.05 |
+| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft`, as-written body only (issue #67) | $0.05 to $0.09 |
+| `scale` | source body + target yield | metric body + scaling note (#69) | ~$0.06 |
+| `reconvert` | one edited body, or a draft's as-written body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
-| `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
+| `generate` | a description + yield count + one angle | one metric-only `RecipeDraft` candidate; a generation makes three in parallel (ADR-042, issue #68) | ~$0.03 each |
 | cover pick | a recipe title + up to four 512 px photos | the index of the dish photo, or -1 (ADR-043) | under $0.01 |
 
 ### 5.3 Shared output shapes
 
-`BodyPair` is the unit that both `extract` and `scale` produce. Every recipe
-body exists in both unit systems at all times (ADR-019).
+`BodyPair` is the unit that generations stored before issue #68 hold. Every
+saved recipe body exists in both unit systems (ADR-019, amended by issues #67
+and #68: `extract` and `generate` write the as-written body only, and the
+draft's conversion job writes the counterpart).
 
 ```jsonc
 // BodyPair
@@ -511,7 +516,14 @@ Output schema:
   "prep_minutes": 15,          // nullable
   "cook_minutes": 40,          // nullable
   "source_text": "string|null",
-  "body": { /* BodyPair */ },
+  // The as-written body (issue #67). Drafts stored before #67 and generation
+  // candidates stored before #68 hold a BodyPair here; the server reads those
+  // as this plus the counterpart.
+  "body": {
+    "source_units": "us",
+    "ingredients": [{ "heading": "string|null", "items": ["string"] }],
+    "steps": ["string"]
+  },
   "tags": {
     "meal_type": ["dinner"],
     "cuisine": "italian",      // nullable
@@ -538,8 +550,10 @@ Rules:
   modernise the recipe. Do not add ingredients that are not stated.
 - Preserve ingredient section headings ("For the sauce") as groups. If the
   recipe has no sections, return one group with a null heading.
+- Write the body once, in the units the source uses, and name them in
+  source_units. Convert nothing. When the source gives both, as in
+  "225°F (110°C)" or "1 lb (450 g)", keep only the source_units one.
 - Ingredients stay as human-readable strings, exactly as a cook would read them.
-- Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
   Leave cuisine or protein null if unsure. effort and damage are required.
 - Score damage with the rubric below and show your arithmetic in
@@ -550,7 +564,6 @@ Rules:
 
 [tag vocabulary]
 [damage rubric]
-[conversion rules]
 ```
 
 User content per path:
@@ -606,6 +619,11 @@ change and times are a starting point only.
 Triggered when a human edits a body (ADR-019). Input is the edited body and its
 unit system; output is the counterpart body only. This preserves the invariant
 that the two unit systems always agree.
+
+A finished extraction also queues one, keyed to the draft instead of a
+variation (issue #67): `input_json` is `{ draft_id, source }` with the
+as-written body, and the converted body is the job's `result_json`. The
+draft reads its counterpart from there (6.5).
 
 ```jsonc
 { "ingredients": [...], "steps": [...] }
@@ -781,9 +799,25 @@ A **generation** (issue #41, ADR-042) is a fourth draft kind. Its job row
 holds the description and yield count as input and three candidate
 `RecipeDraft`s as result. Browse shows it as one card ("generating", then
 "choose a recipe"). Picking a candidate records the index on the same row,
-which then reads as a ready draft seeded from that candidate; the review
-form and Save are the ones above. The saved recipe records the description
+which then reads as a ready draft seeded from that candidate, and queues
+its cover and its conversion; the review form and Save are the ones above.
+Each candidate is written in metric only by its own call, three in parallel,
+each given a distinct angle chosen in code from the description (issue #68):
+the main protein unless the description names one or a diet, else the
+cuisine unless it names one, else the technique. Any call failing fails the
+generation, and each call counts against the daily cap. The saved recipe records the description
 as its `source_text` and has no `source_url`.
+
+A capture's draft, and a picked candidate (issue #68), opens on its **as-written body** alone (issue #67). The
+counterpart comes from the draft's conversion job (5.6), and the draft read
+reports `counterpart_state`: `ready` (the body rides in the seed as the
+known-good counterpart), `converting` (the clients watch the job and re-read
+the draft when it ends), or `failed` (the reconvert banner with retry,
+`POST /drafts/:id/retry-conversion`). Save never waits for it: a ready
+counterpart is stored even if the form loaded before it was ready, provided
+the as-written body is unedited; otherwise the recipe is saved with its
+source body and the new variation gets a reconvert, as any save without a
+counterpart does. Save and Discard delete the draft's conversion jobs.
 
 A **cover** job (issue #44, ADR-043) is not a draft kind. It follows a
 successful capture or a pick, finds a cover photo, and writes its image id to
@@ -1095,8 +1129,12 @@ The camera file never reaches the server intact, on purpose:
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
-   1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
-   (`r2_key_claude`, section 5.8).
+   1200 px long edge, `r2_key_thumb` at 400 px long edge (WebP quality 75),
+   and for a capture a 1568 px quality-85 JPEG for Claude (`r2_key_claude`,
+   section 5.8), and upload the copies in parallel. Lists (Browse rows, the
+   photo strip) show the thumbnail; the cover shows the display copy.
+   `POST /api/v1/images/thumbnails/backfill`, walked by
+   `server/scripts/backfill-thumbnails.mjs`, gives older images a thumbnail.
 
 **Deliberate deviation, stated plainly:** "store the original" means the
 normalised 3000 px JPEG, not the untouched camera file. The true original is not

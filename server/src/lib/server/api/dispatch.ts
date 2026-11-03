@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 
 // A tiny router for /api/v1: a table of routes, one dispatch, and one error
@@ -13,6 +14,8 @@ export type ApiRequest = {
 	ip: string;
 	/** The phone's install id from X-Device-Id (issue #42), already parsed. */
 	deviceId: string | undefined;
+	/** The raw If-None-Match header, for routes marked `conditional`. */
+	ifNoneMatch?: string;
 	/** Aborts when the client goes away, so a long-poll stops holding on. */
 	signal?: AbortSignal;
 	/** The JSON body, or undefined when it is empty or malformed. */
@@ -31,6 +34,12 @@ export type Route = {
 	/** Segments; `:name` captures one into params. */
 	path: string;
 	run: (db: Database, req: ApiRequest) => unknown;
+	/**
+	 * Tag each 200 with an ETag of its body and answer a matching
+	 * If-None-Match with 304 (issue #75). For reads polled while nothing
+	 * changes: the query still runs, but the body is not sent.
+	 */
+	conditional?: boolean;
 };
 
 /** Every error reply is `{error}` with this status. */
@@ -43,7 +52,22 @@ export class ApiError extends Error {
 	}
 }
 
-export type Reply = { status: number; body: unknown };
+export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
+
+/** A strong tag over the JSON the client would decode. */
+function etagOf(body: unknown): string {
+	return `"${createHash('sha1').update(JSON.stringify(body)).digest('base64url')}"`;
+}
+
+/**
+ * RFC 9110 weak comparison: a proxy that compresses the reply may hand the
+ * client a `W/` tag, which should still match.
+ */
+function matches(ifNoneMatch: string | undefined, etag: string): boolean {
+	if (!ifNoneMatch) return false;
+	const strip = (t: string) => t.trim().replace(/^W\//, '');
+	return ifNoneMatch.split(',').some((t) => t.trim() === '*' || strip(t) === etag);
+}
 
 /**
  * The $lib/server functions throw plain Errors whose message is written for
@@ -84,7 +108,12 @@ export async function dispatch(
 		pathMatched = true;
 		if (route.method !== method) continue;
 		try {
-			return { status: 200, body: await route.run(db, { ...req, params }) };
+			const body = await route.run(db, { ...req, params });
+			if (!route.conditional) return { status: 200, body };
+			const etag = etagOf(body);
+			const headers = { etag };
+			if (matches(req.ifNoneMatch, etag)) return { status: 304, body: undefined, headers };
+			return { status: 200, body, headers };
 		} catch (e) {
 			if (e instanceof ApiError) return { status: e.status, body: { error: e.message } };
 			console.error(`api ${method} ${path} failed:`, e);

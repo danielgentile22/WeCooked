@@ -1,5 +1,5 @@
 import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
-import { hasRecipe, type CaptureInput, type RecipeDraft } from '$lib/extract';
+import { hasRecipe, type AsWrittenBody, type CaptureInput, type RecipeDraft } from '$lib/extract';
 import type { Database } from 'better-sqlite3';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -8,7 +8,7 @@ import type { ErrorCode } from '$lib/jobs';
 import { claudeCall } from './claude';
 import { deriveClaude } from './images';
 import { getObject } from './r2';
-import { JobError, type JobHandler, type JobRow } from './jobs';
+import { createJob, JobError, type JobHandler, type JobRow } from './jobs';
 
 // The extract call (SPEC 5.4): one prompt for all three capture paths, with
 // per-path user content.
@@ -44,15 +44,16 @@ export const RECIPE_DRAFT_SCHEMA = {
 		prep_minutes: { type: ['integer', 'null'] },
 		cook_minutes: { type: ['integer', 'null'] },
 		source_text: { type: ['string', 'null'] },
+		// Issue #67: the as-written body only. The counterpart is the draft's
+		// conversion job's work (enqueueDraftConversion).
 		body: {
 			type: 'object',
 			additionalProperties: false,
 			properties: {
 				source_units: { enum: ['us', 'metric'] },
-				us: BODY_SCHEMA,
-				metric: BODY_SCHEMA
+				...BODY_SCHEMA.properties
 			},
-			required: ['source_units', 'us', 'metric']
+			required: ['source_units', ...BODY_SCHEMA.required]
 		},
 		tags: {
 			type: 'object',
@@ -83,8 +84,8 @@ export const RECIPE_DRAFT_SCHEMA = {
 	]
 };
 
-// SPEC 5.3: the conversion rules apply everywhere a body pair is produced,
-// so extract and reconvert share them verbatim.
+// SPEC 5.3: the conversion rules apply everywhere a body is converted, so
+// reconvert, generate and scale share them verbatim.
 export const CONVERSION_RULES = `Conversion rules:
 1. Convert quantities ingredient-aware: a cup of flour is about 120 g, a cup
    of honey is about 340 g. Never apply a generic volume-to-weight ratio.
@@ -103,10 +104,10 @@ export const CONVERSION_RULES = `Conversion rules:
 7. Round to quantities a cook can measure. Prefer "1/3 cup" over "0.33 cups"
    and "500 g" over "497 g".`;
 
-// SPEC 3.4 vocabulary and rubric + 5.3 conversion rules: everything that
-// shapes a recipe, whether it was transcribed or generated (issue #41).
+// SPEC 3.4 vocabulary and rubric: everything that shapes a recipe, whether it
+// was transcribed or generated (issue #41). The conversion rules are not
+// here: extraction writes one body (issue #67).
 export const RECIPE_SHAPE_RULES = `- Ingredients stay as human-readable strings, exactly as a cook would read them.
-- Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
   Leave cuisine or protein null if unsure. effort and damage are required.
 - Score damage with the rubric below and show your arithmetic in
@@ -129,9 +130,7 @@ Damage rubric. Count the things that need washing:
 - More than one heat source running at once: +1
 Plates and cutlery you eat off do not count. Anything rinsed and reused
 mid-recipe does not count. Total 0 to 2 is tidy, 3 to 5 is messy, 6 or more
-is carnage.
-
-${CONVERSION_RULES}`;
+is carnage.`;
 
 // SPEC 5.4 system prompt skeleton.
 export const EXTRACT_SYSTEM = `You extract recipes into structured data for a private two-person recipe book.
@@ -141,6 +140,9 @@ Rules:
   modernise the recipe. Do not add ingredients that are not stated.
 - Preserve ingredient section headings ("For the sauce") as groups. If the
   recipe has no sections, return one group with a null heading.
+- Write the body once, in the units the source uses, and name them in
+  source_units. Convert nothing. When the source gives both, as in
+  "225°F (110°C)" or "1 lb (450 g)", keep only the source_units one.
 ${RECIPE_SHAPE_RULES}
 - If part of the source is unreadable, missing, or cut off, transcribe what you
   can and describe the gap in extraction_warnings. Never invent the missing
@@ -154,10 +156,23 @@ ${RECIPE_SHAPE_RULES}
 
 ${RECIPE_RULES}`;
 
-/** Shared tail of every extract handler: one Claude call, then the gate.
- *  An empty extraction from photos means the page could not be read
- *  (SPEC 6.4: image_unreadable), not that no recipe exists. */
-async function extract(
+/** A draft's conversion job's input_json (issue #67): a reconvert keyed to
+ *  the draft instead of a variation. The as-written body rides along because
+ *  a draft's body never changes on the server; the cook's edits only reach
+ *  it on save, which discards this job. */
+export type DraftConversionInput = { draft_id: string; source: AsWrittenBody };
+
+/** ADR-019 as amended by issue #67: the counterpart is queued the moment its
+ *  source body exists. The job's result_json is the counterpart body. */
+export function enqueueDraftConversion(db: Database, draftId: string, source: AsWrittenBody): string {
+	const input: DraftConversionInput = { draft_id: draftId, source };
+	return createJob(db, 'reconvert', input);
+}
+
+/** One Claude call, then the gate. An empty extraction from photos means the
+ *  page could not be read (SPEC 6.4: image_unreadable), not that no recipe
+ *  exists. */
+async function extractOnce(
 	db: Database,
 	content: string | ContentBlockParam[],
 	emptyCode: ErrorCode = 'no_recipe_found'
@@ -171,9 +186,16 @@ async function extract(
 	return draft;
 }
 
+/** Shared tail of every extract handler: the draft, with its conversion queued. */
+async function extracted(db: Database, job: JobRow, draft: Promise<RecipeDraft>): Promise<RecipeDraft> {
+	const d = await draft;
+	enqueueDraftConversion(db, job.id, d.body);
+	return d;
+}
+
 /** Handler for the extract_paste job kind: input_json is { text }. */
 export const extractPaste: JobHandler = (job, db) =>
-	extract(db, (JSON.parse(job.input_json) as { text: string }).text);
+	extracted(db, job, extractOnce(db, (JSON.parse(job.input_json) as { text: string }).text));
 
 // SPEC 7.1 URL path, steps 3-4: 10 s timeout, desktop UA, up to 5 redirects
 // followed manually (native fetch allows 20). 401, 402, 403 and 429 are
@@ -450,12 +472,15 @@ export const extractUrl = async (
 		onPageImages?.(pageImages(html, url));
 		return pageContent(html);
 	};
-	try {
-		return await extract(db, page ?? (await readPage()));
-	} catch (e) {
-		if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
-		return extract(db, text);
-	}
+	const draft = async () => {
+		try {
+			return await extractOnce(db, page ?? (await readPage()));
+		} catch (e) {
+			if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
+			return extractOnce(db, text);
+		}
+	};
+	return extracted(db, job, draft());
 };
 
 // SPEC 5.4 user content, photo path: image blocks in page order, then this
@@ -496,5 +521,5 @@ export const extractPhotos: JobHandler = async (job, db) => {
 			i!.r2_key_claude ? getObject(i!.r2_key_claude) : deriveClaude(await getObject(i!.r2_key_full))
 		)
 	);
-	return extract(db, photoBlocks(copies), 'image_unreadable');
+	return extracted(db, job, extractOnce(db, photoBlocks(copies), 'image_unreadable'));
 };

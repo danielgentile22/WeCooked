@@ -420,6 +420,17 @@ private struct IngredientsSection: View {
 		let ingredients = model.form(.ingredients).shown.ingredients
 		Section {
 			UnitsRow(model: model).id(Anchor.ingredients)
+			// Issue #67: the draft's counterpart is still being written.
+			if isLoaded, units.other == nil, let conversion = model.conversion, let base = units.baseline {
+				let name = base.sourceUnits.other == .us ? "US" : "metric"
+				if conversion.status == .converting {
+					Banner(kind: .working, text: "Converting to \(name)…")
+				} else {
+					Banner(kind: .error, text: "Couldn't convert to \(name).", actionTitle: "Tap to retry") {
+						Task { await model.retryConversion() }
+					}
+				}
+			}
 			if isLoaded, let rc = model.reconvert, units.shownUnits != units.baseline?.sourceUnits {
 				if rc.status == .failed || rc.jobId == nil {
 					Banner(kind: .error, text: "Couldn't update from your edit.", actionTitle: "Tap to retry") {

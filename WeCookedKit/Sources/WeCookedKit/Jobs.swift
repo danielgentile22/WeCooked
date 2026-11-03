@@ -151,11 +151,14 @@ extension BrowseResponse: WatchesJobs {
 }
 
 extension DraftLookup: WatchesJobs {
-	/// The extraction while it runs, then the cover job while it looks.
+	/// The extraction while it runs, then the cover job while it looks and
+	/// the conversion while it converts (issue #67).
 	public var watchedJobs: [JobID] {
 		switch self {
 		case .draft(let d) where !d.status.isFinished: [d.id]
-		case .draft(let d): d.coverJobId.map { [$0] } ?? []
+		case .draft(let d):
+			[d.coverJobId, d.counterpartState?.status == .converting ? d.counterpartState?.jobId : nil]
+				.compactMap { $0 }
 		case .choosing, .saved: []
 		}
 	}

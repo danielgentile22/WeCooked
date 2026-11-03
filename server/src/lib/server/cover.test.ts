@@ -506,7 +506,7 @@ describe('parallel candidate downloads (issue #72)', () => {
 
 describe('page images and the early source step (issue #72)', () => {
 	const body = { ingredients: [{ heading: null, items: ['egg'] }], steps: ['fry'] };
-	const extracted = { title: 'Shakshuka', body: { source_units: 'metric', us: body, metric: body } } as RecipeDraft;
+	const extracted = { title: 'Shakshuka', body: { source_units: 'metric', ...body } } as RecipeDraft;
 
 	it('a server-fetched URL capture hands the page images to the cover job, which never refetches', async () => {
 		vi.mocked(claudeCall).mockReset().mockResolvedValue(extracted);

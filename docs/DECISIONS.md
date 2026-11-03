@@ -784,6 +784,21 @@ systems on their own phones without a shared setting to fight over.
 authored", and reconvert failures surface as a banner on the derived body
 (ADR-028).
 
+**Amended 2026-11-03 (issue #67).** The guarantee was "both bodies come
+back in the same call as the extraction". It is now: **both bodies exist on
+every saved recipe and variation, and the counterpart is queued the moment its
+source body exists.** Extraction (paste, URL, photos) asks Claude for the
+as-written body only, and a conversion job keyed to the draft is queued as the
+extraction finishes. Writing every body twice was most of a capture's wait, so
+the draft now opens on the as-written body and the counterpart fills in a few
+seconds later, shown as "converting" until then and with the reconvert banner
+and retry if it fails. Saving does not wait for it: a ready counterpart is
+stored, and a converting or failed one is dropped in favour of a reconvert on
+the saved variation, so the invariant holds on every saved recipe. "Eager, not
+on demand" stands, because the conversion still starts without anyone asking.
+Generation moved over in #68 (its candidates are metric only and the picked
+one queues its conversion); scaling moved in #69.
+
 **The hand-edit problem, and the fork it created.** Editing one body makes its
 counterpart wrong.
 
@@ -1488,6 +1503,20 @@ technique, cuisine or protein, each at the requested yield, written in
 metric and converted to US. The count is checked in the handler, not the
 schema, because the structured-output schema is not relied on for array
 lengths. One call per generation, so the daily cap counts it like a capture.
+
+**Amended 2026-11-03 (issue #68).** One call writing three recipes in two
+unit systems took about 16 s. A generation now makes three parallel calls,
+one candidate each, in metric only, so it takes about as long as one. The
+calls cannot see each other, so distinctness moved from the prompt into code:
+`anglesFor` picks one axis per generation (main protein unless the
+description names one or a diet, else cuisine unless it names one, else
+technique) and three values spread across that axis, stable per description.
+The prompt lets the description win when an angle conflicts with it. Any call
+failing fails the job, as before; the cap now counts three calls per
+generation. Picking a candidate queues its conversion beside its cover
+(ADR-019 as amended by #67), so the draft fills in its US body the same way a
+capture does. Generations stored before #68 still hold both bodies and queue
+no conversion.
 
 **Consequence.** Migration 002 rebuilds the `job` table for the new kind, the
 first migration since the schema. The web shows a generation card but sends

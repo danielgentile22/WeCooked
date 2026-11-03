@@ -98,7 +98,7 @@ struct RecipeRow: View {
 	var body: some View {
 		NavigationLink(value: Route.recipe(row.id, nil)) {
 			HStack(spacing: 12) {
-				RowTile { CachedImage(url: row.coverUrl) }
+				RowTile { CachedImage(url: row.coverThumbUrl) }
 				VStack(alignment: .leading, spacing: 6) {
 					Text(row.title)
 						.font(.body.weight(.semibold))

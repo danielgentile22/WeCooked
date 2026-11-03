@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import candidates from '../../../fixtures/candidates.json';
-import type { GenerateResult } from '$lib/extract';
 import type { RecipeInput } from '$lib/tags';
 import { migrate } from './migrate';
 import { createJob, type JobRow } from './jobs';
+import { enqueueDraftConversion } from './extract';
+import type { BodyPair, RecipeDraft } from '$lib/extract';
 import {
 	discardDraft,
 	draftView,
 	getGenerationJob,
 	listDrafts,
 	pickCandidate,
+	retryDraftConversion,
 	saveDraft,
 	type DraftView,
 	type GenerationView
@@ -19,7 +21,8 @@ import {
 vi.mock('./r2', () => ({ presignGet: (key: string) => `https://r2/${key}` }));
 
 const DESCRIPTION = 'the chicken thighs and half a cabbage, under 40 minutes';
-const result = candidates as GenerateResult;
+/** A generation stored before issue #68: each candidate holds both bodies. */
+const result = candidates as { candidates: (Omit<RecipeDraft, 'body'> & { body: BodyPair })[] };
 
 let db: Database.Database;
 beforeEach(() => {
@@ -29,11 +32,17 @@ beforeEach(() => {
 
 const row = (id: string) => db.prepare('SELECT * FROM job WHERE id = ?').get(id) as JobRow;
 
-function generation(status: JobRow['status'] = 'done'): string {
+/** Since issue #68 a generation's candidates are metric only; the fixture
+ *  is the older shape with both bodies, which stored generations still have. */
+const metricOnly = {
+	candidates: result.candidates.map((c) => ({ ...c, body: { ...c.body.metric, source_units: 'metric' } }))
+};
+
+function generation(status: JobRow['status'] = 'done', stored: object = result): string {
 	const id = createJob(db, 'generate', { description: DESCRIPTION, yield_count: 2, picked: null });
 	db.prepare('UPDATE job SET status = ?, result_json = ? WHERE id = ?').run(
 		status,
-		status === 'done' ? JSON.stringify(result) : null,
+		status === 'done' ? JSON.stringify(stored) : null,
 		id
 	);
 	return id;
@@ -76,6 +85,31 @@ describe('generations (issue #41)', () => {
 			ingredients: picked.body.metric.ingredients
 		});
 		expect(listDrafts(db)).toEqual([{ id, status: 'ready', title: picked.title }]);
+	});
+
+	it('queues the conversion of the picked candidate, once, and shows it converting (issue #68)', () => {
+		const id = generation('done', metricOnly);
+		const conversions = () =>
+			db
+				.prepare(`SELECT id, input_json FROM job WHERE kind = 'reconvert' AND json_extract(input_json, '$.draft_id') = ?`)
+				.all(id) as { id: string; input_json: string }[];
+		expect(conversions()).toEqual([]);
+		pickCandidate(db, row(id), 1);
+		pickCandidate(db, row(id), 1);
+		const [job, ...more] = conversions();
+		expect(more).toEqual([]);
+		expect(JSON.parse(job.input_json)).toEqual({ draft_id: id, source: metricOnly.candidates[1].body });
+		expect((draftView(db, row(id)) as DraftView).counterpart_state).toEqual({
+			status: 'converting',
+			job_id: job.id
+		});
+	});
+
+	it('queues no conversion for a stored candidate that has both bodies', () => {
+		const id = generation();
+		pickCandidate(db, row(id), 0);
+		expect(db.prepare(`SELECT COUNT(*) AS n FROM job WHERE kind = 'reconvert'`).get()).toEqual({ n: 0 });
+		expect((draftView(db, row(id)) as DraftView).counterpart_state).toEqual({ status: 'ready', job_id: null });
 	});
 
 	it('refuses a pick out of range, before it is done, or of a different candidate', () => {
@@ -215,6 +249,141 @@ describe('found covers in drafts (issue #44)', () => {
 		discardDraft(db, row(id));
 		const live = db.prepare('SELECT id FROM image WHERE deleted_at IS NULL').all();
 		expect(live).toEqual([]);
+	});
+});
+
+describe('the draft counterpart (issue #67)', () => {
+	const asWritten = {
+		source_units: 'us' as const,
+		ingredients: [{ heading: null, items: ['1 cup sugar'] }],
+		steps: ['Bake at 350°F.']
+	};
+	const metric = { ingredients: [{ heading: null, items: ['200 g sugar'] }], steps: ['Bake at 180°C.'] };
+	const extraction = { ...result.candidates[0], body: asWritten, counterpart: undefined };
+
+	/** A done paste capture whose extraction queued its conversion, as the handler leaves it. */
+	function capture(): string {
+		const id = createJob(db, 'extract_paste', { text: 'Sugar cake' });
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(
+			JSON.stringify(extraction),
+			id
+		);
+		enqueueDraftConversion(db, id, asWritten);
+		return id;
+	}
+	const conversion = (draft: string) =>
+		db
+			.prepare(`SELECT * FROM job WHERE kind = 'reconvert' AND json_extract(input_json, '$.draft_id') = ?`)
+			.get(draft) as JobRow | undefined;
+	const finish = (job: string, status: 'done' | 'failed', body: unknown = null) =>
+		db.prepare(`UPDATE job SET status = ?, result_json = ? WHERE id = ?`).run(status, JSON.stringify(body), job);
+	const view = (id: string) => draftView(db, row(id)) as DraftView;
+	const save = (id: string, over: Partial<RecipeInput> = {}) =>
+		saveDraft(db, row(id), {
+			...(view(id).initial as RecipeInput),
+			image_ids: [],
+			counterpart: null,
+			...over
+		});
+	const bodiesOf = (recipe: string) =>
+		db
+			.prepare(
+				`SELECT b.unit_system, b.is_source, b.ingredients_json FROM body b
+				 JOIN variation v ON v.id = b.variation_id WHERE v.recipe_id = ? ORDER BY b.unit_system`
+			)
+			.all(recipe);
+	const variationReconverts = () =>
+		db.prepare(`SELECT input_json FROM job WHERE kind = 'reconvert' AND variation_id IS NOT NULL`).all();
+
+	it('reports a queued or running conversion as converting, with no counterpart body', () => {
+		const id = capture();
+		const job = conversion(id)!;
+		expect(view(id).counterpart_state).toEqual({ status: 'converting', job_id: job.id });
+		expect(view(id).initial).toMatchObject({ source_units: 'us', counterpart: null });
+		db.prepare(`UPDATE job SET status = 'running' WHERE id = ?`).run(job.id);
+		expect(view(id).counterpart_state).toEqual({ status: 'converting', job_id: job.id });
+	});
+
+	it('reports a finished conversion as ready, carrying its body', () => {
+		const id = capture();
+		finish(conversion(id)!.id, 'done', metric);
+		expect(view(id).counterpart_state).toEqual({ status: 'ready', job_id: null });
+		expect(view(id).initial).toMatchObject({ source_units: 'us', counterpart: metric });
+	});
+
+	it('reports a failed conversion as failed, and retry requeues it', () => {
+		const id = capture();
+		const job = conversion(id)!.id;
+		finish(job, 'failed');
+		expect(view(id).counterpart_state).toEqual({ status: 'failed', job_id: job });
+		retryDraftConversion(db, row(id));
+		expect(view(id).counterpart_state).toEqual({ status: 'converting', job_id: job });
+		expect(row(job).status).toBe('queued');
+	});
+
+	it('reads a counterpart the extraction wrote itself as ready, with no job', () => {
+		// Drafts stored before issue #67, and generations, carry both bodies.
+		const id = createJob(db, 'extract_paste', { text: 'x' });
+		finish(id, 'done', result.candidates[0]);
+		expect(view(id).counterpart_state).toEqual({ status: 'ready', job_id: null });
+		expect(view(id).initial).toMatchObject({
+			source_units: 'metric',
+			ingredients: result.candidates[0].body.metric.ingredients,
+			counterpart: result.candidates[0].body.us
+		});
+	});
+
+	it('has no counterpart state before the extraction is done', () => {
+		const id = createJob(db, 'extract_paste', { text: 'x' });
+		expect(view(id).counterpart_state).toBeNull();
+	});
+
+	it('saves a ready counterpart even when the form loaded before it was ready', () => {
+		const id = capture();
+		finish(conversion(id)!.id, 'done', metric);
+		const recipe = save(id);
+		expect(bodiesOf(recipe)).toEqual([
+			{ unit_system: 'metric', is_source: 0, ingredients_json: JSON.stringify(metric.ingredients) },
+			{ unit_system: 'us', is_source: 1, ingredients_json: JSON.stringify(asWritten.ingredients) }
+		]);
+		expect(variationReconverts()).toEqual([]);
+		expect(conversion(id)).toBeUndefined();
+	});
+
+	it('saves the source body while converting and queues a reconvert on the variation', () => {
+		const id = capture();
+		const recipe = save(id);
+		expect(bodiesOf(recipe)).toEqual([
+			{ unit_system: 'us', is_source: 1, ingredients_json: JSON.stringify(asWritten.ingredients) }
+		]);
+		expect(variationReconverts()).toHaveLength(1);
+		expect(conversion(id)).toBeUndefined();
+	});
+
+	it('saves the source body when the conversion failed and queues a reconvert', () => {
+		const id = capture();
+		finish(conversion(id)!.id, 'failed');
+		save(id);
+		expect(variationReconverts()).toHaveLength(1);
+		expect(conversion(id)).toBeUndefined();
+	});
+
+	it('discards the pending conversion when the as-written body was edited', () => {
+		const id = capture();
+		finish(conversion(id)!.id, 'done', metric);
+		const recipe = save(id, { ingredients: [{ heading: null, items: ['2 cups sugar'] }] });
+		expect(bodiesOf(recipe)).toEqual([
+			{ unit_system: 'us', is_source: 1, ingredients_json: JSON.stringify([{ heading: null, items: ['2 cups sugar'] }]) }
+		]);
+		expect(variationReconverts()).toHaveLength(1);
+		expect(conversion(id)).toBeUndefined();
+	});
+
+	it('deletes the conversion with the draft on discard', () => {
+		const id = capture();
+		finish(conversion(id)!.id, 'done', metric);
+		discardDraft(db, row(id));
+		expect(conversion(id)).toBeUndefined();
 	});
 });
 

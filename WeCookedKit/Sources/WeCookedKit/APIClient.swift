@@ -40,6 +40,12 @@ public enum APIError: Error, Sendable, Hashable {
 	}
 }
 
+/// A conditional read's outcome: the server's 304, or a body and its ETag.
+public enum Conditional<Value: Sendable>: Sendable {
+	case notModified
+	case fresh(Value, etag: String?)
+}
+
 /// The only type that speaks HTTP. A value: the base URL, the token store, a
 /// `URLSession`, this install's `DeviceIdentity`, and what to do on 401. Copy
 /// it freely; it is `Sendable`.
@@ -74,16 +80,43 @@ public struct APIClient: Sendable {
 	private static let decoder = Wire.makeDecoder()
 	private static let encoder = Wire.makeEncoder()
 
-	/// The single request path. Everything below is a one-line caller.
+	/// The request path. Everything below is a one-line caller of this or
+	/// `sendConditional`; both go through `perform`, which:
 	///  - adds `Authorization: Bearer` when a token exists, `X-Device-Id` when
 	///    the client has one;
 	///  - stores `X-Session-Token` from any reply that carries one;
 	///  - 401: clears the token, calls `onUnauthorized`, throws `.unauthorized`;
-	///  - other non-2xx: decodes `{error}` into a typed `APIError`;
+	///  - other non-2xx (but a conditional 304): decodes `{error}` into a typed `APIError`;
 	///  - URLError becomes `.transport`, decoding failure `.malformedReply`.
 	func send<Reply: Decodable & Sendable>(
 		_ method: String, _ path: String, query: [URLQueryItem] = [], body: Body = .none
 	) async throws -> Reply {
+		let (data, _) = try await perform(method, path, query: query, body: body)
+		return try decode(data)
+	}
+
+	/// A GET that sends `If-None-Match` when it has a tag, and passes the
+	/// server's 304 back instead of the URL cache's copy.
+	func sendConditional<Reply: Decodable & Sendable>(
+		_ path: String, query: [URLQueryItem] = [], ifNoneMatch: String?
+	) async throws -> Conditional<Reply> {
+		let (data, http) = try await perform("GET", path, query: query, ifNoneMatch: ifNoneMatch)
+		if http.statusCode == 304 { return .notModified }
+		return .fresh(try decode(data), etag: http.value(forHTTPHeaderField: "ETag"))
+	}
+
+	private func decode<Reply: Decodable>(_ data: Data) throws -> Reply {
+		do {
+			return try Self.decoder.decode(Reply.self, from: data)
+		} catch {
+			throw APIError.malformedReply(String(describing: error))
+		}
+	}
+
+	/// Status 2xx, or 304 when the request was conditional; anything else throws.
+	private func perform(
+		_ method: String, _ path: String, query: [URLQueryItem], body: Body = .none, ifNoneMatch: String? = nil
+	) async throws -> (Data, HTTPURLResponse) {
 		var url = baseURL.appending(path: path)
 		if !query.isEmpty { url.append(queryItems: query) }
 		var request = URLRequest(url: url)
@@ -92,6 +125,10 @@ public struct APIClient: Sendable {
 			request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 		}
 		if let deviceID { request.setValue(deviceID, forHTTPHeaderField: "X-Device-Id") }
+		if let ifNoneMatch {
+			request.setValue(ifNoneMatch, forHTTPHeaderField: "If-None-Match")
+			request.cachePolicy = .reloadIgnoringLocalCacheData
+		}
 		switch body {
 		case .none: break
 		case .json(let d):
@@ -112,7 +149,8 @@ public struct APIClient: Sendable {
 			throw APIError.malformedReply("not an HTTP response")
 		}
 		if let fresh = http.value(forHTTPHeaderField: "X-Session-Token") { tokens.write(fresh) }
-		guard (200..<300).contains(http.statusCode) else {
+		let notModified = http.statusCode == 304 && ifNoneMatch != nil
+		guard (200..<300).contains(http.statusCode) || notModified else {
 			let message = (try? Self.decoder.decode(ErrorBody.self, from: data))?.error ?? ""
 			switch http.statusCode {
 			case 401:
@@ -126,11 +164,7 @@ public struct APIClient: Sendable {
 			default: throw APIError.server(status: http.statusCode, message: message)
 			}
 		}
-		do {
-			return try Self.decoder.decode(Reply.self, from: data)
-		} catch {
-			throw APIError.malformedReply(String(describing: error))
-		}
+		return (data, http)
 	}
 
 	func json<T: Encodable>(_ value: T) throws -> Body {
@@ -179,6 +213,11 @@ extension APIClient {
 	public func calculate(_ id: RecipeID, toCount: Double) async throws -> CalculateReply {
 		try await send("POST", "recipes/\(id)/calculate", body: json(Fields(toCount: toCount)))
 	}
+	/// Issue #67: requeue a draft's failed conversion.
+	public func retryDraftConversion(_ id: JobID) async throws {
+		let _: OK = try await send("POST", "drafts/\(id)/retry-conversion")
+	}
+
 	public func retryReconvert(_ id: RecipeID, variation: VariationID?) async throws {
 		let _: OK = try await send("POST", "recipes/\(id)/retry-reconvert", body: json(Fields(variationId: variation)))
 	}
@@ -227,6 +266,16 @@ extension APIClient {
 	}
 
 	public func shopping() async throws -> ShoppingResponse { try await send("GET", "shopping") }
+	/// The poll's read: the list without the pickable recipes, and nothing at
+	/// all when it still matches `ifNoneMatch`.
+	public func shoppingList(ifNoneMatch: String?) async throws -> Conditional<ShoppingState> {
+		let reply: Conditional<ShoppingListReply> = try await sendConditional(
+			"shopping", query: [.init(name: "only", value: "list")], ifNoneMatch: ifNoneMatch)
+		switch reply {
+		case .notModified: return .notModified
+		case .fresh(let r, let etag): return .fresh(r.list, etag: etag)
+		}
+	}
 	public func buildShopping(_ picks: [BuildPick]) async throws -> JobID {
 		let r: JobReply = try await send("POST", "shopping/build", body: json(Fields(picks: picks))); return r.jobId
 	}

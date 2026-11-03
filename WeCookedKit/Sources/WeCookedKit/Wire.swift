@@ -439,7 +439,11 @@ public struct RecipeInput: Codable, Hashable, Sendable {
 
 public struct RecipeImage: Codable, Hashable, Sendable {
 	public let id: ImageID
+	/// The 1200px display copy, for the cover.
 	public let url: URL
+	/// The 400px thumbnail, for the photo strip (issue #73). The display copy
+	/// for an image the thumbnail backfill has not reached.
+	public let thumbUrl: URL
 	public let width: Int
 	public let height: Int
 	/// Where a found cover was fetched from; nil for a photo the household took.
@@ -545,7 +549,10 @@ public struct BrowseRow: Codable, Hashable, Sendable, Identifiable {
 	public var title: String
 	public var effort: Effort
 	public var damage: Damage
+	/// The display copy; the suggestion widget draws it.
 	public var coverUrl: URL?
+	/// The thumbnail the row shows (issue #73). Nil exactly when `coverUrl` is.
+	public var coverThumbUrl: URL?
 }
 
 public struct DraftCard: Codable, Hashable, Sendable, Identifiable {
@@ -643,6 +650,43 @@ public struct DraftSeed: Codable, Hashable, Sendable {
 	public var counterpart: BodyText?
 }
 
+/// Where a draft's counterpart body is (issue #67). Unknown values decode, so
+/// a newer server cannot break an older app.
+public enum CounterpartStatus: WireEnum {
+	case ready, converting, failed
+	case unknown(String)
+
+	public init(wire: String) {
+		switch wire {
+		case "ready": self = .ready
+		case "converting": self = .converting
+		case "failed": self = .failed
+		default: self = .unknown(wire)
+		}
+	}
+	public var wire: String {
+		switch self {
+		case .ready: "ready"
+		case .converting: "converting"
+		case .failed: "failed"
+		case .unknown(let s): s
+		}
+	}
+}
+
+/// `ready`: the body is `DraftSeed.counterpart`. `converting` or `failed`:
+/// `jobId` is the draft's conversion job, watched while it runs and retried
+/// with `POST /drafts/:id/retry-conversion`.
+public struct CounterpartState: Codable, Hashable, Sendable {
+	public let status: CounterpartStatus
+	public let jobId: JobID?
+
+	public init(status: CounterpartStatus, jobId: JobID?) {
+		self.status = status
+		self.jobId = jobId
+	}
+}
+
 public struct DraftView: Codable, Hashable, Sendable {
 	public let id: JobID
 	public var kind: DraftKind
@@ -653,6 +697,8 @@ public struct DraftView: Codable, Hashable, Sendable {
 	/// The cover job still looking for this draft's cover; watched so the
 	/// draft is re-read when it ends and the found cover joins the form.
 	public var coverJobId: JobID?
+	/// Nil until there is an extraction, and from servers before issue #67.
+	public var counterpartState: CounterpartState?
 	public var warnings: [String]
 	public var damageReasoning: String?
 }
@@ -793,6 +839,11 @@ public struct PickableRecipe: Codable, Hashable, Sendable, Identifiable {
 public struct ShoppingResponse: Codable, Hashable, Sendable {
 	public var list: ShoppingState
 	public var recipes: [PickableRecipe]
+}
+
+/// Body of `GET /shopping?only=list`, the 5 s poll (issue #75).
+public struct ShoppingListReply: Codable, Hashable, Sendable {
+	public var list: ShoppingState
 }
 
 /// Body of `POST /shopping/build`.

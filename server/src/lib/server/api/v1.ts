@@ -21,6 +21,7 @@ import {
 	getGenerationJob,
 	pickCandidate,
 	retryDraft,
+	retryDraftConversion,
 	saveDraft
 } from '../drafts';
 import {
@@ -28,11 +29,12 @@ import {
 	addManual,
 	doneShopping,
 	getListId,
+	getShoppingState,
 	requestBuild,
 	retryBuild,
 	setTicked
 } from '../shopping';
-import { saveImage } from '../images';
+import { backfillThumbnails, saveImage, THUMB_BACKFILL_LIMIT } from '../images';
 import { PUSH_ENVIRONMENTS, registerDevice, type PushEnvironment } from '../devices';
 import { BACKFILL_LIMIT, backfillCovers, findDraftCover, findRecipeCover } from '../cover';
 import { pageContent, pageImages } from '../extract';
@@ -315,6 +317,16 @@ export const routes: readonly Route[] = [
 			return OK;
 		}
 	},
+	// Issue #67: D6 "tap to retry" for a draft's failed conversion.
+	{
+		method: 'POST',
+		path: '/drafts/:id/retry-conversion',
+		run: (db, req) => {
+			const job = draftJob(db, req.params.id);
+			guard(() => retryDraftConversion(db, job));
+			return OK;
+		}
+	},
 	{
 		method: 'POST',
 		path: '/drafts/:id/cover',
@@ -335,6 +347,18 @@ export const routes: readonly Route[] = [
 		}
 	},
 
+	// Issue #73: thumbnails for images stored before uploads made them, one
+	// page per call; scripts/backfill-thumbnails.mjs walks the pages.
+	{
+		method: 'POST',
+		path: '/images/thumbnails/backfill',
+		run: (db, req) => {
+			const limit = Number(req.query.get('limit') ?? THUMB_BACKFILL_LIMIT);
+			if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('limit must be 1 to 200.');
+			return backfillThumbnails(db, limit, req.query.get('after') ?? '');
+		}
+	},
+
 	{
 		method: 'POST',
 		path: '/devices',
@@ -344,7 +368,19 @@ export const routes: readonly Route[] = [
 		}
 	},
 
-	{ method: 'GET', path: '/shopping', run: (db) => shoppingView(db) },
+	{
+		method: 'GET',
+		path: '/shopping',
+		conditional: true,
+		// ?only=list is the poll's shape (issue #75): the pickable recipes only
+		// change when a recipe does, so the 5 s poll leaves them out.
+		run: (db, req) => {
+			const only = req.query.get('only');
+			if (only === null) return shoppingView(db);
+			if (only === 'list') return { list: getShoppingState(db) };
+			throw bad('Unknown view.');
+		}
+	},
 	{
 		method: 'POST',
 		path: '/shopping/build',

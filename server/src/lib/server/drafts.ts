@@ -4,14 +4,24 @@ import { DRAFT_KINDS, isDraftKind, pendingCoverJob, type JobRow } from './jobs';
 import { CANDIDATE_COUNT } from './generate';
 import { enqueueCover } from './cover';
 import { presignGet } from './r2';
+import { enqueueDraftConversion } from './extract';
 import {
 	draftToInput,
+	parseDraft,
 	type CaptureInput,
 	type GenerateInput,
-	type GenerateResult,
-	type RecipeDraft
+	type RecipeDraft,
+	type StoredDraft
 } from '$lib/extract';
-import type { Cuisine, Damage, Effort, Protein, RecipeInput } from '$lib/tags';
+import {
+	cleanBody,
+	type BodyText,
+	type Cuisine,
+	type Damage,
+	type Effort,
+	type Protein,
+	type RecipeInput
+} from '$lib/tags';
 
 // Drafts (SPEC 6.5): every capture job without a recipe is a draft. The job
 // row is the draft; there are no phantom recipe rows. A generate job (issue
@@ -39,11 +49,67 @@ export const isChoosing = (job: DraftSource) =>
  *  picked candidate. Null while running, failed, or choosing. */
 export function draftOf(job: DraftSource): RecipeDraft | null {
 	if (!job.result_json) return null;
-	if (job.kind !== 'generate') return JSON.parse(job.result_json) as RecipeDraft;
+	if (job.kind !== 'generate') return parseDraft(JSON.parse(job.result_json) as StoredDraft);
 	const { picked } = generateInput(job);
-	return picked === null
-		? null
-		: (JSON.parse(job.result_json) as GenerateResult).candidates[picked];
+	return picked === null ? null : candidatesOf(job)[picked];
+}
+
+const candidatesOf = (job: Pick<JobRow, 'result_json'>) =>
+	(JSON.parse(job.result_json!) as { candidates: StoredDraft[] }).candidates.map(parseDraft);
+
+// The draft's conversion job (issue #67): a reconvert keyed to the draft.
+const CONVERSIONS = `FROM job WHERE kind = 'reconvert' AND json_extract(input_json, '$.draft_id') = ?`;
+
+/** The newest conversion job for a draft, if any. */
+const latestConversion = (db: Database, draftId: string) =>
+	db
+		.prepare(`SELECT id, status, result_json ${CONVERSIONS} ORDER BY created_at DESC, id DESC LIMIT 1`)
+		.get(draftId) as Pick<JobRow, 'id' | 'status' | 'result_json'> | undefined;
+
+/** Drops a draft's conversion jobs once nothing will read them. A running one
+ *  is left to finish; its result is never read. */
+const dropConversions = (db: Database, draftId: string) =>
+	db.prepare(`DELETE ${CONVERSIONS} AND status != 'running'`).run(draftId);
+
+/** Where a draft's counterpart body is (issue #67). ready: initial.counterpart
+ *  holds it. converting or failed: job_id is the conversion job, which the
+ *  clients watch and retry (failed reuses the reconvert banner). */
+export type CounterpartState = {
+	status: 'ready' | 'converting' | 'failed';
+	job_id: string | null;
+};
+
+/** The counterpart's state and, once ready, its body. */
+function counterpartOf(
+	db: Database,
+	draftId: string,
+	draft: RecipeDraft
+): { state: CounterpartState; body: BodyText | null } {
+	if (draft.counterpart) return { state: { status: 'ready', job_id: null }, body: draft.counterpart };
+	const job = latestConversion(db, draftId);
+	if (job?.status === 'done')
+		return { state: { status: 'ready', job_id: null }, body: JSON.parse(job.result_json!) as BodyText };
+	// No job at all (hard-deleted) reads as failed, so retry can start one.
+	const status = job && job.status !== 'failed' ? 'converting' : 'failed';
+	return { state: { status, job_id: job?.id ?? null }, body: null };
+}
+
+/** D6 "tap to retry" for a draft's failed conversion: requeue the newest
+ *  failed job, or start one if the draft has none. No-op otherwise. */
+export function retryDraftConversion(db: Database, job: JobRow): void {
+	const draft = draftOf(job);
+	if (!draft) throw new Error('Nothing to convert yet.');
+	db.transaction(() => {
+		const { state } = counterpartOf(db, job.id, draft);
+		if (state.status !== 'failed') return;
+		if (state.job_id)
+			db.prepare(
+				`UPDATE job SET status = 'queued', error_code = NULL, error_text = NULL,
+				   result_json = NULL, started_at = NULL, finished_at = NULL
+				 WHERE id = ?`
+			).run(state.job_id);
+		else enqueueDraftConversion(db, job.id, draft.body);
+	})();
 }
 
 /** One draft card's fields, read with json_extract so the list never parses
@@ -124,6 +190,8 @@ export type DraftView = {
 	/** The cover job still looking for this draft's cover, if any (issue #44):
 	 *  the phone watches it and re-reads the draft when it ends. */
 	cover_job_id: string | null;
+	/** Null until there is an extraction (issue #67). */
+	counterpart_state: CounterpartState | null;
 	warnings: string[];
 	damage_reasoning: string | null;
 };
@@ -187,7 +255,7 @@ const candidate = (d: RecipeDraft): Candidate => ({
 	damage: d.tags.damage,
 	cuisine: d.tags.cuisine,
 	protein: d.tags.protein,
-	ingredients: d.body[d.body.source_units].ingredients.flatMap((g) => g.items)
+	ingredients: d.body.ingredients.flatMap((g) => g.items)
 });
 
 /** A generation before its pick is a GenerationView; after, the review form's
@@ -202,9 +270,10 @@ function generationView(db: Database, job: JobRow): DraftView | GenerationView {
 			status: job.status,
 			description,
 			yield_count,
-			candidates: (JSON.parse(job.result_json!) as GenerateResult).candidates.map(candidate)
+			candidates: candidatesOf(job).map(candidate)
 		};
 	const draft = draftOf(job);
+	const counterpart = draft && counterpartOf(db, job.id, draft);
 	return {
 		id: job.id,
 		kind: 'generate',
@@ -212,9 +281,15 @@ function generationView(db: Database, job: JobRow): DraftView | GenerationView {
 		error_text: job.error_text,
 		source_text: description,
 		initial: draft
-			? { ...draftToInput(draft), source_text: description, source_url: null, ...draftImages(db, input) }
+			? {
+					...draftToInput(draft, counterpart!.body),
+					source_text: description,
+					source_url: null,
+					...draftImages(db, input)
+				}
 			: null,
 		cover_job_id: pendingCoverJob(db, { draft_id: job.id }),
+		counterpart_state: counterpart?.state ?? null,
 		warnings: [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
@@ -225,6 +300,7 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
 	if (job.kind === 'generate') return generationView(db, job);
 	const input = JSON.parse(job.input_json) as CaptureInput;
 	const draft = draftOf(job);
+	const counterpart = draft && counterpartOf(db, job.id, draft);
 	// The strip shows the photos on success and on failure alike, and Save
 	// claims them onto the recipe.
 	const seed = draftImages(db, input);
@@ -237,24 +313,43 @@ export function draftView(db: Database, job: JobRow): DraftView | GenerationView
 		// The URL rides input_json, not the extraction, so it seeds the form
 		// here: on failure too, so a fetch_blocked draft still carries its link.
 		initial: draft
-			? { ...draftToInput(draft), source_url: input.url ?? null, ...seed }
+			? { ...draftToInput(draft, counterpart!.body), source_url: input.url ?? null, ...seed }
 			: input.url || seed.images.length
 				? { source_url: input.url ?? null, ...seed }
 				: null,
 		cover_job_id: pendingCoverJob(db, { draft_id: job.id }),
+		counterpart_state: counterpart?.state ?? null,
 		warnings: draft?.extraction_warnings ?? [],
 		damage_reasoning: draft?.damage_reasoning ?? null
 	};
 }
 
+const sameBody = (a: BodyText, b: BodyText) =>
+	JSON.stringify(cleanBody(a)) === JSON.stringify(cleanBody(b));
+
+/** The counterpart to save (issue #67): the form's, or else a ready one the
+ *  form never saw (it loaded while converting), but only for the unedited
+ *  as-written body. Null saves the source alone, which queues a reconvert on
+ *  the new variation. */
+function counterpartToSave(db: Database, job: JobRow, payload: RecipeInput): BodyText | null {
+	if (payload.counterpart) return payload.counterpart;
+	const draft = draftOf(job);
+	if (!draft || payload.source_units !== draft.body.source_units || !sameBody(payload, draft.body))
+		return null;
+	return counterpartOf(db, job.id, draft).body;
+}
+
 /**
  * Save claims the job: the recipe id written back is what removes the card
- * from browse (SPEC 6.5). Throws createRecipe's validation messages.
+ * from browse (SPEC 6.5). Throws createRecipe's validation messages. The
+ * draft's conversion is discarded: the recipe has its counterpart, or a
+ * reconvert on its variation that converts the body as saved.
  */
 export function saveDraft(db: Database, job: JobRow, payload: RecipeInput): string {
 	if (isChoosing(job)) throw new Error('Pick a recipe first.');
 	return db.transaction(() => {
-		const id = createRecipe(db, payload);
+		const id = createRecipe(db, { ...payload, counterpart: counterpartToSave(db, job, payload) });
+		dropConversions(db, job.id);
 		db.prepare(`UPDATE job SET recipe_id = ? WHERE id = ?`).run(id, job.id);
 		// A found cover the form left out (removed, or never seen because the
 		// form was loaded before the cover job finished) would otherwise sit
@@ -286,6 +381,7 @@ export function discardDraft(db: Database, job: JobRow): void {
 		const soft = db.prepare(`UPDATE image SET deleted_at = ? WHERE id = ? AND recipe_id IS NULL`);
 		for (const id of imageIds) soft.run(new Date().toISOString(), id);
 		db.prepare(`DELETE FROM job WHERE id = ? AND recipe_id IS NULL`).run(job.id);
+		dropConversions(db, job.id);
 	})();
 }
 
@@ -301,7 +397,8 @@ export function retryDraft(db: Database, job: JobRow): void {
 
 /**
  * Picking narrows a done generation to one candidate: the row becomes a draft
- * seeded from it, under the same id. Picking the same index again is a no-op.
+ * seeded from it, under the same id, with its conversion queued. Picking the
+ * same index again is a no-op.
  */
 export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 	if (job.status !== 'done') throw new Error('Still generating; wait for it to finish.');
@@ -310,9 +407,16 @@ export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 	const input = generateInput(job);
 	if (input.picked === index) return;
 	if (input.picked !== null) throw new Error('Already picked.');
-	db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
-		JSON.stringify({ ...input, picked: index }),
-		job.id
-	);
-	enqueueCover(db, job.id);
+	// Issue #68: candidates are written in metric only, so the picked one gets
+	// its conversion beside its cover, as a capture does. Generations stored
+	// before then already carry both bodies.
+	const draft = candidatesOf(job)[index];
+	db.transaction(() => {
+		db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
+			JSON.stringify({ ...input, picked: index }),
+			job.id
+		);
+		enqueueCover(db, job.id);
+		if (!draft.counterpart) enqueueDraftConversion(db, job.id, draft.body);
+	})();
 }
