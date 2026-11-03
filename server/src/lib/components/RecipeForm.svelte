@@ -323,13 +323,16 @@
 	});
 	type CoverSearch = { status: 'idle' | 'pending' } | { status: 'failed'; text: string };
 	let coverSearch = $state<CoverSearch>({ status: 'idle' });
+	// Derived so a reload that keeps the same job does not restart its poll.
+	const coverJob = $derived(coverJobId);
 	$effect(() => {
-		if (coverJobId) {
+		const jobId = coverJob;
+		if (jobId) {
 			coverSearch = { status: 'pending' };
 			// Leaving the form cancels the poll (issue #66).
 			const poll = new AbortController();
 			const dependency = untrack(() => coverDependency);
-			pollJob(coverJobId, { signal: poll.signal })
+			pollJob(jobId, { signal: poll.signal })
 				.then(() => {
 					if (dependency) return invalidate(dependency);
 				})
