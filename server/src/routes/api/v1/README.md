@@ -13,9 +13,9 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /login | `{password}` | `{token}` | 400 wrong password, 429 rate limited (5 failures per IP per 15 min) |
 | GET | /session | | `{ok:true}` | 401 |
 | GET | /tags | | `{meal_types, cuisines, proteins, efforts, damages, section_order, error_copy}` | |
-| GET | /recipes?q=&meal=&cuisine=&protein=&effort=&damage= | | `{drafts: DraftCard[], recipes: {id,title,effort,damage,cover_url}[]}` | |
+| GET | /recipes?q=&meal=&cuisine=&protein=&effort=&damage= | | `{drafts: DraftCard[], recipes: {id,title,effort,damage,cover_url,cover_thumb_url}[]}`. `cover_thumb_url` is the cover's ~400px WebP thumbnail for Browse rows, or its display copy until the thumbnail backfill reaches it; `cover_url` is the display copy (the widget draws it) | |
 | POST | /recipes | `RecipeInput` | `{id}` | 400 |
-| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh. `recipe.images[]` is `{id, url, width, height, source_url}`; `recipe.cover_job_id` is the cover job running for the recipe (directly or through its draft), else null | 404 |
+| GET | /recipes/:id?v= | | `{recipe, refresh, calcJob}`; may queue a stale refresh. `recipe.images[]` is `{id, url, thumb_url, width, height, source_url}`, where `thumb_url` is the ~400px WebP thumbnail for the photo strip, or the display copy until the thumbnail backfill reaches it; `recipe.cover_job_id` is the cover job running for the recipe (directly or through its draft), else null | 404 |
 | PUT | /recipes/:id | `{payload: RecipeInput, variation_id?}` | `{id, variation_id}` (null means the original) | 400 |
 | DELETE | /recipes/:id | | `{ok:true}` (to Trash) | |
 | POST | /recipes/:id/calculate | `{to_count}` | `{variation_id}` if that yield exists, else `{job_id}` | 400 |
@@ -35,6 +35,7 @@ Errors are always `{"error": string}`. 400 is a validation message fit to show t
 | POST | /drafts/:id/cover | | `{job_id}`: "Find another photo" for the draft, as for a recipe | 400 still choosing, not done extracting, or a cover job is already running; 404 |
 | POST | /drafts/:id/pick | `{index}` | `{ok:true}`; the generation becomes a draft seeded from that candidate and queues a cover job, and the same index again is a no-op | 400 still generating, index not 0 to 2, or already picked another; 404 not a generation |
 | POST | /covers/backfill?limit= | | `{queued}`: one cover job per live recipe with no cover, no cover job pending and no cover ever found for it (a removed cover stays removed); at most `limit` (default 20, max 200) per call, since each search-step cover spends one Claude call | 400 |
+| POST | /images/thumbnails/backfill?limit=&after= | | `{made, failed, next}`: thumbnails for up to `limit` (default 25, max 200) stored images that have none, from their display copy, in id order after the cursor `after`. Idempotent; a failed image is logged and passed over. `next` is the cursor for the following page, null after the last (issue #73) | 400 |
 | POST | /devices | `{device_id, push_token, environment}`: `push_token` is the APNs token as hex, `environment` is `sandbox` or `production` | `{ok:true}`; upserts by `device_id`, so re-registering every launch is safe | 400 missing device id, bad push token, unknown environment |
 | GET | /shopping?only= | | `{list: ShoppingState, recipes: {id,title,yield_unit,yield_count}[]}`; `?only=list` (the 5 s poll) replies `{list}` alone. Both carry an `ETag`, and a request whose `If-None-Match` matches gets an empty 304 | 400 unknown `only` |
 | POST | /shopping/build | `{picks: {recipe_id, yield_count}[]}` | `{job_id}` | 400 |
