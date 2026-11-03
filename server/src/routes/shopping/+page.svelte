@@ -16,6 +16,7 @@
 	} from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
 	import { jobDeps, pollJob } from '$lib/jobs';
+	import { tickSender } from '$lib/ticks';
 	import type { ShoppingItem, ShoppingState } from '$lib/server/shopping';
 
 	let { data } = $props();
@@ -82,37 +83,31 @@
 		flush();
 	}
 
-	// One send loop at a time; ticks queued during it are picked up before it
-	// ends. The first failure stops it and the next poll retries.
-	let flushing: Promise<void> | null = null;
+	// Lines send at once, one send per line at a time (issue #75). A failed
+	// line stays queued and the next poll retries it.
 	let settled = 0;
-	function flush() {
-		flushing ??= send().finally(() => (flushing = null));
-		return flushing;
-	}
-	async function send() {
-		for (let batch = Object.entries(outbox); batch.length; batch = Object.entries(outbox)) {
-			for (const [id, ticked] of batch) {
-				const ok = await fetch(`/api/v1/shopping/items/${id}`, {
-					method: 'PATCH',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ ticked }),
-					signal: AbortSignal.timeout(8000)
-				}).then(
-					(r) => r.ok,
-					() => false
-				);
-				if (!ok) return;
-				const sent = list.items.find((i) => i.id === id);
-				if (sent) sent.ticked = ticked;
-				listTag = null;
-				// A second tap made while this one was in flight stays queued.
-				if (outbox[id] === ticked) delete outbox[id];
-				saveOutbox();
-				settled++;
-			}
+	const flush = tickSender(
+		() => outbox,
+		(id, ticked) =>
+			fetch(`/api/v1/shopping/items/${id}`, {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ ticked }),
+				signal: AbortSignal.timeout(8000)
+			}).then(
+				(r) => r.ok,
+				() => false
+			),
+		(id, ticked) => {
+			const sent = list.items.find((i) => i.id === id);
+			if (sent) sent.ticked = ticked;
+			listTag = null;
+			// A second tap made while this one was in flight stays queued.
+			if (outbox[id] === ticked) delete outbox[id];
+			saveOutbox();
+			settled++;
 		}
-	}
+	);
 
 	// 5 s visibility-aware poll; refetch immediately on return to visible.
 	async function refresh() {
