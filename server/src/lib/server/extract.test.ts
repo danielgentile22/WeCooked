@@ -321,6 +321,21 @@ describe('extract_photos (SPEC 5.4 photo path, issue #15)', () => {
 		expect(blocks[2]).toEqual({ type: 'text', text: PHOTOS_INSTRUCTION });
 	});
 
+	// Issue #71: the Claude copy made at upload is sent as stored, not
+	// re-derived from the 3000px full inside the job.
+	it('sends the stored Claude copy when the capture has one', async () => {
+		const db = photoDb(['a']);
+		db.prepare(`UPDATE image SET r2_key_claude = 'images/a/claude.jpg' WHERE id = 'a'`).run();
+		const copy = Buffer.from('stored claude copy');
+		vi.mocked(getObject).mockReset().mockResolvedValue(copy);
+		vi.mocked(claudeCall).mockResolvedValue(draft());
+		await extractPhotos(jobRow(['a']), db);
+		expect(vi.mocked(getObject).mock.calls.map((c) => c[0])).toEqual(['images/a/claude.jpg']);
+		const { messages } = vi.mocked(claudeCall).mock.calls.at(-1)![1];
+		const blocks = messages[0].content as { source?: { data: string } }[];
+		expect(blocks[0].source!.data).toBe(copy.toString('base64'));
+	});
+
 	it('maps an empty extraction to image_unreadable, not no_recipe_found', async () => {
 		const db = photoDb(['a']);
 		vi.mocked(getObject).mockResolvedValue(await tinyJpeg());
