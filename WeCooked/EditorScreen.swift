@@ -390,6 +390,17 @@ private struct EditorFields: View {
 	private var ingredientsSection: some View {
 		Section {
 			unitsRow.id(Anchor.ingredients)
+			// Issue #67: the draft's counterpart is still being written.
+			if isLoaded, form.other == nil, let conversion = model.conversion, let base = form.baseline {
+				let units = base.sourceUnits.other == .us ? "US" : "metric"
+				if conversion.status == .converting {
+					Banner(kind: .working, text: "Converting to \(units)…")
+				} else {
+					Banner(kind: .error, text: "Couldn't convert to \(units).", actionTitle: "Tap to retry") {
+						Task { await model.retryConversion() }
+					}
+				}
+			}
 			if isLoaded, let rc = model.reconvert, form.shownUnits != form.baseline?.sourceUnits {
 				if rc.status == .failed || rc.jobId == nil {
 					Banner(kind: .error, text: "Couldn't update from your edit.", actionTitle: "Tap to retry") {

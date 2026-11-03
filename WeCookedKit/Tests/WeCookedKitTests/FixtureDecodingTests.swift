@@ -20,6 +20,8 @@ struct FixtureDecodingTests {
 		"draft-get-failed": DraftLookup.self,
 		"draft-cover-refresh": JobReply.self,
 		"draft-get-cover": DraftLookup.self,
+		"draft-get-conversion-failed": DraftLookup.self,
+		"draft-get-converting": DraftLookup.self,
 		"draft-get-ready": DraftLookup.self,
 		"draft-get-saved": DraftLookup.self,
 		"draft-get-choosing": DraftLookup.self,

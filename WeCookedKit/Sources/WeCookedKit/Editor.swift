@@ -194,9 +194,18 @@ public struct EditorForm: Codable, Hashable, Sendable {
 	/// This form's typed work, measured against `fresh`'s bodies. The payload
 	/// rule always diffs against what the server holds now, as on the web, so a
 	/// restored form cannot mark an edit made elsewhere as "unchanged".
+	///
+	/// A draft's counterpart can arrive after the form opened (issue #67): it
+	/// joins as the hidden body while the form has none, which means the
+	/// as-written body is on screen. `bodySelection` then sends it only if
+	/// that body is still unedited. Mirrors the web's `adoptCounterpart`.
 	public func rebased(onto fresh: EditorForm) -> EditorForm {
 		var f = self
 		f.baseline = fresh.baseline
+		if f.other == nil, let base = fresh.baseline, let counterpart = base.other,
+			f.shownUnits == base.sourceUnits {
+			f.other = counterpart
+		}
 		return f
 	}
 

@@ -179,6 +179,11 @@ extension APIClient {
 	public func calculate(_ id: RecipeID, toCount: Double) async throws -> CalculateReply {
 		try await send("POST", "recipes/\(id)/calculate", body: json(Fields(toCount: toCount)))
 	}
+	/// Issue #67: requeue a draft's failed conversion.
+	public func retryDraftConversion(_ id: JobID) async throws {
+		let _: OK = try await send("POST", "drafts/\(id)/retry-conversion")
+	}
+
 	public func retryReconvert(_ id: RecipeID, variation: VariationID?) async throws {
 		let _: OK = try await send("POST", "recipes/\(id)/retry-reconvert", body: json(Fields(variationId: variation)))
 	}
