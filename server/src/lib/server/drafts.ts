@@ -397,7 +397,8 @@ export function retryDraft(db: Database, job: JobRow): void {
 
 /**
  * Picking narrows a done generation to one candidate: the row becomes a draft
- * seeded from it, under the same id. Picking the same index again is a no-op.
+ * seeded from it, under the same id, with its conversion queued. Picking the
+ * same index again is a no-op.
  */
 export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 	if (job.status !== 'done') throw new Error('Still generating; wait for it to finish.');
@@ -406,9 +407,16 @@ export function pickCandidate(db: Database, job: JobRow, index: unknown): void {
 	const input = generateInput(job);
 	if (input.picked === index) return;
 	if (input.picked !== null) throw new Error('Already picked.');
-	db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
-		JSON.stringify({ ...input, picked: index }),
-		job.id
-	);
-	enqueueCover(db, job.id);
+	// Issue #68: candidates are written in metric only, so the picked one gets
+	// its conversion beside its cover, as a capture does. Generations stored
+	// before then already carry both bodies.
+	const draft = candidatesOf(job)[index];
+	db.transaction(() => {
+		db.prepare(`UPDATE job SET input_json = ? WHERE id = ?`).run(
+			JSON.stringify({ ...input, picked: index }),
+			job.id
+		);
+		enqueueCover(db, job.id);
+		if (!draft.counterpart) enqueueDraftConversion(db, job.id, draft.body);
+	})();
 }

@@ -1,54 +1,159 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import candidates from '../../../fixtures/candidates.json';
-import type { GenerateResult } from '$lib/extract';
-import { claudeCall } from './claude';
-import { EXTRACT_SYSTEM, RECIPE_RULES } from './extract';
-import { GENERATE_SYSTEM, generate, type GenerateReply } from './generate';
-import type { JobRow } from './jobs';
+import type { BodyPair, GenerateResult } from '$lib/extract';
+import { claudeCall, takeQuota } from './claude';
+import { EXTRACT_SYSTEM, RECIPE_RULES, type ExtractReply } from './extract';
+import { migrate } from './migrate';
+import { GENERATE_SYSTEM, anglesFor, generate } from './generate';
+import { JobError, type JobRow } from './jobs';
 
-vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
+vi.mock('./claude', async (actual) => ({
+	...(await actual<typeof import('./claude')>()),
+	claudeCall: vi.fn()
+}));
 
-const fixture = () => structuredClone(candidates) as GenerateReply;
-const db = new Database(':memory:');
+/** The fixture's candidates as one call now writes them: metric only, with
+ *  tags.effort_override in place of effort (issue #70). */
+const metricOnly = (): ExtractReply[] =>
+	(
+		structuredClone(candidates.candidates) as (Omit<ExtractReply, 'body'> & {
+			body: BodyPair;
+			tags: ExtractReply['tags'] & { effort?: string };
+		})[]
+	).map(({ tags: { effort: _effort, ...tags }, ...c }) => ({
+		...c,
+		tags,
+		body: { ...c.body.metric, source_units: 'metric' }
+	}));
+
+const DESCRIPTION = 'the chicken thighs and half a cabbage, under 40 minutes';
 const jobRow = {
 	kind: 'generate',
-	input_json: JSON.stringify({
-		description: 'the chicken thighs and half a cabbage, under 40 minutes',
-		yield_count: 2,
-		picked: null
-	})
+	input_json: JSON.stringify({ description: DESCRIPTION, yield_count: 2, picked: null })
 } as JobRow;
 
-describe('generate (issue #41)', () => {
+let db: Database.Database;
+const reply = (...drafts: ExtractReply[]) => {
+	const queue = [...drafts];
+	vi.mocked(claudeCall).mockImplementation(async () => queue.shift()!);
+};
+const userText = (call: number) =>
+	(vi.mocked(claudeCall).mock.calls[call][1].messages[0].content as string).toString();
+
+describe('generate (issues #41, #68)', () => {
 	beforeEach(() => {
+		db = new Database(':memory:');
+		migrate(db, 'migrations');
 		vi.mocked(claudeCall).mockReset();
 	});
 
-	it('returns the three candidates from one Claude call', async () => {
-		vi.mocked(claudeCall).mockResolvedValue(fixture());
-		const result = (await generate(jobRow, db)) as GenerateResult;
-		expect(result.candidates).toHaveLength(3);
-		expect(result.candidates.map((c) => c.title)).toEqual(fixture().candidates.map((c) => c.title));
-		expect(claudeCall).toHaveBeenCalledTimes(1);
+	it('writes each candidate in its own call, all three in flight at once', async () => {
+		const pending: ((d: ExtractReply) => void)[] = [];
+		vi.mocked(claudeCall).mockImplementation(() => new Promise((r) => pending.push(r)));
+		const run = generate(jobRow, db);
+		await vi.waitFor(() => expect(pending).toHaveLength(3));
+		const drafts = metricOnly();
+		pending.forEach((resolve, i) => resolve(drafts[i]));
+		const result = (await run) as GenerateResult;
+		expect(result.candidates.map((c) => c.title)).toEqual(drafts.map((c) => c.title));
 	});
 
-	it('fails with api_error when Claude returns fewer than three', async () => {
-		const short = fixture();
-		short.candidates.pop();
-		vi.mocked(claudeCall).mockResolvedValue(short);
+	it('gives each call a distinct angle', async () => {
+		reply(...metricOnly());
+		await generate(jobRow, db);
+		const angles = anglesFor(DESCRIPTION);
+		expect(new Set(angles.map((a) => a.text)).size).toBe(3);
+		angles.forEach((a, i) => expect(userText(i)).toContain(a.text));
+	});
+
+	it('asks for the metric body only and keeps candidates that way', async () => {
+		reply(...metricOnly());
+		const result = (await generate(jobRow, db)) as GenerateResult;
+		const { schema } = vi.mocked(claudeCall).mock.calls[0][1];
+		const body = (schema as { properties: { body: { properties: object } } }).properties.body;
+		expect(Object.keys(body.properties)).toEqual(['source_units', 'ingredients', 'steps']);
+		expect(body.properties).toMatchObject({ source_units: { enum: ['metric'] } });
+		for (const c of result.candidates) {
+			expect(c.body.source_units).toBe('metric');
+			expect(c.counterpart).toBeUndefined();
+		}
+		expect(GENERATE_SYSTEM).not.toContain('Conversion rules');
+	});
+
+	it('fails the job when any of the three calls fails', async () => {
+		const [a, b] = metricOnly();
+		vi.mocked(claudeCall)
+			.mockResolvedValueOnce(a)
+			.mockRejectedValueOnce(new JobError('api_error', 'overloaded'))
+			.mockResolvedValueOnce(b);
 		await expect(generate(jobRow, db)).rejects.toMatchObject({ code: 'api_error' });
 	});
 
 	it('fails with api_error when a candidate has no ingredients', async () => {
-		const hollow = fixture();
-		hollow.candidates[2].body.metric.ingredients = [{ heading: null, items: [] }];
-		vi.mocked(claudeCall).mockResolvedValue(hollow);
+		const drafts = metricOnly();
+		drafts[2].body.ingredients = [{ heading: null, items: [] }];
+		reply(...drafts);
 		await expect(generate(jobRow, db)).rejects.toMatchObject({ code: 'api_error' });
+	});
+
+	it('counts three calls against the daily cap', async () => {
+		const drafts = metricOnly();
+		vi.mocked(claudeCall).mockImplementation(async (d) => {
+			takeQuota(d);
+			return drafts.shift()!;
+		});
+		await generate(jobRow, db);
+		expect(db.prepare('SELECT SUM(count) AS n FROM job_quota').get()).toEqual({ n: 3 });
+	});
+
+	it('derives each candidate effort from its minutes and override (issue #70)', async () => {
+		const drafts = metricOnly();
+		drafts[0].tags.effort_override = 'project';
+		drafts[1].prep_minutes = 5;
+		drafts[1].cook_minutes = 10;
+		reply(...drafts);
+		const result = (await generate(jobRow, db)) as GenerateResult;
+		expect(result.candidates.map((c) => c.tags.effort)).toEqual(['project', 'quick', 'weeknight']);
+		expect(result.candidates[0].tags).not.toHaveProperty('effort_override');
 	});
 
 	it('builds both prompts on the shared recipe rules', () => {
 		expect(EXTRACT_SYSTEM.endsWith(RECIPE_RULES)).toBe(true);
 		expect(GENERATE_SYSTEM.endsWith(RECIPE_RULES)).toBe(true);
+	});
+});
+
+describe('anglesFor (issue #68)', () => {
+	const axisOf = (d: string) => new Set(anglesFor(d).map((a) => a.axis));
+
+	it('returns three distinct angles on one axis', () => {
+		for (const d of [DESCRIPTION, 'something warm', 'a thai dinner with prawns, vegan friends']) {
+			const angles = anglesFor(d);
+			expect(angles).toHaveLength(3);
+			expect(new Set(angles.map((a) => a.text)).size).toBe(3);
+			expect(axisOf(d).size).toBe(1);
+		}
+	});
+
+	it('varies protein when the description leaves it open', () => {
+		expect(axisOf('something warm for a rainy night')).toEqual(new Set(['protein']));
+	});
+
+	it('varies cuisine when the description names the protein or a diet', () => {
+		expect(axisOf(DESCRIPTION)).toEqual(new Set(['cuisine']));
+		expect(axisOf('a vegetarian lunch')).toEqual(new Set(['cuisine']));
+	});
+
+	it('varies technique when the description names both protein and cuisine', () => {
+		expect(axisOf('an Italian salmon dinner')).toEqual(new Set(['technique']));
+	});
+
+	it('is stable for a description, and differs across descriptions', () => {
+		expect(anglesFor('something warm')).toEqual(anglesFor('something warm'));
+		const seen = new Set(
+			['a', 'b', 'c', 'd', 'e', 'f'].map((s) => anglesFor(`soup ${s}`).map((a) => a.text).join())
+		);
+		expect(seen.size).toBeGreaterThan(1);
 	});
 });

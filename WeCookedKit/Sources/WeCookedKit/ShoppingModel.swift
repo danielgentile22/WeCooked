@@ -88,9 +88,10 @@ public enum ShoppingLayout {
 ///  - a tap writes the *target state* into `device.pendingTicks` (idempotent:
 ///    "item 7 is ticked", never "toggle item 7");
 ///  - the view reads `server ⊕ pendingTicks` (`ShoppingLayout.sections`);
-///  - `flush()` sends each pending target, then `settleTick` drops it only if
-///    it still matches what was sent, and `Resource.mutate` writes the
-///    acknowledged value into the mirror so a slow poll cannot flip it back;
+///  - `flush()` sends each pending target, every line at once and one send
+///    per line at a time, then `settleTick` drops it only if it still matches
+///    what was sent, and `Resource.mutate` writes the acknowledged value into
+///    the mirror so a slow poll cannot flip it back;
 ///  - the other phone's tick arrives on the next poll, last write wins per item.
 /// A failed send leaves the entry in place; the next poll's reply retries it,
 /// so a tick made in a dead spot lands when the signal returns.
@@ -105,8 +106,9 @@ public final class ShoppingModel {
 	public private(set) var banner: String?
 
 	@ObservationIgnored private let env: AppEnvironment
-	/// The send in progress. Internal so tests can tell a send has started.
-	@ObservationIgnored private(set) var flushing: Task<Void, Never>?
+	/// The send in progress for each line. Internal so tests can tell a
+	/// line's send has started.
+	@ObservationIgnored private(set) var sending: [ShoppingItemID: Task<Void, Never>] = [:]
 
 	public init(env: AppEnvironment) { self.env = env }
 
@@ -171,28 +173,29 @@ public final class ShoppingModel {
 		Task { await flush() }
 	}
 
-	/// One send at a time. A call during a send waits for it, then sends
-	/// whatever is still pending, so a second tap is neither lost nor raced.
+	/// Starts a send for every pending line that has none running, so ticks
+	/// on several lines go out together (issue #75), then waits for every
+	/// send in flight. A line has one send at a time: a second tap on it
+	/// during its send is sent when that one lands, neither lost nor raced.
 	public func flush() async {
-		while let running = flushing { await running.value }
-		let batch = env.device.pendingTicks
-		guard !batch.isEmpty else { return }
-		let task = Task {
-			await send(batch)
-			flushing = nil
+		for (id, ticked) in env.device.pendingTicks where sending[id] == nil {
+			sending[id] = Task { await send(id, ticked) }
 		}
-		flushing = task
-		await task.value
+		while let running = sending.values.first { await running.value }
 	}
 
-	/// Stops at the first failure without a banner: the entry stays queued
-	/// and the next reply retries it.
-	private func send(_ batch: [ShoppingItemID: Bool]) async {
-		for (id, ticked) in batch {
-			do { try await env.api.setTicked(id, ticked) } catch { return }
+	/// A failure ends the line's send without a banner: the entry stays
+	/// queued and the next reply retries it. Other lines carry on.
+	private func send(_ id: ShoppingItemID, _ first: Bool) async {
+		var ticked = first
+		while true {
+			do { try await env.api.setTicked(id, ticked) } catch { break }
 			env.device.settleTick(id, sent: ticked)
 			mirror(id, ticked)
+			guard let next = env.device.pendingTicks[id] else { break }
+			ticked = next
 		}
+		sending[id] = nil
 	}
 
 	private func mirror(_ id: ShoppingItemID, _ ticked: Bool) {

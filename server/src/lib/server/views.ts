@@ -7,7 +7,8 @@ import { presignGet } from './r2';
 
 // Page data shared by the web loads and /api/v1, so both fronts serve the
 // same shapes by construction. R2 keys never leave the server: every image
-// becomes a presigned display URL here.
+// becomes a presigned URL here. Lists (Browse rows, the photo strip) get the
+// thumbnail; a full view (the cover) keeps the display copy (issue #73).
 
 /** Browse (SPEC 7.3). Query params: q, and repeatable meal, cuisine,
  *  protein, effort, damage. Drafts are never filtered. */
@@ -21,16 +22,25 @@ export function browseView(db: Database, p: URLSearchParams) {
 			protein: p.getAll('protein'),
 			effort: p.getAll('effort'),
 			damage: p.getAll('damage')
-		}).map(({ cover_key, ...r }) => ({
+		}).map(({ cover_key, cover_thumb_key, ...r }) => ({
 			...r,
-			cover_url: cover_key ? presignGet(cover_key) : null
+			// The widget's suggestion still draws the display copy.
+			cover_url: cover_key ? presignGet(cover_key) : null,
+			cover_thumb_url: cover_thumb_key ? presignGet(cover_thumb_key) : null
 		}))
 	};
 }
 
 export type RecipeView = {
 	recipe: Omit<RecipeDetail, 'images'> & {
-		images: { id: string; url: string; width: number; height: number; source_url: string | null }[];
+		images: {
+			id: string;
+			url: string;
+			thumb_url: string;
+			width: number;
+			height: number;
+			source_url: string | null;
+		}[];
 	};
 	refresh: { job_id: string | null; status: 'pending' | 'failed' } | null;
 	calcJob: CalcJob | null;
@@ -55,6 +65,7 @@ export function recipeView(db: Database, id: string, variationId?: string): Reci
 			images: recipe.images.map((i) => ({
 				id: i.id,
 				url: presignGet(i.r2_key_display),
+				thumb_url: presignGet(i.r2_key_thumb),
 				width: i.width,
 				height: i.height,
 				source_url: i.source_url

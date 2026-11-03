@@ -70,6 +70,17 @@ public final class AppEnvironment {
 		Task { [weak self] in
 			for await _ in unauthorized { self?.signOut() }
 		}
+	}
+
+	@ObservationIgnored private var feedsStarted = false
+
+	/// Starts keeping both widgets' files in step with the app. Not part of
+	/// `init`: the feeds read the shopping, vocabulary and recipe caches,
+	/// and building the environment is on the path to the first frame. The
+	/// app calls this once the first frame is up. Idempotent.
+	public func startFeeds() {
+		guard !feedsStarted else { return }
+		feedsStarted = true
 		feedWidget()
 		feedSuggestion()
 	}
@@ -97,15 +108,20 @@ public final class AppEnvironment {
 				}
 				let week = snapshot.days(from: .now).compactMap(\.pick)
 				let urls = Dictionary(rows.compactMap { r in r.coverUrl.map { (r.id, $0) } }) { a, _ in a }
-				var added = false
+				var missing: [(name: String, url: URL)] = []
 				for pick in week {
-					guard let name = pick.cover, !suggestionFile.hasCover(named: name),
-						let url = urls[pick.id], let data = await images.data(for: url), isSignedIn
+					guard let name = pick.cover, !missing.contains(where: { $0.name == name }),
+						!suggestionFile.hasCover(named: name), let url = urls[pick.id]
 					else { continue }
-					suggestionFile.writeCover(data, named: name)
-					added = true
+					missing.append((name, url))
 				}
+				let images = images
+				let covers = await SuggestionFile.shrinkCovers(missing, fetch: { await images.data(for: $0) })
+				// Written here, after the sign-out check, so a cover still on
+				// its way when the household signs out never lands.
 				guard isSignedIn else { continue }
+				for (name, jpeg) in covers { suggestionFile.writeCoverJPEG(jpeg, named: name) }
+				let added = !covers.isEmpty
 				suggestionFile.keepCovers(Set(week.compactMap(\.cover)))
 				if changed || added { onSnapshotWritten(SuggestionFile.widgetKind) }
 			}

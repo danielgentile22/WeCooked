@@ -40,16 +40,22 @@ public struct Key<Value: Codable & Sendable & Equatable>: Sendable {
 	/// watches them, like a filtered list: there is one per filter tried.
 	public let evictedWhenUnwatched: Bool
 	let load: @Sendable (APIClient) async throws -> Value
+	/// A cheaper read for the polls after the first fetch: given the value
+	/// held and the tag of the last poll reply, ask only for what can change
+	/// and only if it did. Nil polls with `load`.
+	let poll: (@Sendable (APIClient, Value, String?) async throws -> Conditional<Value>)?
 
 	init(
 		name: String, family: Family, persisted: Bool = true, evictedWhenUnwatched: Bool = false,
-		load: @escaping @Sendable (APIClient) async throws -> Value
+		load: @escaping @Sendable (APIClient) async throws -> Value,
+		poll: (@Sendable (APIClient, Value, String?) async throws -> Conditional<Value>)? = nil
 	) {
 		self.name = name
 		self.family = family
 		self.persisted = persisted
 		self.evictedWhenUnwatched = evictedWhenUnwatched
 		self.load = load
+		self.poll = poll
 	}
 }
 
@@ -85,7 +91,22 @@ extension Key where Value == DraftLookup {
 	}
 }
 extension Key where Value == ShoppingResponse {
-	public static var shopping: Self { .init(name: "shopping", family: .shopping) { try await $0.shopping() } }
+	/// Polled every 5 s while the tab is visible, so the poll asks for the list
+	/// alone (the pickable recipes change with recipes, not with ticks) and
+	/// conditionally (issue #75).
+	public static var shopping: Self {
+		.init(
+			name: "shopping", family: .shopping, load: { try await $0.shopping() },
+			poll: { api, held, tag in
+				switch try await api.shoppingList(ifNoneMatch: tag) {
+				case .notModified: return .notModified
+				case .fresh(let list, let etag):
+					var reply = held
+					reply.list = list
+					return .fresh(reply, etag: etag)
+				}
+			})
+	}
 }
 extension Key where Value == TrashResponse {
 	public static var trash: Self { .init(name: "trash", family: .trash) { try await $0.trash() } }
@@ -188,6 +209,10 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 	/// bump may not know about it, so it is dropped and the fetch repeated.
 	@ObservationIgnored private var epoch = 0
 	@ObservationIgnored private var raced = false
+	/// The ETag of the poll reply `value` still equals, sent as If-None-Match
+	/// by the next `poll`. Any other write clears it, so a 304 never keeps a
+	/// value the server did not send.
+	@ObservationIgnored private var validator: String?
 
 	init(key: Key<Value>, api: APIClient, cache: DiskCache) {
 		self.key = key
@@ -210,18 +235,34 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 	/// because its caller went away: the reply still fills the cache. A reply
 	/// equal to the value already held is not assigned or written, so a poll
 	/// that finds nothing new re-renders nothing and wakes no feed.
-	public func revalidate() async {
+	public func revalidate() async { await refresh(polling: false) }
+
+	/// What a poll interval runs: `revalidate`, but with the key's cheaper
+	/// `poll` read once a value exists. A 304 changes nothing.
+	public func poll() async { await refresh(polling: true) }
+
+	private func refresh(polling: Bool) async {
 		if let inflight { await inflight.value; return }
 		phase = .refreshing
 		raced = false
 		let started = epoch
+		let held = value
+		let tag = validator
 		let task = Task {
 			do {
-				let fresh = try await key.load(api)
+				let reply: Conditional<Value>
+				if polling, let poll = key.poll, let held {
+					reply = try await poll(api, held, tag)
+				} else {
+					reply = .fresh(try await key.load(api), etag: nil)
+				}
 				if started == epoch {
-					if fresh != value {
-						value = fresh
-						persist(fresh)
+					if case .fresh(let fresh, let etag) = reply {
+						validator = etag
+						if fresh != value {
+							value = fresh
+							persist(fresh)
+						}
 					}
 					phase = .idle
 				} else {
@@ -234,7 +275,7 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 		inflight = task
 		await task.value
 		inflight = nil
-		if raced { await revalidate() }
+		if raced { await refresh(polling: polling) }
 	}
 
 	/// Optimistic local edit: applied at once, persisted, and the next reply
@@ -243,6 +284,7 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 		guard var v = value else { return }
 		change(&v)
 		epoch += 1
+		validator = nil
 		value = v
 		persist(v)
 	}
@@ -250,6 +292,7 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 	/// A server-confirmed value from a mutation reply.
 	public func replace(_ new: Value) {
 		epoch += 1
+		validator = nil
 		value = new
 		phase = .idle
 		persist(new)
@@ -261,7 +304,7 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 	}
 
 	/// Keep this resource fresh while a screen is visible: fetch on entry, then
-	/// every `interval` if given. Either way it counts as watched until the
+	/// `poll` every `interval` if given. Either way it counts as watched until the
 	/// calling task is cancelled, which ends it. `Store.invalidate` refetches
 	/// immediately only for resources being watched, and the Store keeps a
 	/// filtered list only while it is watched.
@@ -280,7 +323,7 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 		while !Task.isCancelled {
 			try? await Task.sleep(for: interval)
 			if Task.isCancelled { break }
-			await revalidate()
+			await poll()
 		}
 	}
 }
@@ -361,6 +404,15 @@ public final class Store {
 		}
 	}
 
+	/// The row for `id` in any browse list already in memory, so a recipe
+	/// opened from the list has its title and cover before its own reply.
+	public func browseRow(_ id: RecipeID) -> BrowseRow? {
+		for case let r as Resource<BrowseResponse> in distinctResources {
+			if let row = r.value?.recipes.first(where: { $0.id == id }) { return row }
+		}
+		return nil
+	}
+
 	/// Something changed on the server that these resources show. Watched ones
 	/// refetch now; the rest will on their next `watch`.
 	public func invalidate(_ families: Family...) {
@@ -432,9 +484,10 @@ public final class Store {
 		guard jobWaits[id] != nil else { return }
 		jobWaits[id] = nil
 		if outcome == .timedOut { timedOutJobs.insert(id) } else { endedJobs.insert(id) }
-		let owners = owners(of: id)
-		Task {
-			for r in owners { await r.revalidate() }
+		// Side by side: a list and the recipe it opened both list a scale, and
+		// the result should land on both in one step, not one after the other.
+		for r in owners(of: id) {
+			Task { await r.revalidate() }
 		}
 	}
 

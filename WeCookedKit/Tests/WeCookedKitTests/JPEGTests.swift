@@ -109,4 +109,32 @@ struct JPEGTests {
 	@Test func garbageIsUnreadable() {
 		#expect(throws: JPEG.Failure.self) { try JPEG.normalise(Data("not an image".utf8)) }
 	}
+
+	// MARK: Sized decode (issue #73)
+
+	@Test func decodesJustBigEnoughToFillTheFrame() throws {
+		// Sensor 1200x800 tagged 6 shows 800x1200. Filling a 300x300 frame,
+		// the short side (width) must reach 300, so the long edge is 450.
+		let big = try Self.image(width: 1200, height: 800, type: .jpeg, orientation: 6)
+		let image = try #require(ImageDecode.image(big, toFill: CGSize(width: 300, height: 300)))
+		#expect(image.width == 300 && image.height == 450, "orientation applied, short side fills")
+		#expect(ImageDecode.cost(of: image) == image.bytesPerRow * image.height)
+	}
+
+	@Test func neverDecodesAboveTheSourceSize() throws {
+		let small = try Self.image(width: 120, height: 90, type: .png)
+		let image = try #require(ImageDecode.image(small, toFill: CGSize(width: 1000, height: 1000)))
+		#expect(image.width == 120 && image.height == 90)
+		#expect(ImageDecode.image(Data("not an image".utf8), toFill: CGSize(width: 100, height: 100)) == nil)
+	}
+
+	@Test func theDecodedKeyNamesThePathAndTheFrame() {
+		let a = URL(string: "https://r2.example/bucket/images/1/thumb.webp?X-Amz-Signature=a")!
+		let b = URL(string: "https://r2.example/bucket/images/1/thumb.webp?X-Amz-Signature=b")!
+		let tile = ImageDecode.pixels(CGSize(width: 56, height: 56), scale: 3)
+		#expect(tile == CGSize(width: 192, height: 192), "168 rounds up to 192")
+		#expect(ImageDecode.pixels(CGSize(width: 55.5, height: 56), scale: 3) == tile, "a settling frame keeps its key")
+		#expect(ImageDecode.key(a, pixels: tile) == ImageDecode.key(b, pixels: tile), "the daily signature does not matter")
+		#expect(ImageDecode.key(a, pixels: tile) != ImageDecode.key(a, pixels: CGSize(width: 384, height: 192)))
+	}
 }

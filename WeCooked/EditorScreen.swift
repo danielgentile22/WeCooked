@@ -73,34 +73,29 @@ private enum Line: Hashable {
 	case step(Int)
 }
 
+/// The form's shell: banners, the save button and scrolling. It reads no form
+/// field. Each section below is its own view reading only its part of the form
+/// (`model.form(section)`), so a keystroke re-renders the section it lands in
+/// and not the whole form (`EditorSection`).
 private struct EditorFields: View {
-	@Bindable var model: EditorModel
+	let model: EditorModel
 	@Environment(AppEnvironment.self) private var env
-	@State private var yieldText = ""
-	@State private var confirmDiscard = false
-	@State private var confirmReset = false
-	@State private var confirmDelete = false
 	@FocusState private var focus: Line?
-
-	private var form: EditorForm { model.form }
-	/// Seeded from something the server holds, so the unit toggle swaps bodies
-	/// instead of naming the system being typed ("editing" on the web).
-	private var isLoaded: Bool { form.baseline != nil }
 
 	var body: some View {
 		ScrollViewReader { proxy in
 			Form {
 				banners(proxy: proxy)
-				titleSection
-				photosSection
-				yieldSection
-				timesSection
-				ingredientsSection
-				stepsSection
-				tagsSection
-				sourceSection
-				notesSection
-				destructiveSection
+				TitleSection(model: model)
+				PhotosSection(model: model)
+				YieldSection(model: model)
+				TimesSection(model: model)
+				IngredientsSection(model: model, focus: $focus)
+				StepsSection(model: model, focus: $focus)
+				TagsSection(model: model)
+				SourceSection(model: model)
+				NotesSection(model: model)
+				DestructiveSection(model: model, focus: $focus)
 			}
 			.watching(env.store.resource(.vocabulary))
 			.scrollDismissesKeyboard(.interactively)
@@ -122,16 +117,6 @@ private struct EditorFields: View {
 					}
 				}
 			}
-			.confirmationDialog(
-				"Delete “\(deleteTitle)”? You can restore it from Trash.", isPresented: $confirmDelete,
-				titleVisibility: .visible
-			) {
-				Button("Delete recipe", role: .destructive) { Task { await model.deleteRecipe() } }
-			}
-		}
-		.onAppear { yieldText = Self.format(form.yieldCount) }
-		.onChange(of: form.yieldCount) { _, count in
-			if (Self.parse(yieldText) ?? 0) != count { yieldText = Self.format(count) }
 		}
 	}
 
@@ -184,8 +169,9 @@ private struct EditorFields: View {
 	}
 
 	/// A step list has no row of its own to land on, so a jump lands on step 1.
+	/// Runs in actions only, so reading the steps here re-renders nothing.
 	private func scrollTarget(_ anchor: Anchor) -> AnyHashable {
-		if anchor == .steps, !form.shown.steps.isEmpty { return Line.step(0) }
+		if anchor == .steps, !model.form(.steps).shown.steps.isEmpty { return Line.step(0) }
 		return anchor
 	}
 
@@ -212,9 +198,15 @@ private struct EditorFields: View {
 		case .server: .top
 		}
 	}
+}
 
-	/// Inline, under the section it is about. Icon plus words, never colour alone.
-	@ViewBuilder private func issues(_ which: Set<EditorIssue>) -> some View {
+/// Inline, under the section it is about. Icon plus words, never colour alone.
+/// Its own view, so a refused save re-renders the footers and not the fields.
+private struct Issues: View {
+	let model: EditorModel
+	let which: Set<EditorIssue>
+
+	var body: some View {
 		let found = model.issues.filter(which.contains)
 		if !found.isEmpty {
 			VStack(alignment: .leading, spacing: 4) {
@@ -225,23 +217,36 @@ private struct EditorFields: View {
 			}
 		}
 	}
+}
 
-	// MARK: Title, photos, yield, times
+// MARK: Title, photos, yield, times
 
-	private var titleSection: some View {
+private struct TitleSection: View {
+	let model: EditorModel
+
+	var body: some View {
 		Section {
-			TextField("Title", text: $model.form.title, axis: .vertical)
-				.font(.title3.weight(.semibold))
-				.accessibilityIdentifier("editor.title")
-				.id(Anchor.title)
+			TextField(
+				"Title",
+				text: Binding(get: { model.form(.title).title }, set: { model.form.title = $0 }),
+				axis: .vertical
+			)
+			.font(.title3.weight(.semibold))
+			.accessibilityIdentifier("editor.title")
+			.id(Anchor.title)
 		} header: {
 			Text("Title")
 		} footer: {
-			issues([.titleRequired])
+			Issues(model: model, which: [.titleRequired])
 		}
 	}
+}
 
-	private var photosSection: some View {
+private struct PhotosSection: View {
+	let model: EditorModel
+
+	var body: some View {
+		let form = model.form(.photos)
 		Section("Photos") {
 			if !form.images.isEmpty {
 				ScrollView(.horizontal) {
@@ -299,8 +304,15 @@ private struct EditorFields: View {
 				.foregroundStyle(.secondary)
 		}
 	}
+}
 
-	private var yieldSection: some View {
+private struct YieldSection: View {
+	let model: EditorModel
+	@State private var yieldText = ""
+
+	private var count: Double { model.form(.yield).yieldCount }
+
+	var body: some View {
 		Section {
 			HStack(spacing: 8) {
 				Button { bumpYield(-1) } label: { Image(systemName: "minus").frame(width: 32, height: 32) }
@@ -317,16 +329,22 @@ private struct EditorFields: View {
 				Button { bumpYield(1) } label: { Image(systemName: "plus").frame(width: 32, height: 32) }
 					.accessibilityLabel("Increase yield")
 					.accessibilityIdentifier("editor.yield.plus")
-				TextField("servings", text: $model.form.yieldUnit)
-					.accessibilityLabel("Yield unit")
-					.accessibilityIdentifier("editor.yield.unit")
+				TextField(
+					"servings", text: Binding(get: { model.form(.yield).yieldUnit }, set: { model.form.yieldUnit = $0 })
+				)
+				.accessibilityLabel("Yield unit")
+				.accessibilityIdentifier("editor.yield.unit")
 			}
 			.buttonStyle(.borderless)
 			.id(Anchor.yield)
 		} header: {
 			Text("Yield")
 		} footer: {
-			issues([.yieldInvalid])
+			Issues(model: model, which: [.yieldInvalid])
+		}
+		.onAppear { yieldText = Self.format(count) }
+		.onChange(of: count) { _, count in
+			if (Self.parse(yieldText) ?? 0) != count { yieldText = Self.format(count) }
 		}
 	}
 
@@ -342,7 +360,7 @@ private struct EditorFields: View {
 	}
 
 	private func bumpYield(_ delta: Double) {
-		let next = ((form.yieldCount + delta) * 10).rounded() / 10
+		let next = ((count + delta) * 10).rounded() / 10
 		if next > 0 { model.form.yieldCount = next }
 	}
 
@@ -354,8 +372,12 @@ private struct EditorFields: View {
 	private static func format(_ count: Double) -> String {
 		count.formatted(.number.grouping(.never).locale(Locale(identifier: "en_US_POSIX")))
 	}
+}
 
-	private var timesSection: some View {
+private struct TimesSection: View {
+	let model: EditorModel
+
+	var body: some View {
 		Section("Times") {
 			HStack(spacing: 16) {
 				minutesField("Prep minutes", \.prepMinutes, identifier: "editor.prep")
@@ -372,7 +394,7 @@ private struct EditorFields: View {
 			TextField(
 				label,
 				text: Binding(
-					get: { model.form[keyPath: path].map(String.init) ?? "" },
+					get: { model.form(.times)[keyPath: path].map(String.init) ?? "" },
 					set: { model.form[keyPath: path] = Int($0.filter(\.isNumber)) }),
 				prompt: Text("")
 			)
@@ -384,24 +406,32 @@ private struct EditorFields: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
+}
 
-	// MARK: Ingredients and steps
+// MARK: Ingredients and steps
 
-	private var ingredientsSection: some View {
+private struct IngredientsSection: View {
+	let model: EditorModel
+	var focus: FocusState<Line?>.Binding
+
+	var body: some View {
+		let units = model.form(.units)
+		let isLoaded = units.baseline != nil
+		let ingredients = model.form(.ingredients).shown.ingredients
 		Section {
-			unitsRow.id(Anchor.ingredients)
+			UnitsRow(model: model).id(Anchor.ingredients)
 			// Issue #67: the draft's counterpart is still being written.
-			if isLoaded, form.other == nil, let conversion = model.conversion, let base = form.baseline {
-				let units = base.sourceUnits.other == .us ? "US" : "metric"
+			if isLoaded, units.other == nil, let conversion = model.conversion, let base = units.baseline {
+				let name = base.sourceUnits.other == .us ? "US" : "metric"
 				if conversion.status == .converting {
-					Banner(kind: .working, text: "Converting to \(units)…")
+					Banner(kind: .working, text: "Converting to \(name)…")
 				} else {
-					Banner(kind: .error, text: "Couldn't convert to \(units).", actionTitle: "Tap to retry") {
+					Banner(kind: .error, text: "Couldn't convert to \(name).", actionTitle: "Tap to retry") {
 						Task { await model.retryConversion() }
 					}
 				}
 			}
-			if isLoaded, let rc = model.reconvert, form.shownUnits != form.baseline?.sourceUnits {
+			if isLoaded, let rc = model.reconvert, units.shownUnits != units.baseline?.sourceUnits {
 				if rc.status == .failed || rc.jobId == nil {
 					Banner(kind: .error, text: "Couldn't update from your edit.", actionTitle: "Tap to retry") {
 						Task { await model.retryReconvert() }
@@ -410,15 +440,17 @@ private struct EditorFields: View {
 					Banner(kind: .working, text: "Not yet updated from your edit. Updating…")
 				}
 			}
-			ForEach(form.shown.ingredients.indices, id: \.self) { g in
-				groupHeadingRow(g)
-				ForEach(form.shown.ingredients[g].items.indices.map { Line.ingredient(group: g, item: $0) }, id: \.self) {
+			ForEach(ingredients.indices, id: \.self) { g in
+				groupHeadingRow(g, groups: ingredients.count, heading: ingredients[g].heading)
+				ForEach(ingredients[g].items.indices.map { Line.ingredient(group: g, item: $0) }, id: \.self) {
 					line in
-					if case .ingredient(_, let i) = line { ingredientRow(group: g, item: i) }
+					if case .ingredient(_, let i) = line {
+						ingredientRow(group: g, item: i, count: ingredients[g].items.count)
+					}
 				}
 				Button {
 					model.form.shown.ingredients[g].items.append("")
-					focus = .ingredient(group: g, item: model.form.shown.ingredients[g].items.count - 1)
+					focus.wrappedValue = .ingredient(group: g, item: model.form.shown.ingredients[g].items.count - 1)
 				} label: {
 					Label("Add ingredient", systemImage: "plus")
 				}
@@ -426,7 +458,7 @@ private struct EditorFields: View {
 			}
 			Button {
 				model.form.shown.ingredients.append(IngredientGroup(heading: nil, items: [""]))
-				focus = .ingredient(group: model.form.shown.ingredients.count - 1, item: 0)
+				focus.wrappedValue = .ingredient(group: model.form.shown.ingredients.count - 1, item: 0)
 			} label: {
 				Label("Add group", systemImage: "plus")
 			}
@@ -434,40 +466,16 @@ private struct EditorFields: View {
 		} header: {
 			Text("Ingredients")
 		} footer: {
-			issues([.ingredientRequired])
+			Issues(model: model, which: [.ingredientRequired])
 		}
 	}
 
-	/// New recipe: names the system being typed. Loaded: shows the other body,
-	/// and is off until that body exists.
-	private var unitsRow: some View {
-		VStack(alignment: .leading, spacing: 6) {
-			Text(isLoaded ? "Units" : "Written in").font(.caption).foregroundStyle(.secondary)
-			Picker(
-				"Unit system",
-				selection: Binding(get: { model.form.shownUnits }, set: { model.form.show($0) })
-			) {
-				ForEach([UnitSystem.metric, .us], id: \.self) { units in
-					Text(unitsLabel(units)).tag(units)
-				}
-			}
-			.pickerStyle(.segmented)
-			.disabled(isLoaded && form.other == nil)
-			.accessibilityIdentifier("editor.units")
-		}
-	}
-
-	private func unitsLabel(_ units: UnitSystem) -> String {
-		let name = units == .us ? "US" : "Metric"
-		return form.baseline?.sourceUnits == units ? "\(name) · as written" : name
-	}
-
-	private func groupHeadingRow(_ g: Int) -> some View {
+	private func groupHeadingRow(_ g: Int, groups: Int, heading: String?) -> some View {
 		HStack(spacing: 8) {
 			TextField(
 				"Group heading (optional)",
 				text: Binding(
-					get: { form.shown.ingredients[safe: g]?.heading ?? "" },
+					get: { heading ?? "" },
 					set: { value in
 						guard model.form.shown.ingredients.indices.contains(g) else { return }
 						model.form.shown.ingredients[g].heading = value.isEmpty ? nil : value
@@ -476,36 +484,34 @@ private struct EditorFields: View {
 			.font(.subheadline.italic())
 			.accessibilityLabel("Group heading")
 			.accessibilityIdentifier("editor.group.\(g).heading")
-			let groups = form.shown.ingredients.count
 			if groups > 1 {
 				LineControls(
 					noun: "group", identifier: "editor.group.\(g)", isFirst: g == 0, isLast: g == groups - 1,
 					move: { delta in
-						focus = nil
+						focus.wrappedValue = nil
 						model.form.shown.ingredients.swapAt(g, g + delta)
 					},
 					remove: {
-						focus = nil
+						focus.wrappedValue = nil
 						model.form.shown.ingredients.remove(at: g)
 					})
 			}
 		}
 	}
 
-	private func ingredientRow(group g: Int, item i: Int) -> some View {
-		let count = form.shown.ingredients[safe: g]?.items.count ?? 0
-		return HStack(alignment: .firstTextBaseline, spacing: 4) {
+	private func ingredientRow(group g: Int, item i: Int, count: Int) -> some View {
+		HStack(alignment: .firstTextBaseline, spacing: 4) {
 			TextField(
 				"Ingredient",
 				text: Binding(
-					get: { form.shown.ingredients[safe: g]?.items[safe: i] ?? "" },
+					get: { model.form(.ingredients).shown.ingredients[safe: g]?.items[safe: i] ?? "" },
 					set: { value in
 						guard model.form.shown.ingredients[safe: g]?.items.indices.contains(i) == true else { return }
 						model.form.shown.ingredients[g].items[i] = value
 					}),
 				axis: .vertical
 			)
-			.focused($focus, equals: .ingredient(group: g, item: i))
+			.focused(focus, equals: .ingredient(group: g, item: i))
 			.accessibilityLabel("Ingredient line")
 			.accessibilityIdentifier("editor.ingredient.\(g).\(i)")
 			LineControls(
@@ -513,20 +519,56 @@ private struct EditorFields: View {
 				isLast: i == count - 1,
 				move: { model.form.moveIngredient(group: g, from: i, by: $0) },
 				remove: {
-					focus = nil
+					focus.wrappedValue = nil
 					model.form.shown.ingredients[g].items.remove(at: i)
 				})
 		}
 	}
+}
 
-	private var stepsSection: some View {
+/// New recipe: names the system being typed. Loaded: shows the other body,
+/// and is off until that body exists.
+private struct UnitsRow: View {
+	let model: EditorModel
+
+	var body: some View {
+		let form = model.form(.units)
+		let isLoaded = form.baseline != nil
+		VStack(alignment: .leading, spacing: 6) {
+			Text(isLoaded ? "Units" : "Written in").font(.caption).foregroundStyle(.secondary)
+			Picker(
+				"Unit system",
+				selection: Binding(get: { model.form(.units).shownUnits }, set: { model.form.show($0) })
+			) {
+				ForEach([UnitSystem.metric, .us], id: \.self) { units in
+					Text(label(units, asWritten: form.baseline?.sourceUnits == units)).tag(units)
+				}
+			}
+			.pickerStyle(.segmented)
+			.disabled(isLoaded && form.other == nil)
+			.accessibilityIdentifier("editor.units")
+		}
+	}
+
+	private func label(_ units: UnitSystem, asWritten: Bool) -> String {
+		let name = units == .us ? "US" : "Metric"
+		return asWritten ? "\(name) · as written" : name
+	}
+}
+
+private struct StepsSection: View {
+	let model: EditorModel
+	var focus: FocusState<Line?>.Binding
+
+	var body: some View {
+		let steps = model.form(.steps).shown.steps
 		Section {
-			ForEach(form.shown.steps.indices.map { Line.step($0) }, id: \.self) { line in
-				if case .step(let i) = line { stepRow(i) }
+			ForEach(steps.indices.map { Line.step($0) }, id: \.self) { line in
+				if case .step(let i) = line { stepRow(i, count: steps.count) }
 			}
 			Button {
 				model.form.shown.steps.append("")
-				focus = .step(model.form.shown.steps.count - 1)
+				focus.wrappedValue = .step(model.form.shown.steps.count - 1)
 			} label: {
 				Label("Add step", systemImage: "plus")
 			}
@@ -539,13 +581,13 @@ private struct EditorFields: View {
 		}
 	}
 
-	private func stepRow(_ i: Int) -> some View {
+	private func stepRow(_ i: Int, count: Int) -> some View {
 		HStack(alignment: .top, spacing: 4) {
 			Text("\(i + 1)").bold().foregroundStyle(.tint).frame(minWidth: 18, alignment: .leading)
 			TextField(
 				"Step \(i + 1)",
 				text: Binding(
-					get: { form.shown.steps[safe: i] ?? "" },
+					get: { model.form(.steps).shown.steps[safe: i] ?? "" },
 					set: { value in
 						guard model.form.shown.steps.indices.contains(i) else { return }
 						model.form.shown.steps[i] = value
@@ -553,24 +595,30 @@ private struct EditorFields: View {
 				axis: .vertical
 			)
 			.lineLimit(2...8)
-			.focused($focus, equals: .step(i))
+			.focused(focus, equals: .step(i))
 			.accessibilityLabel("Step \(i + 1)")
 			.accessibilityIdentifier("editor.step.\(i)")
 			LineControls(
 				noun: "step", identifier: "editor.step.\(i)", isFirst: i == 0,
-				isLast: i == form.shown.steps.count - 1,
+				isLast: i == count - 1,
 				move: { model.form.moveStep(from: i, by: $0) },
 				remove: {
-					focus = nil
+					focus.wrappedValue = nil
 					model.form.shown.steps.remove(at: i)
 				})
 		}
 	}
+}
 
-	// MARK: Tags
+// MARK: Tags
 
-	@ViewBuilder private var tagsSection: some View {
+private struct TagsSection: View {
+	let model: EditorModel
+	@Environment(AppEnvironment.self) private var env
+
+	var body: some View {
 		let vocabulary = env.store.resource(.vocabulary)
+		let form = model.form(.tags)
 		Section {
 			if let vocab = vocabulary.value {
 				ChipGroup(
@@ -600,22 +648,36 @@ private struct EditorFields: View {
 		} header: {
 			Text("Tags")
 		} footer: {
-			issues([.effortRequired, .damageRequired])
+			Issues(model: model, which: [.effortRequired, .damageRequired])
 		}
 	}
+}
 
-	// MARK: Source, notes
+// MARK: Source, notes
 
-	private var sourceSection: some View {
+/// An empty field is "none", not an empty string.
+@MainActor
+private func optional(
+	_ model: EditorModel, _ section: EditorSection, _ path: WritableKeyPath<EditorForm, String?>
+) -> Binding<String> {
+	Binding(
+		get: { model.form(section)[keyPath: path] ?? "" },
+		set: { model.form[keyPath: path] = $0.isEmpty ? nil : $0 })
+}
+
+private struct SourceSection: View {
+	let model: EditorModel
+
+	var body: some View {
 		Section("Source") {
 			VStack(alignment: .leading, spacing: 4) {
 				Text("Where it came from").font(.caption).foregroundStyle(.secondary)
-				TextField("Ottolenghi, Simple, p.112", text: optional(\.sourceText))
+				TextField("Ottolenghi, Simple, p.112", text: optional(model, .source, \.sourceText))
 					.accessibilityIdentifier("editor.sourceText")
 			}
 			VStack(alignment: .leading, spacing: 4) {
 				Text("URL").font(.caption).foregroundStyle(.secondary)
-				TextField("URL", text: optional(\.sourceUrl), prompt: Text(""))
+				TextField("URL", text: optional(model, .source, \.sourceUrl), prompt: Text(""))
 					.keyboardType(.URL)
 					.textContentType(.URL)
 					.textInputAutocapitalization(.never)
@@ -624,30 +686,36 @@ private struct EditorFields: View {
 			}
 		}
 	}
+}
 
-	private var notesSection: some View {
+private struct NotesSection: View {
+	let model: EditorModel
+
+	var body: some View {
 		Section("Notes") {
-			TextField("Notes", text: optional(\.notes), prompt: Text(""), axis: .vertical)
+			TextField("Notes", text: optional(model, .notes, \.notes), prompt: Text(""), axis: .vertical)
 				.lineLimit(3...12)
 				.accessibilityIdentifier("editor.notes")
 		}
 	}
+}
 
-	/// An empty field is "none", not an empty string.
-	private func optional(_ path: WritableKeyPath<EditorForm, String?>) -> Binding<String> {
-		Binding(
-			get: { model.form[keyPath: path] ?? "" },
-			set: { model.form[keyPath: path] = $0.isEmpty ? nil : $0 })
-	}
+// MARK: Destructive zone (D10)
 
-	// MARK: Destructive zone (D10)
+private struct DestructiveSection: View {
+	let model: EditorModel
+	var focus: FocusState<Line?>.Binding
+	@Environment(AppEnvironment.self) private var env
+	@State private var confirmDiscard = false
+	@State private var confirmReset = false
+	@State private var confirmDelete = false
 
-	private var destructiveSection: some View {
+	var body: some View {
 		Section {
 			Button(confirmReset ? "Really start over? Tap again to discard your edits" : "Start over") {
 				if confirmReset {
 					confirmReset = false
-					focus = nil
+					focus.wrappedValue = nil
 					model.startOver()
 				} else {
 					confirmReset = true
@@ -668,16 +736,23 @@ private struct EditorFields: View {
 			case .recipe:
 				Button("Delete recipe", role: .destructive) { confirmDelete = true }
 					.accessibilityIdentifier("editor.delete")
+					.confirmationDialog(
+						"Delete “\(deleteTitle)”? You can restore it from Trash.", isPresented: $confirmDelete,
+						titleVisibility: .visible
+					) {
+						Button("Delete recipe", role: .destructive) { Task { await model.deleteRecipe() } }
+					}
 			case .manual:
 				EmptyView()
 			}
 		}
 	}
 
+	/// The saved title; the typed one only when the recipe is not loaded.
 	private var deleteTitle: String {
 		guard case .recipe(let id, let v) = model.origin,
 			let title = env.store.resource(.recipe(id, variation: v)).value?.recipe.title
-		else { return form.title }
+		else { return model.form(.title).title }
 		return title
 	}
 }

@@ -15,6 +15,8 @@ struct RecipeScreen: View {
 		Group {
 			if let display = model.display {
 				CookingBody(display: display, model: model)
+			} else if model.resource.isFirstLoad, let row = model.preview {
+				PreviewHeader(row: row)  // never seen on this phone, but opened from the list
 			} else if model.resource.isFirstLoad {
 				ProgressView()  // reached only for a recipe never seen on this phone
 			} else if case .failed(let e) = model.resource.phase {
@@ -27,6 +29,33 @@ struct RecipeScreen: View {
 		.watching(model.resource)
 		.task { await model.appear() }
 		.keepsScreenAwake()
+	}
+}
+
+/// What the list already knew about a recipe this phone never fetched: its
+/// cover and title where `CookingBody` puts them, so the screen is not blank
+/// while the reply loads, and the reply fills in the rest under them.
+private struct PreviewHeader: View {
+	let row: BrowseRow
+
+	var body: some View {
+		ScrollView {
+			VStack(alignment: .leading, spacing: 16) {
+				Color.clear
+					.frame(height: 200)
+					.overlay { CachedImage(url: row.coverUrl) }
+					.clipShape(.rect(cornerRadius: 12))
+					.accessibilityHidden(true)
+				Text(row.title)
+					.font(.title.bold())
+					.accessibilityAddTraits(.isHeader)
+				ProgressView()
+					.frame(maxWidth: .infinity)
+					.padding(.top, 24)
+			}
+			.padding(.horizontal)
+		}
+		.navigationBarTitleDisplayMode(.inline)
 	}
 }
 
@@ -181,7 +210,7 @@ struct CookingBody: View {
 			HStack(spacing: 10) {
 				ForEach(detail.images, id: \.id) { image in
 					let width = min(260, max(100, CGFloat(image.width) / CGFloat(max(image.height, 1)) * 140))
-					CachedImage(url: image.url)
+					CachedImage(url: image.thumbUrl)
 						.frame(width: width, height: 140)
 						.clipShape(.rect(cornerRadius: 10))
 				}

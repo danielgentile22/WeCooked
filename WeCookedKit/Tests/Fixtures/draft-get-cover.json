@@ -6,19 +6,19 @@
   "cover_job_id": null,
   "damage_reasoning": "One bowl and a tin.",
   "error_text": null,
-  "id": "01TEST00000000000000000046",
+  "id": "01TEST00000000000000000047",
   "initial": {
     "cook_minutes": 45,
     "counterpart": null,
-    "cover_image_id": "01TEST00000000000000000048",
+    "cover_image_id": "01TEST00000000000000000049",
     "cuisine": "british",
     "damage": "tidy",
     "effort": "project",
     "images": [
       {
-        "id": "01TEST00000000000000000048",
+        "id": "01TEST00000000000000000049",
         "source_url": "https://www.example.com/hero.jpg",
-        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000048/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=3c35941601899c71b28f5028f1e9fcc97d36ff8f54bad3f693f46bde7f82b707"
+        "url": "https://account.r2.cloudflarestorage.com/bucket/images/01TEST00000000000000000049/display.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=access-key%2F20260928%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260928T000000Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&response-cache-control=private%2C%20max-age%3D31536000%2C%20immutable&X-Amz-Signature=7952ec5a778c73938b2fdeb9689b3d7787c09a134c9aef172c0af3e56189a01a"
       }
     ],
     "ingredients": [

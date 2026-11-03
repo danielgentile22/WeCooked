@@ -105,8 +105,8 @@ export function localStore(): LocalStore | null {
 	};
 }
 
-// No dot segments are possible: only the final ".jpg" may contain a dot.
-const SAFE_KEY = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\.jpg$/;
+// No dot segments are possible: only the final ".jpg" or ".webp" may contain a dot.
+const SAFE_KEY = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\.(jpg|webp)$/;
 
 export function localPath(store: LocalStore, key: string): string {
 	if (!SAFE_KEY.test(key)) throw new Error(`Unsafe image key: ${key}`);
@@ -135,7 +135,12 @@ export async function getObject(key: string, cfg?: R2Config): Promise<Buffer> {
 }
 
 /** Server-side upload: presign a PUT and fetch it. */
-export async function putObject(key: string, body: Uint8Array, cfg?: R2Config): Promise<void> {
+export async function putObject(
+	key: string,
+	body: Uint8Array,
+	contentType: 'image/jpeg' | 'image/webp' = 'image/jpeg',
+	cfg?: R2Config
+): Promise<void> {
 	const local = localStore();
 	if (local) {
 		const path = localPath(local, key);
@@ -145,7 +150,7 @@ export async function putObject(key: string, body: Uint8Array, cfg?: R2Config): 
 	const res = await fetch(presign('PUT', key, new Date(), cfg), {
 		method: 'PUT',
 		body: new Blob([body as Uint8Array<ArrayBuffer>]),
-		headers: { 'content-type': 'image/jpeg' }
+		headers: { 'content-type': contentType }
 	});
 	if (!res.ok) throw new Error(`R2 PUT ${key} failed: ${res.status} ${await res.text()}`);
 }

@@ -1,10 +1,11 @@
-import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
+import { MEAL_TYPES, CUISINES, PROTEINS, DAMAGES } from '$lib/tags';
 import { hasRecipe, type AsWrittenBody, type CaptureInput, type RecipeDraft } from '$lib/extract';
 import type { Database } from 'better-sqlite3';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import type { ErrorCode } from '$lib/jobs';
+import type { Effort } from '$lib/tags';
 import { claudeCall } from './claude';
 import { deriveClaude } from './images';
 import { getObject } from './r2';
@@ -55,6 +56,10 @@ export const RECIPE_DRAFT_SCHEMA = {
 			},
 			required: ['source_units', ...BODY_SCHEMA.required]
 		},
+		// Issue #70: before tags, because structured output is written in
+		// schema order and this sentence is the model's room to count before
+		// it picks damage. After tags it was a justification, and disagreed.
+		damage_reasoning: { type: 'string' },
 		tags: {
 			type: 'object',
 			additionalProperties: false,
@@ -62,12 +67,13 @@ export const RECIPE_DRAFT_SCHEMA = {
 				meal_type: { type: 'array', items: { enum: [...MEAL_TYPES] } },
 				cuisine: { enum: [...CUISINES, null] },
 				protein: { enum: [...PROTEINS, null] },
-				effort: { enum: [...EFFORTS] },
+				// Issue #70: effort is derived from the minutes (deriveEffort);
+				// the model only flags the waits the minutes miss.
+				effort_override: { enum: ['project', null] },
 				damage: { enum: [...DAMAGES] }
 			},
-			required: ['meal_type', 'cuisine', 'protein', 'effort', 'damage']
+			required: ['meal_type', 'cuisine', 'protein', 'effort_override', 'damage']
 		},
-		damage_reasoning: { type: 'string' },
 		extraction_warnings: { type: 'array', items: { type: 'string' } }
 	},
 	required: [
@@ -78,8 +84,8 @@ export const RECIPE_DRAFT_SCHEMA = {
 		'cook_minutes',
 		'source_text',
 		'body',
-		'tags',
 		'damage_reasoning',
+		'tags',
 		'extraction_warnings'
 	]
 };
@@ -109,16 +115,19 @@ export const CONVERSION_RULES = `Conversion rules:
 // here: extraction writes one body (issue #67).
 export const RECIPE_SHAPE_RULES = `- Ingredients stay as human-readable strings, exactly as a cook would read them.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
-  Leave cuisine or protein null if unsure. effort and damage are required.
-- Score damage with the rubric below and show your arithmetic in
-  damage_reasoning.`;
+  Leave cuisine or protein null if unsure. damage is required.
+- Effort is worked out from prep_minutes plus cook_minutes, so give those
+  honestly. Set effort_override to "project" only when the recipe needs a
+  wait the minutes leave out: an overnight or multi-hour rest, proving, or
+  marinating. Otherwise effort_override is null.
+- Score damage with the rubric below. Write damage_reasoning in one short
+  sentence that ends with the total and the verdict, as in "Pan 1 + bowl 1 +
+  board and knife 1 + flour 1 = 4, messy."`;
 
 export const RECIPE_RULES = `Tag vocabulary:
 - meal_type (zero or more): ${MEAL_TYPES.join(', ')}
 - cuisine (at most one): ${CUISINES.join(', ')}
 - protein (at most one): ${PROTEINS.join(', ')}
-- effort (exactly one): quick (under 30 minutes total), weeknight (30 to 60),
-  project (over 60, or overnight rests, or proving)
 - damage (exactly one): tidy, messy, carnage
 
 Damage rubric. Count the things that need washing:
@@ -147,6 +156,9 @@ ${RECIPE_SHAPE_RULES}
 - If part of the source is unreadable, missing, or cut off, transcribe what you
   can and describe the gap in extraction_warnings. Never invent the missing
   part.
+- A URL capture may end with "Caption the cook shared with the link". Take
+  the recipe from the page; when the page has none (a login wall, a reel),
+  take it from the caption instead.
 - If the input contains no recipe at all, return empty ingredients and steps
   and say what you found instead in extraction_warnings.
 - yield is a count plus a unit word ("4 servings", "12 muffins"). Use
@@ -155,6 +167,37 @@ ${RECIPE_SHAPE_RULES}
   source names one, else null.
 
 ${RECIPE_RULES}`;
+
+/** What Claude answers an extraction with (issue #70): effort_override in
+ *  place of effort, which code derives. */
+export type ReplyTags = Omit<RecipeDraft['tags'], 'effort'> & { effort_override: 'project' | null };
+export type ExtractReply = Omit<RecipeDraft, 'tags'> & { tags: ReplyTags };
+
+/** SPEC 3.4 effort from the minutes: under 30 quick, 30 to 60 weeknight,
+ *  over 60 project. A source with no times at all says weeknight, the
+ *  middle guess the review form lets the cook change. */
+export function deriveEffort(
+	prep: number | null,
+	cook: number | null,
+	override: 'project' | null
+): Effort {
+	if (override === 'project') return 'project';
+	if (prep === null && cook === null) return 'weeknight';
+	const total = (prep ?? 0) + (cook ?? 0);
+	return total < 30 ? 'quick' : total <= 60 ? 'weeknight' : 'project';
+}
+
+/** A Claude reply (an extraction or a generation candidate) as a draft:
+ *  effort derived, the override dropped. */
+export function fromReply<R extends Pick<ExtractReply, 'prep_minutes' | 'cook_minutes' | 'tags'>>(
+	r: R
+): Omit<R, 'tags'> & { tags: RecipeDraft['tags'] } {
+	const { effort_override, ...tags } = r.tags;
+	return {
+		...r,
+		tags: { ...tags, effort: deriveEffort(r.prep_minutes, r.cook_minutes, effort_override) }
+	};
+}
 
 /** A draft's conversion job's input_json (issue #67): a reconvert keyed to
  *  the draft instead of a variation. The as-written body rides along because
@@ -177,11 +220,12 @@ async function extractOnce(
 	content: string | ContentBlockParam[],
 	emptyCode: ErrorCode = 'no_recipe_found'
 ): Promise<RecipeDraft> {
-	const draft = await claudeCall<RecipeDraft>(db, {
+	const reply = await claudeCall<ExtractReply>(db, {
 		system: EXTRACT_SYSTEM,
 		messages: [{ role: 'user', content }],
 		schema: RECIPE_DRAFT_SCHEMA
 	});
+	const draft: RecipeDraft = fromReply(reply);
 	if (!hasRecipe(draft)) throw new JobError(emptyCode);
 	return draft;
 }
@@ -444,8 +488,11 @@ export function pageContent(html: string): string {
 }
 
 // Issue #39: a reel page blocks fetchers or strips to a login wall, but the
-// caption the cook pasted alongside the link still holds the recipe.
-const FALLBACK_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked', 'no_recipe_found'];
+// caption the cook pasted alongside the link still holds the recipe. Issue
+// #70: the caption rides with the page in the one call, so a page with no
+// recipe costs no second call. Only a page that never arrived falls back.
+export const CAPTION_PREAMBLE = 'Caption the cook shared with the link: ';
+const FETCH_CODES: readonly ErrorCode[] = ['fetch_failed', 'fetch_blocked'];
 
 /** Handler for the extract_url job kind: input_json is { url, page?, text? }.
  *  page is pageContent of the HTML the phone rendered; when present the
@@ -472,15 +519,21 @@ export const extractUrl = async (
 		onPageImages?.(pageImages(html, url));
 		return pageContent(html);
 	};
-	const draft = async () => {
+	const caption = text?.trim() ? text : null;
+	const content = async () => {
 		try {
-			return await extractOnce(db, page ?? (await readPage()));
+			return page ?? (await readPage());
 		} catch (e) {
-			if (!text?.trim() || !(e instanceof JobError) || !FALLBACK_CODES.includes(e.code)) throw e;
-			return extractOnce(db, text);
+			if (caption && e instanceof JobError && FETCH_CODES.includes(e.code)) return null;
+			throw e;
 		}
 	};
-	return extracted(db, job, draft());
+	const fetched = await content();
+	const user =
+		fetched === null
+			? caption!
+			: [fetched, caption && `${CAPTION_PREAMBLE}${caption}`].filter(Boolean).join('\n\n');
+	return extracted(db, job, extractOnce(db, user));
 };
 
 // SPEC 5.4 user content, photo path: image blocks in page order, then this

@@ -11,38 +11,65 @@ final class FakeServer: Sendable {
 	typealias Reply = (status: Int, body: Data)
 	let host = UUID().uuidString.lowercased() + ".test"
 	private let routes: [String: Reply]
-	/// Requests with this key are held until `count` of them have arrived, or
-	/// answered 503 after two seconds: a test that a client sends them together.
-	let together: (key: String, count: Int)?
-	private let arrived = OSAllocatedUnfairLock<Int>(initialState: 0)
+	/// Routes that tag their reply and answer a matching If-None-Match with 304.
+	private let etags: [String: String]
+	/// Routes whose replies wait for `release()`, so a test can see which
+	/// requests are in flight together.
+	private let held: Set<String>
+	private let parked = OSAllocatedUnfairLock<(released: Bool, waiting: [@Sendable () -> Void])>(
+		initialState: (false, []))
 	private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
+	private let sentHeaders = OSAllocatedUnfairLock<[[String: String]]>(initialState: [])
 	private let last = OSAllocatedUnfairLock<(headers: [String: String], body: Data)>(initialState: ([:], Data()))
 
-	init(_ routes: [String: Reply] = [:], together: (key: String, count: Int)? = nil) {
+	init(_ routes: [String: Reply] = [:], etags: [String: String] = [:], held: Set<String> = []) {
 		self.routes = routes
-		self.together = together
+		self.etags = etags
+		self.held = held
 		StubProtocol.servers.withLock { $0[host] = self }
 	}
 
 	var requests: [String] { log.withLock { $0 } }
+	/// Each request's headers, in the order of `requests`.
+	var headers: [[String: String]] { sentHeaders.withLock { $0 } }
 	var lastHeaders: [String: String] { last.withLock { $0.headers } }
 	var lastBody: Data { last.withLock { $0.body } }
 
-	fileprivate func answer(_ request: URLRequest) -> Reply {
+	/// Lets every held reply go, and every later one straight through.
+	func release() {
+		let waiting = parked.withLock { p in
+			p.released = true
+			defer { p.waiting = [] }
+			return p.waiting
+		}
+		for reply in waiting { reply() }
+	}
+
+	fileprivate func respond(to request: URLRequest, _ reply: @escaping @Sendable (Int, [String: String], Data) -> Void) {
 		let url = request.url!
 		let key = "\(request.httpMethod ?? "GET") \(url.path())" + (url.query().map { "?\($0)" } ?? "")
-		log.withLock { $0.append(key) }
-		last.withLock { $0 = (request.allHTTPHeaderFields ?? [:], Self.body(of: request)) }
-		if let together, together.key == key {
-			arrived.withLock { $0 += 1 }
-			let deadline = Date.now.addingTimeInterval(2)
-			while arrived.withLock({ $0 }) < together.count {
-				guard Date.now < deadline else { return (503, try! Fixtures.data("error")) }
-				Thread.sleep(forTimeInterval: 0.01)
-			}
+		let (status, headers, body) = answer(request, key: key)
+		let send: @Sendable () -> Void = { reply(status, headers, body) }
+		guard held.contains(key) else { return send() }
+		let now = parked.withLock { p in
+			if p.released { return true }
+			p.waiting.append(send)
+			return false
 		}
-		if url.path().contains("/jobs/") { return (200, try! Fixtures.data("job-get-queued")) }
-		return routes[key] ?? (404, try! Fixtures.data("error"))
+		if now { send() }
+	}
+
+	private func answer(_ request: URLRequest, key: String) -> (Int, [String: String], Data) {
+		let url = request.url!
+		let sent = request.allHTTPHeaderFields ?? [:]
+		log.withLock { $0.append(key) }
+		sentHeaders.withLock { $0.append(sent) }
+		last.withLock { $0 = (sent, Self.body(of: request)) }
+		if url.path().contains("/jobs/") { return (200, [:], try! Fixtures.data("job-get-queued")) }
+		guard let (status, body) = routes[key] else { return (404, [:], try! Fixtures.data("error")) }
+		guard let etag = etags[key] else { return (status, [:], body) }
+		if sent["If-None-Match"] == etag { return (304, ["ETag": etag], Data()) }
+		return (status, ["ETag": etag], body)
 	}
 
 	/// URLSession hands a protocol the body as a stream, not `httpBody`.
@@ -69,16 +96,16 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
 	override func stopLoading() {}
 	override func startLoading() {
 		let url = request.url!
-		let server = Self.servers.withLock { $0[url.host() ?? ""] }
-		guard let server, server.together != nil else { return reply(server?.answer(request) ?? (404, Data())) }
-		// Off the loading thread, so a held request does not block the next one.
-		DispatchQueue.global().async { self.reply(server.answer(self.request)) }
+		guard let server = Self.servers.withLock({ $0[url.host() ?? ""] }) else {
+			return finish(url, 404, [:], Data())
+		}
+		server.respond(to: request) { [self] status, headers, body in finish(url, status, headers, body) }
 	}
 
-	private func reply(_ answer: FakeServer.Reply) {
-		let response = HTTPURLResponse(url: request.url!, statusCode: answer.status, httpVersion: nil, headerFields: nil)!
+	private func finish(_ url: URL, _ status: Int, _ headers: [String: String], _ body: Data) {
+		let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers)!
 		client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-		client?.urlProtocol(self, didLoad: answer.body)
+		client?.urlProtocol(self, didLoad: body)
 		client?.urlProtocolDidFinishLoading(self)
 	}
 }

@@ -137,9 +137,41 @@ public struct SuggestionFile: Sendable {
 
 	/// Stores `image` (any format ImageIO reads) shrunk to `coverEdge`.
 	public func writeCover(_ image: Data, named name: String) {
-		guard let jpeg = try? JPEG.thumbnail(image, maxEdge: Self.coverEdge) else { return }
+		guard let jpeg = Self.shrink(image) else { return }
+		writeCoverJPEG(jpeg, named: name)
+	}
+
+	/// Stores a cover `shrink` already made.
+	func writeCoverJPEG(_ jpeg: Data, named name: String) {
 		try? FileManager.default.createDirectory(at: covers, withIntermediateDirectories: true)
 		try? jpeg.write(to: cover(named: name), options: .atomic)
+	}
+
+	/// A cover at the widget's size, or nil for bytes ImageIO cannot read.
+	@Sendable static func shrink(_ image: Data) -> Data? {
+		try? JPEG.thumbnail(image, maxEdge: coverEdge)
+	}
+
+	/// Downloads and shrinks `wanted` side by side, off the main actor: a week
+	/// of covers is up to seven downloads and decodes, and the app runs this
+	/// while the cook is using it. Returns the shrunk JPEG by file name; a
+	/// cover that failed to download or decode is left out.
+	nonisolated static func shrinkCovers(
+		_ wanted: [(name: String, url: URL)],
+		fetch: @escaping @Sendable (URL) async -> Data?,
+		shrink: @escaping @Sendable (Data) -> Data? = SuggestionFile.shrink
+	) async -> [String: Data] {
+		await withTaskGroup(of: (String, Data?).self) { group in
+			for (name, url) in wanted {
+				group.addTask {
+					guard let data = await fetch(url) else { return (name, nil) }
+					return (name, shrink(data))
+				}
+			}
+			var out: [String: Data] = [:]
+			for await (name, jpeg) in group { if let jpeg { out[name] = jpeg } }
+			return out
+		}
 	}
 
 	/// Deletes every cover not named in `names`.

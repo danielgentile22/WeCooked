@@ -585,7 +585,7 @@
 					<h2>Photos</h2>
 					<div class="strip">
 						{#each r.images as img (img.id)}
-							<img src={img.url} alt="" loading="lazy" />
+							<img src={img.thumb_url} alt="" loading="lazy" />
 						{/each}
 					</div>
 				</section>

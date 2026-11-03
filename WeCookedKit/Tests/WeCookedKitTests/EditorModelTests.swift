@@ -105,15 +105,17 @@ struct CaptureModelTests {
 		#expect(model.photos.isEmpty)
 	}
 
-	/// Issue #77: picked pages go up together. The server answers none of the
-	/// three until all three have arrived, so one-at-a-time uploads fail here.
-	@Test func pickedPhotosUploadTogether() async {
-		let server = FakeServer(
-			[Self.uploadCapture: FakeServer.fixture("image-upload")], together: (Self.uploadCapture, 3))
+	/// Issue #77: picked pages go up together. The server holds every upload,
+	/// so one-at-a-time uploads would show only the first in flight.
+	@Test func pickedPhotosUploadTogether() async throws {
+		let server = FakeServer([Self.uploadCapture: FakeServer.fixture("image-upload")], held: [Self.uploadCapture])
 		let model = Self.model(server)
 		let uploads = [Data([1]), Data([2]), Data([3])].compactMap { model.add(jpeg: $0) }
 		#expect(model.photos.count == 3)
+		for _ in 0..<200 where server.requests.count < 3 { try await Task.sleep(for: .milliseconds(10)) }
+		#expect(server.requests == Array(repeating: Self.uploadCapture, count: 3))
 		#expect(model.photos.allSatisfy { if case .uploading = $0.state { true } else { false } })
+		server.release()
 		for upload in uploads { await upload.value }
 		#expect(model.photos.allSatisfy { if case .uploaded = $0.state { true } else { false } })
 	}
@@ -723,11 +725,12 @@ struct EditorModelTests {
 
 	// MARK: Find another photo
 
-	static let coverDraft: JobID = "01TEST00000000000000000046"
+	static let coverDraft: JobID = "01TEST00000000000000000047"
 
 	static func found(_ id: ImageID) -> RecipeImage {
 		RecipeImage(
-			id: id, url: URL(string: "https://example.com/\(id).jpg")!, width: 40, height: 30,
+			id: id, url: URL(string: "https://example.com/\(id).jpg")!,
+			thumbUrl: URL(string: "https://example.com/\(id).webp")!, width: 40, height: 30,
 			sourceUrl: URL(string: "https://site.example/\(id).jpg"))
 	}
 
