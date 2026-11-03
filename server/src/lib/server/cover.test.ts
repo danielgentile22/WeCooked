@@ -4,9 +4,13 @@ import sharp from 'sharp';
 import type { CaptureInput, CoverResult, RecipeDraft } from '$lib/extract';
 import { migrate } from './migrate';
 import { createJob, JobError, type JobRow } from './jobs';
+import { claudeCall } from './claude';
+import { extractUrl } from './extract';
 import {
 	acceptable,
 	backfillCovers,
+	claudePick,
+	COVER_DOWNLOADS,
 	coverHandler,
 	enqueueCover,
 	fetchImage,
@@ -413,6 +417,175 @@ describe('find another photo requests', () => {
 
 		expect(findRecipeCover(db, 'missing')).toBeNull();
 		expect(findRecipeCover(db, recipe('r3', { deleted_at: '2026' }))).toBeNull();
+	});
+});
+
+/** A fetchImage whose downloads finish when the test says, tracking how many run at once. */
+function gatedFetch() {
+	const pending = new Map<string, (b: Buffer | null) => void>();
+	let active = 0;
+	let peak = 0;
+	const fetchImage = vi.fn(
+		(url: string) =>
+			new Promise<Buffer | null>((resolve) => {
+				active++;
+				peak = Math.max(peak, active);
+				pending.set(url, (b) => {
+					active--;
+					resolve(b);
+				});
+			})
+	);
+	return {
+		fetchImage,
+		peak: () => peak,
+		started: () => fetchImage.mock.calls.map(([u]) => u),
+		finish: async (url: string, b: Buffer | null) => {
+			pending.get(url)!(b);
+			pending.delete(url);
+			await new Promise((r) => setTimeout(r, 0));
+		}
+	};
+}
+
+describe('parallel candidate downloads (issue #72)', () => {
+	it('downloads search hits at most COVER_DOWNLOADS at a time and keeps rank order when they finish out of order', async () => {
+		const id = draft({ text: 'Shakshuka...' }, 'extract_paste');
+		const full = await jpeg();
+		const urls = Array.from({ length: 6 }, (_, i) => `https://img.com/${i}.jpg`);
+		const g = gatedFetch();
+		const d = deps({
+			searchImages: vi.fn(async () => hits(...urls)),
+			fetchImage: g.fetchImage,
+			claudePick: vi.fn(async () => 0)
+		});
+		const done = run(d, coverJob({ draft_id: id }));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(g.started()).toEqual(urls.slice(0, COVER_DOWNLOADS));
+		// Lower ranks land first; rank 0 is dead and rank 1 arrives last.
+		await g.finish(urls[3], full);
+		await g.finish(urls[2], full);
+		await g.finish(urls[0], null);
+		await g.finish(urls[4], full);
+		await g.finish(urls[5], full);
+		await g.finish(urls[1], full);
+		const result = await done;
+		expect(g.peak()).toBe(COVER_DOWNLOADS);
+		expect(result.source_url).toBe(urls[1]);
+		expect(vi.mocked(d.claudePick).mock.calls[0][2]).toHaveLength(4);
+	});
+
+	it('takes the highest ranked usable source image even when lower ones land first', async () => {
+		const urls = Array.from({ length: 6 }, (_, i) => `https://a.com/${i}.jpg`);
+		const id = draft({ url: 'https://a.com/r', image_urls: urls });
+		const full = await jpeg();
+		const g = gatedFetch();
+		const done = run(deps({ fetchImage: g.fetchImage }), coverJob({ draft_id: id }));
+		await new Promise((r) => setTimeout(r, 0));
+		await g.finish(urls[2], full);
+		await g.finish(urls[1], full);
+		expect(g.started()).toEqual(urls); // each finished download frees a slot
+		await g.finish(urls[0], full);
+		expect(await done).toMatchObject({ origin: 'source', source_url: urls[0] });
+	});
+
+	it('starts no more downloads once the winner is known', async () => {
+		const urls = Array.from({ length: 6 }, (_, i) => `https://a.com/${i}.jpg`);
+		const id = draft({ url: 'https://a.com/r', image_urls: urls });
+		const full = await jpeg();
+		const g = gatedFetch();
+		const done = run(deps({ fetchImage: g.fetchImage }), coverJob({ draft_id: id }));
+		await new Promise((r) => setTimeout(r, 0));
+		await g.finish(urls[1], full);
+		await g.finish(urls[0], null);
+		expect(await done).toMatchObject({ source_url: urls[1] });
+		// Settled by rank 1 with ranks 2 to 4 still in flight, so rank 5 never starts.
+		expect(g.started()).toEqual(urls.slice(0, 5));
+	});
+});
+
+describe('page images and the early source step (issue #72)', () => {
+	const body = { ingredients: [{ heading: null, items: ['egg'] }], steps: ['fry'] };
+	const extracted = { title: 'Shakshuka', body: { source_units: 'metric', ...body } } as RecipeDraft;
+
+	it('a server-fetched URL capture hands the page images to the cover job, which never refetches', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(extracted);
+		const id = createJob(db, 'extract_url', { url: 'https://a.com/r' });
+		const full = await jpeg();
+		const fetchImage = vi.fn(async () => full);
+		const handler = withCover(
+			(job, db, hooks) =>
+				extractUrl(job, db, { ...hooks, fetchPage: async () => '<meta property="og:image" content="/hero.jpg">' }),
+			fetchImage
+		);
+		const result = await handler(row(id)!, db);
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(JSON.stringify(result), id);
+		expect(inputOf(id).image_urls).toEqual(['https://a.com/hero.jpg']);
+		const coverId = (db.prepare(`SELECT id FROM job WHERE kind = 'cover'`).get() as { id: string }).id;
+		// deps() throws on fetchPage and fetchImage: the cover comes from the early source step.
+		const found = await run(deps(), coverId);
+		expect(found).toMatchObject({ origin: 'source', source_url: 'https://a.com/hero.jpg' });
+		expect(fetchImage).toHaveBeenCalledTimes(1);
+	});
+
+	it('a page the server could not fetch is not fetched again by the cover job', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue(extracted);
+		const id = createJob(db, 'extract_url', { url: 'https://a.com/r', text: 'Caption: 2 eggs' });
+		const handler = withCover((job, db, hooks) =>
+			extractUrl(job, db, {
+				...hooks,
+				fetchPage: async () => {
+					throw new JobError('fetch_blocked');
+				}
+			})
+		);
+		const result = await handler(row(id)!, db);
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(JSON.stringify(result), id);
+		expect(inputOf(id).image_urls).toEqual([]);
+		const d = deps({ searchImages: vi.fn(async () => []) });
+		expect(await run(d, coverJob({ draft_id: id }))).toEqual(NONE);
+		expect(d.fetchPage).not.toHaveBeenCalled();
+		expect(d.searchImages).toHaveBeenCalled();
+	});
+
+	it('starts downloading the page images when the capture starts, before extraction finishes', async () => {
+		const id = createJob(db, 'extract_url', { url: 'https://a.com/r', image_urls: ['https://a.com/dish.jpg'] });
+		const full = await jpeg();
+		const fetchImage = vi.fn(async () => full);
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		const extraction = withCover(async () => {
+			await gate;
+			return draftResult;
+		}, fetchImage)(row(id)!, db);
+		expect(fetchImage).toHaveBeenCalledWith('https://a.com/dish.jpg');
+		release();
+		const result = await extraction;
+		db.prepare(`UPDATE job SET status = 'done', result_json = ? WHERE id = ?`).run(JSON.stringify(result), id);
+		const coverId = (db.prepare(`SELECT id FROM job WHERE kind = 'cover'`).get() as { id: string }).id;
+		expect(await run(deps(), coverId)).toMatchObject({ origin: 'source', source_url: 'https://a.com/dish.jpg' });
+	});
+
+	it('drops the early source step when extraction fails, so a retry starts fresh', async () => {
+		const id = createJob(db, 'extract_url', { url: 'https://a.com/r', image_urls: ['https://a.com/dish.jpg'] });
+		const fetchImage = vi.fn(async () => null);
+		await expect(
+			withCover(async () => {
+				throw new JobError('no_recipe_found');
+			}, fetchImage)(row(id)!, db)
+		).rejects.toMatchObject({ code: 'no_recipe_found' });
+		await withCover(async () => draftResult, fetchImage)(row(id)!, db);
+		expect(fetchImage).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('cover pick (issue #72)', () => {
+	it('asks Claude for an index only, with no reason field', async () => {
+		vi.mocked(claudeCall).mockReset().mockResolvedValue({ pick: 2 });
+		expect(await claudePick(db, 'Shakshuka', [await jpeg()])).toBe(2);
+		const { schema } = vi.mocked(claudeCall).mock.calls[0][1];
+		expect(schema).toMatchObject({ required: ['pick'] });
+		expect(Object.keys(schema.properties as object)).toEqual(['pick']);
 	});
 });
 

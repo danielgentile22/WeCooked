@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 	import { enhance } from '$app/forms';
 	import {
 		Check,
@@ -14,7 +15,7 @@
 		Trash2
 	} from '@lucide/svelte';
 	import Banner from '$lib/components/Banner.svelte';
-	import { pollJob } from '$lib/jobs';
+	import { jobDeps, pollJob } from '$lib/jobs';
 	import type { ShoppingItem, ShoppingState } from '$lib/server/shopping';
 
 	let { data } = $props();
@@ -201,12 +202,15 @@
 	});
 
 	// SPEC 6.3 job polling for a fast flip; the 5 s poll is the backstop.
+	// Issue #66: leaving the page cancels the poll.
 	const watched = new Set<string>();
+	const polls = new AbortController();
+	onDestroy(() => polls.abort());
 	function watchBuild(jobId: string) {
 		if (watched.has(jobId)) return;
 		watched.add(jobId);
-		pollJob(jobId)
-			.then(() => invalidateAll())
+		pollJob(jobId, { signal: polls.signal })
+			.then(() => invalidate(jobDeps.shopping))
 			.catch(() => watched.delete(jobId));
 	}
 

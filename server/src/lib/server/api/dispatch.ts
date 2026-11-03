@@ -16,6 +16,8 @@ export type ApiRequest = {
 	deviceId: string | undefined;
 	/** The raw If-None-Match header, for routes marked `conditional`. */
 	ifNoneMatch?: string;
+	/** Aborts when the client goes away, so a long-poll stops holding on. */
+	signal?: AbortSignal;
 	/** The JSON body, or undefined when it is empty or malformed. */
 	json(): Promise<unknown>;
 	bytes(): Promise<Buffer>;

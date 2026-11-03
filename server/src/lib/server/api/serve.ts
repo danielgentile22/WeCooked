@@ -12,6 +12,7 @@ export async function serve(event: RequestEvent, path: string): Promise<Response
 		ip: request.headers.get('fly-client-ip') ?? event.getClientAddress(),
 		deviceId: deviceIdHeader(request.headers.get('x-device-id')),
 		ifNoneMatch: request.headers.get('if-none-match') ?? undefined,
+		signal: request.signal,
 		json: () => request.json().catch(() => undefined),
 		bytes: async () => Buffer.from(await request.arrayBuffer())
 	});

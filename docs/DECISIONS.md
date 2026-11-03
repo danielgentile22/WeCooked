@@ -784,6 +784,21 @@ systems on their own phones without a shared setting to fight over.
 authored", and reconvert failures surface as a banner on the derived body
 (ADR-028).
 
+**Amended 2026-11-03 (issue #67).** The guarantee was "both bodies come
+back in the same call as the extraction". It is now: **both bodies exist on
+every saved recipe and variation, and the counterpart is queued the moment its
+source body exists.** Extraction (paste, URL, photos) asks Claude for the
+as-written body only, and a conversion job keyed to the draft is queued as the
+extraction finishes. Writing every body twice was most of a capture's wait, so
+the draft now opens on the as-written body and the counterpart fills in a few
+seconds later, shown as "converting" until then and with the reconvert banner
+and retry if it fails. Saving does not wait for it: a ready counterpart is
+stored, and a converting or failed one is dropped in favour of a reconvert on
+the saved variation, so the invariant holds on every saved recipe. "Eager, not
+on demand" stands, because the conversion still starts without anyone asking.
+Generation still writes both bodies in one call until its own ticket (#68)
+moves it over; scaling moved in #69.
+
 **The hand-edit problem, and the fork it created.** Editing one body makes its
 counterpart wrong.
 
@@ -903,6 +918,10 @@ later without touching the data model.
 **Three rules adopted with it.**
 
 1. **Poll at 1.5 s, back off after 30 s.** No websockets for two users.
+   **Amended 2026-11-03 (issue #65).** The poll is a long-poll: the client
+   passes `wait`, the server answers when the status changes, so a finished
+   job is seen at once instead of up to 5 s late. Still one endpoint and no
+   socket; the 1.5 s schedule is the fallback for an unheld reply.
 2. **Failures are visible, never silent.** A failed job stays in the list as
    "extraction failed, tap to see why", and tapping opens the review form with
    the source attached.
@@ -1052,6 +1071,22 @@ the daily cap counts **Claude calls, not job inserts**: incremented inside
 the API wrapper, checked before each call, env var renamed to
 `DAILY_CALL_CAP`. This keeps the 50 meaning what it says for every future
 compound job.
+
+**Amended 2026-11-03 (#69).** Inside the one job, the missing scales now run
+concurrently, then the merge runs once. Each scale still saves in its own
+transaction, and the job waits for every scale to settle before it fails, so
+"variations saved before the failure persist" still holds. Each scale also
+writes the metric body only and queues a US reconvert, the same path saving
+uses. The merge refers to recipes by number (1, 2, 3) and the code maps the
+numbers back to recipe ids. The merge input is metric lines only (as-written
+lines when a body has no metric yet): in a comparison on the same three
+recipes, three runs each, metric-only merged the same lines as metric plus
+US and ran in 5 to 11 s against 10 to 12 s. Its US text came back as
+decimal pounds ("1.75 lb tinned kidney beans") until the prompt asked for US
+shopping units; with that line it matched the US-input variant ("2 (15 oz)
+cans kidney beans"). Measured end to end with the final prompt, a build of
+three new yields went from 28.8 s to 10.8 s, and one scale from 7.5 s to
+5.0 s (Sonnet 5.5 at low effort, three runs each, `model-bench.mjs`).
 
 ---
 
@@ -1546,6 +1581,21 @@ or recipe; the route stores that list on the job. The new image takes the
 cover and the found one it displaces is soft-deleted. Each tap is one Brave
 query and one Claude call, so the server refuses a second while one is
 pending.
+
+**Amended 2026-11-03 (issue #72).** Covers arrive sooner. Candidate images
+download up to four at a time, and the highest ranked usable image still
+wins when downloads finish out of order; nothing new starts once the winner
+is known, so a few dead links cost one timeout, not one each. When the server
+fetches a URL capture's page itself, it saves the page's photos into the
+capture's `input_json` (an empty list when the fetch failed), and the cover
+job never fetches that page again: one request per publisher, not two. The
+source step needs no title, so it starts when the capture job starts and runs
+alongside the extraction; the cover job queued after the extraction takes its
+result. The pick asks for the index only, with no reason field. A benchmark
+(`model-bench.mjs <model> 3 cover`, nine sets with a known answer, built from
+Brave hits checked by eye) scored Sonnet 5.5 27 of 27 and Haiku 5.5 24 of 27:
+Haiku took huevos rancheros for shakshuka on every run, at about the same
+speed (1.5 s against 1.6 s). `COVER_MODEL` stays Sonnet 5.5.
 
 ---
 

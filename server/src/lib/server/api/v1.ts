@@ -13,7 +13,7 @@ import {
 	updateRecipe
 } from '../recipes';
 import { keepMine, recalcVariation, requestScale, retryScale } from '../scale';
-import { createJob, getJobPoll } from '../jobs';
+import { createJob, parseWait, waitForJobPoll } from '../jobs';
 import {
 	discardDraft,
 	draftView,
@@ -21,6 +21,7 @@ import {
 	getGenerationJob,
 	pickCandidate,
 	retryDraft,
+	retryDraftConversion,
 	saveDraft
 } from '../drafts';
 import {
@@ -316,6 +317,16 @@ export const routes: readonly Route[] = [
 			return OK;
 		}
 	},
+	// Issue #67: D6 "tap to retry" for a draft's failed conversion.
+	{
+		method: 'POST',
+		path: '/drafts/:id/retry-conversion',
+		run: (db, req) => {
+			const job = draftJob(db, req.params.id);
+			guard(() => retryDraftConversion(db, job));
+			return OK;
+		}
+	},
 	{
 		method: 'POST',
 		path: '/drafts/:id/cover',
@@ -411,8 +422,11 @@ export const routes: readonly Route[] = [
 	{
 		method: 'GET',
 		path: '/jobs/:id',
-		run: (db, req) => {
-			const poll = getJobPoll(db, req.params.id);
+		run: async (db, req) => {
+			// ?wait= seconds holds the reply until the status changes (issue #65).
+			const wait = parseWait(req.query.get('wait'));
+			if (wait === null) throw bad('Wait must be a number of seconds.');
+			const poll = await waitForJobPoll(db, req.params.id, wait, req.signal);
 			if (!poll) throw new ApiError(404, 'No such job.');
 			return poll;
 		}

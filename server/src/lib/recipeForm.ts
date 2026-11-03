@@ -79,3 +79,15 @@ export function payload(draft: FormState, loaded: LoadedBodies, editing: boolean
 		image_ids: images.map((i) => i.id)
 	};
 }
+
+/**
+ * A draft's counterpart can arrive after its form opened (issue #67): it
+ * joins the form as the hidden body, but only while the form has none, which
+ * means the as-written body is the one on screen. `payload` then sends it
+ * only if that body is still unedited. Mirrors iOS EditorForm.rebased.
+ */
+export function adoptCounterpart(form: FormState, loaded: FormState): void {
+	if (form.other !== null || loaded.other === null) return;
+	if (form.shown_units !== loaded.source_units) return;
+	form.other = JSON.parse(JSON.stringify(loaded.other));
+}

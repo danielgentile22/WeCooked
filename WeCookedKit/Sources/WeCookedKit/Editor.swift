@@ -187,16 +187,30 @@ public struct EditorForm: Codable, Hashable, Sendable {
 	/// matches the bodies this form was started from: the other phone edited it
 	/// meanwhile. The screen shows "This recipe changed since you started
 	/// editing" and offers Start over.
+	/// A draft's counterpart arriving (issue #67) is not an edit elsewhere.
 	public func baselineDiffers(from fresh: EditorForm) -> Bool {
-		baseline != fresh.baseline
+		guard var mine = baseline, let theirs = fresh.baseline, mine.other == nil else {
+			return baseline != fresh.baseline
+		}
+		mine.other = theirs.other
+		return mine != theirs
 	}
 
 	/// This form's typed work, measured against `fresh`'s bodies. The payload
 	/// rule always diffs against what the server holds now, as on the web, so a
 	/// restored form cannot mark an edit made elsewhere as "unchanged".
+	///
+	/// A draft's counterpart can arrive after the form opened (issue #67): it
+	/// joins as the hidden body while the form has none, which means the
+	/// as-written body is on screen. `bodySelection` then sends it only if
+	/// that body is still unedited. Mirrors the web's `adoptCounterpart`.
 	public func rebased(onto fresh: EditorForm) -> EditorForm {
 		var f = self
 		f.baseline = fresh.baseline
+		if f.other == nil, let base = fresh.baseline, let counterpart = base.other,
+			f.shownUnits == base.sourceUnits {
+			f.other = counterpart
+		}
 		return f
 	}
 

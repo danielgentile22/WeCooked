@@ -4,12 +4,12 @@ import candidates from '../../../fixtures/candidates.json';
 import type { GenerateResult } from '$lib/extract';
 import { claudeCall } from './claude';
 import { EXTRACT_SYSTEM, RECIPE_RULES } from './extract';
-import { GENERATE_SYSTEM, generate } from './generate';
+import { GENERATE_SYSTEM, generate, type GenerateReply } from './generate';
 import type { JobRow } from './jobs';
 
 vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
 
-const fixture = () => structuredClone(candidates) as GenerateResult;
+const fixture = () => structuredClone(candidates) as GenerateReply;
 const db = new Database(':memory:');
 const jobRow = {
 	kind: 'generate',

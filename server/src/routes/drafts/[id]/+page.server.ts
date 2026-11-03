@@ -9,11 +9,13 @@ import {
 	getGenerationJob,
 	pickCandidate,
 	retryDraft,
+	retryDraftConversion,
 	saveDraft
 } from '$lib/server/drafts';
 import { createJob } from '$lib/server/jobs';
 import type { GenerateInput } from '$lib/extract';
 import { findDraftCover } from '$lib/server/cover';
+import { jobDeps } from '$lib/jobs';
 
 // The draft review page (SPEC 6.5): the job row is the draft. Done jobs seed
 // the form from result_json; failed jobs open it empty with the source text
@@ -31,7 +33,8 @@ function generationJob(id: string): JobRow {
 	return job;
 }
 
-export const load: PageServerLoad = ({ params }) => {
+export const load: PageServerLoad = ({ params, depends }) => {
+	depends(jobDeps.draft(params.id));
 	const job = draftJob(params.id);
 	if (job.recipe_id) redirect(303, `/recipes/${job.recipe_id}`);
 	return draftView(db, job);
@@ -65,6 +68,16 @@ export const actions: Actions = {
 	retry: async ({ params }) => {
 		retryDraft(db, draftJob(params.id)); // 404s non-draft jobs; only drafts retry here
 		redirect(303, `/drafts/${params.id}`);
+	},
+
+	// Issue #67: D6 "Retry" on a draft's failed conversion.
+	retryConversion: async ({ params }) => {
+		try {
+			retryDraftConversion(db, draftJob(params.id));
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Could not retry.' });
+		}
+		return { ok: true };
 	},
 
 	// Issue #41: the deck's "Pick this one". The row becomes an ordinary draft

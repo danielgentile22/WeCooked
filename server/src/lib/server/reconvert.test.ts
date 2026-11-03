@@ -128,3 +128,23 @@ describe('reconvert handler (SPEC 5.6, ADR-019)', () => {
 		expect(claudeCall).not.toHaveBeenCalled();
 	});
 });
+
+describe('draft conversion (issue #67)', () => {
+	it('converts the as-written body it carries and returns the counterpart as its result', async () => {
+		const source = {
+			source_units: 'metric' as const,
+			ingredients: [{ heading: null, items: ['400 g tinned chickpeas'] }],
+			steps: ['Bake at 190°C for 30 minutes.']
+		};
+		db.prepare(
+			`INSERT INTO job (id, kind, status, input_json, created_at)
+			 VALUES ('j1', 'reconvert', 'queued', ?, '2026-01-01T00:00:00Z')`
+		).run(JSON.stringify({ draft_id: 'draft1', source }));
+		vi.mocked(claudeCall).mockResolvedValue(usBody());
+		expect(await reconvert(queuedJob(), db)).toEqual(usBody());
+		const content = vi.mocked(claudeCall).mock.calls[0][1].messages[0].content as string;
+		expect(content).toContain('from metric to US units');
+		expect(content).toContain('400 g tinned chickpeas');
+		expect(db.prepare('SELECT COUNT(*) AS n FROM body').get()).toEqual({ n: 0 });
+	});
+});

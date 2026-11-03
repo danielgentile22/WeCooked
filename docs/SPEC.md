@@ -232,6 +232,9 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA synchronous = NORMAL;   -- safe with WAL + Litestream
+PRAGMA cache_size = -32000;    -- 32 MB page cache (issue #64)
+PRAGMA temp_store = MEMORY;    -- sorts stay in memory (issue #64)
+-- after migrating, at startup: PRAGMA optimize = 0x10002;
 
 CREATE TABLE recipe (
   id                TEXT PRIMARY KEY,
@@ -309,6 +312,8 @@ CREATE TABLE image (
                                   -- (ADR-024)
   r2_key_full    TEXT NOT NULL,   -- normalised upload, long edge <= 3000
   r2_key_display TEXT NOT NULL,   -- long edge 1200, for the UI
+  r2_key_claude  TEXT,            -- long edge 1568, the copy Claude reads; captures
+                                  -- only (migration 006, issue #71)
   width          INTEGER NOT NULL,
   height         INTEGER NOT NULL,
   role           TEXT NOT NULL CHECK (role IN ('capture','photo')),
@@ -337,7 +342,8 @@ CREATE TABLE job (
   started_at   TEXT,
   finished_at  TEXT
 );
-CREATE INDEX job_pending ON job(status, created_at) WHERE status IN ('queued','running');
+-- The job and image read indexes, and the cover_owner column, are in
+-- migrations/005_hot_indexes.sql (issue #64); it replaced job_pending.
 
 CREATE TABLE job_quota (
   day   TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' in America/New_York
@@ -440,17 +446,19 @@ arrives in v2, where the whole recipe collection becomes a reusable prefix.
 
 | Kind | Input | Output | Approx cost |
 |---|---|---|---|
-| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft` | $0.05 to $0.09 |
-| `scale` | source body + target yield | `BodyPair` + scaling note | ~$0.06 |
-| `reconvert` | one edited body | the counterpart body | ~$0.05 |
+| `extract` | HTML text, or pasted text, or 1-N images | full `RecipeDraft`, as-written body only (issue #67) | $0.05 to $0.09 |
+| `scale` | source body + target yield | metric body + scaling note (#69) | ~$0.06 |
+| `reconvert` | one edited body, or a draft's as-written body | the counterpart body | ~$0.05 |
 | `shopping_merge` | N ingredient lists | grouped shopping items | ~$0.05 |
 | `generate` | a description + yield count | three `RecipeDraft` candidates (ADR-042) | ~$0.10 |
 | cover pick | a recipe title + up to four 512 px photos | the index of the dish photo, or -1 (ADR-043) | under $0.01 |
 
 ### 5.3 Shared output shapes
 
-`BodyPair` is the unit that both `extract` and `scale` produce. Every recipe
-body exists in both unit systems at all times (ADR-019).
+`BodyPair` is the unit that `generate` produces. Every saved
+recipe body exists in both unit systems (ADR-019, amended by issue #67:
+`extract` writes the as-written body only, and the draft's conversion job
+writes the counterpart).
 
 ```jsonc
 // BodyPair
@@ -505,7 +513,14 @@ Output schema:
   "prep_minutes": 15,          // nullable
   "cook_minutes": 40,          // nullable
   "source_text": "string|null",
-  "body": { /* BodyPair */ },
+  // The as-written body (issue #67). Drafts stored before #67 and generation
+  // candidates hold a BodyPair here; the server reads those as this plus the
+  // counterpart.
+  "body": {
+    "source_units": "us",
+    "ingredients": [{ "heading": "string|null", "items": ["string"] }],
+    "steps": ["string"]
+  },
   "tags": {
     "meal_type": ["dinner"],
     "cuisine": "italian",      // nullable
@@ -532,8 +547,10 @@ Rules:
   modernise the recipe. Do not add ingredients that are not stated.
 - Preserve ingredient section headings ("For the sauce") as groups. If the
   recipe has no sections, return one group with a null heading.
+- Write the body once, in the units the source uses, and name them in
+  source_units. Convert nothing. When the source gives both, as in
+  "225°F (110°C)" or "1 lb (450 g)", keep only the source_units one.
 - Ingredients stay as human-readable strings, exactly as a cook would read them.
-- Produce the recipe in BOTH US and metric units. Follow the conversion rules.
 - Assign tags ONLY from the fixed vocabulary below. Never invent a tag value.
   Leave cuisine or protein null if unsure. effort and damage are required.
 - Score damage with the rubric below and show your arithmetic in
@@ -544,7 +561,6 @@ Rules:
 
 [tag vocabulary]
 [damage rubric]
-[conversion rules]
 ```
 
 User content per path:
@@ -601,6 +617,11 @@ Triggered when a human edits a body (ADR-019). Input is the edited body and its
 unit system; output is the counterpart body only. This preserves the invariant
 that the two unit systems always agree.
 
+A finished extraction also queues one, keyed to the draft instead of a
+variation (issue #67): `input_json` is `{ draft_id, source }` with the
+as-written body, and the converted body is the job's `result_json`. The
+draft reads its counterpart from there (6.5).
+
 ```jsonc
 { "ingredients": [...], "steps": [...] }
 ```
@@ -656,7 +677,11 @@ The client polls one job for the whole thing.
 
 ### 5.8 Images sent to Claude
 
-- Long edge resized to **2576 px**, JPEG quality 85.
+- Long edge resized to **1568 px**, JPEG quality 85. Issue #71 lowered this
+  from 2576 after a benchmark: on a two-page spread with 7pt footnotes,
+  1568 read every fact 2576 did, about 2 s faster and with half the bytes.
+- Built when a capture photo is uploaded and stored as `r2_key_claude`, so the
+  photo job only downloads it (issue #71). A recipe photo gets none.
 - Never send the raw camera file: iPhone photos are 12 to 24 MP and over 10 MB,
   the API caps at 10 MB, and the server downscales anyway, so full resolution
   buys nothing and costs latency and tokens.
@@ -719,8 +744,16 @@ visible failure the user can retry, not as a row that hangs forever.
 
 `GET /api/jobs/:id` returns `{status, error_code, error_text, result_ref}`.
 
-Client polls every **1.5 s**, backing off to 5 s after 30 s, and stops at 5
-minutes with a timeout message. No websockets for two users.
+`?wait=` seconds (at most 25) makes it a long-poll (issue #65): the reply is
+held until the job's status differs from what it was when the request arrived,
+or the wait elapses, and then carries the current status. A finished or
+unknown job, or no `wait`, answers at once, as older clients expect.
+
+Clients long-poll with `wait=25` and ask again as soon as a reply comes back,
+stopping at 5 minutes with a timeout message. A reply the server did not hold
+(a dropped connection, or a server from before the long-poll) falls back to
+polling every **1.5 s**, backing off to 5 s after 30 s. No websockets for two
+users.
 
 ### 6.4 Error codes and what the UI says
 
@@ -766,6 +799,17 @@ holds the description and yield count as input and three candidate
 which then reads as a ready draft seeded from that candidate; the review
 form and Save are the ones above. The saved recipe records the description
 as its `source_text` and has no `source_url`.
+
+A capture's draft opens on its **as-written body** alone (issue #67). The
+counterpart comes from the draft's conversion job (5.6), and the draft read
+reports `counterpart_state`: `ready` (the body rides in the seed as the
+known-good counterpart), `converting` (the clients watch the job and re-read
+the draft when it ends), or `failed` (the reconvert banner with retry,
+`POST /drafts/:id/retry-conversion`). Save never waits for it: a ready
+counterpart is stored even if the form loaded before it was ready, provided
+the as-written body is unedited; otherwise the recipe is saved with its
+source body and the new variation gets a reconvert, as any save without a
+counterpart does. Save and Discard delete the draft's conversion jobs.
 
 A **cover** job (issue #44, ADR-043) is not a draft kind. It follows a
 successful capture or a pick, finds a cover photo, and writes its image id to
@@ -1077,7 +1121,8 @@ The camera file never reaches the server intact, on purpose:
      server entirely (Safari decodes HEIC natively; `sharp` needs libheif), and
      caps a 10 MB camera file at 1 to 2 MB, which matters on cellular.
 2. **Server**: store the upload as `r2_key_full`. Derive `r2_key_display` at
-   1200 px long edge, and a 2576 px quality-85 JPEG for Claude.
+   1200 px long edge, and for a capture a 1568 px quality-85 JPEG for Claude
+   (`r2_key_claude`, section 5.8).
 
 **Deliberate deviation, stated plainly:** "store the original" means the
 normalised 3000 px JPEG, not the untouched camera file. The true original is not

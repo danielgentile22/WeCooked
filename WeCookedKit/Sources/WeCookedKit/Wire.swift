@@ -643,6 +643,43 @@ public struct DraftSeed: Codable, Hashable, Sendable {
 	public var counterpart: BodyText?
 }
 
+/// Where a draft's counterpart body is (issue #67). Unknown values decode, so
+/// a newer server cannot break an older app.
+public enum CounterpartStatus: WireEnum {
+	case ready, converting, failed
+	case unknown(String)
+
+	public init(wire: String) {
+		switch wire {
+		case "ready": self = .ready
+		case "converting": self = .converting
+		case "failed": self = .failed
+		default: self = .unknown(wire)
+		}
+	}
+	public var wire: String {
+		switch self {
+		case .ready: "ready"
+		case .converting: "converting"
+		case .failed: "failed"
+		case .unknown(let s): s
+		}
+	}
+}
+
+/// `ready`: the body is `DraftSeed.counterpart`. `converting` or `failed`:
+/// `jobId` is the draft's conversion job, watched while it runs and retried
+/// with `POST /drafts/:id/retry-conversion`.
+public struct CounterpartState: Codable, Hashable, Sendable {
+	public let status: CounterpartStatus
+	public let jobId: JobID?
+
+	public init(status: CounterpartStatus, jobId: JobID?) {
+		self.status = status
+		self.jobId = jobId
+	}
+}
+
 public struct DraftView: Codable, Hashable, Sendable {
 	public let id: JobID
 	public var kind: DraftKind
@@ -653,6 +690,8 @@ public struct DraftView: Codable, Hashable, Sendable {
 	/// The cover job still looking for this draft's cover; watched so the
 	/// draft is re-read when it ends and the found cover joins the form.
 	public var coverJobId: JobID?
+	/// Nil until there is an extraction, and from servers before issue #67.
+	public var counterpartState: CounterpartState?
 	public var warnings: [String]
 	public var damageReasoning: String?
 }
