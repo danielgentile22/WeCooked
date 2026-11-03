@@ -3,7 +3,7 @@ import { SESSION_COOKIE, issueSessionToken, setSessionCookie } from '$lib/server
 import { bearerToken, gate } from '$lib/server/gate';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/db'; // opens the database and runs migrations at boot
-import { recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
+import { pruneJobs, recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
 import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
 import { cover, withCover } from '$lib/server/cover';
 import { generate } from '$lib/server/generate';
@@ -32,7 +32,24 @@ if (!g.__jobRunner) {
 	recoverInterrupted(db); // SPEC 6.2
 	// Issue #42: a finished capture pushes "Ready to review" to the phone that queued it.
 	const push = pushAfterJob(db, { transport: http2Transport, auth: makeApnsAuth(env) });
-	g.__jobRunner = startRunner(db, handlers, 500, push);
+	const runner = startRunner(db, handlers, 500, push);
+	// Issue #63: old finished background jobs, at boot and then daily.
+	const prune = () => {
+		try {
+			pruneJobs(db);
+		} catch (e) {
+			console.error('job prune failed:', e);
+		}
+	};
+	prune();
+	const daily = setInterval(prune, 24 * 60 * 60 * 1000);
+	daily.unref?.();
+	g.__jobRunner = {
+		stop: () => {
+			runner.stop();
+			clearInterval(daily);
+		}
+	};
 }
 
 // The single auth gate (SPEC 8.5): every route except /login, /healthz and
