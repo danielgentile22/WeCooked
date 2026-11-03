@@ -130,6 +130,20 @@ struct FixtureDecodingTests {
 		#expect(!list.watchedJobs.contains(list.drafts[0].id))
 	}
 
+	/// Issue #73: lists draw the thumbnail, full views the display copy.
+	@Test func listsCarryThumbnailsBesideTheDisplayCopy() throws {
+		let d = Wire.makeDecoder()
+		let browse = try d.decode(BrowseResponse.self, from: Fixtures.data("recipes-list"))
+		let covered = try #require(browse.recipes.first { $0.coverUrl != nil })
+		#expect(covered.coverThumbUrl?.path().hasSuffix("/thumb.webp") == true)
+		#expect(covered.coverUrl?.path().hasSuffix("/display.jpg") == true)
+		#expect(browse.recipes.allSatisfy { ($0.coverUrl == nil) == ($0.coverThumbUrl == nil) })
+		let image = try #require(
+			try d.decode(RecipeResponse.self, from: Fixtures.data("recipe-get")).recipe.images.first)
+		#expect(image.thumbUrl.path().hasSuffix("/thumb.webp"))
+		#expect(image.url.path().hasSuffix("/display.jpg"))
+	}
+
 	@Test func unknownEnumValuesSurviveDecodingAndReencoding() throws {
 		var json = try #require(
 			JSONSerialization.jsonObject(with: Fixtures.data("recipe-get")) as? [String: Any])

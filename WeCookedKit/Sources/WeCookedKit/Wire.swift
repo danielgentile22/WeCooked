@@ -439,7 +439,11 @@ public struct RecipeInput: Codable, Hashable, Sendable {
 
 public struct RecipeImage: Codable, Hashable, Sendable {
 	public let id: ImageID
+	/// The 1200px display copy, for the cover.
 	public let url: URL
+	/// The 400px thumbnail, for the photo strip (issue #73). The display copy
+	/// for an image the thumbnail backfill has not reached.
+	public let thumbUrl: URL
 	public let width: Int
 	public let height: Int
 	/// Where a found cover was fetched from; nil for a photo the household took.
@@ -545,7 +549,10 @@ public struct BrowseRow: Codable, Hashable, Sendable, Identifiable {
 	public var title: String
 	public var effort: Effort
 	public var damage: Damage
+	/// The display copy; the suggestion widget draws it.
 	public var coverUrl: URL?
+	/// The thumbnail the row shows (issue #73). Nil exactly when `coverUrl` is.
+	public var coverThumbUrl: URL?
 }
 
 public struct DraftCard: Codable, Hashable, Sendable, Identifiable {

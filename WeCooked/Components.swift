@@ -143,37 +143,55 @@ struct CoverFallback: View {
 
 /// Cover and photo images: decoded memory cache, then `ImageStore` (memory,
 /// disk by URL path, network). Shows the D17 tile while and if there is
-/// nothing. The caller sets the frame and clip shape.
+/// nothing. The caller sets the frame and clip shape; the image decodes just
+/// big enough to fill that frame (issue #73), so a list of row tiles holds
+/// small bitmaps, not one 1200px display copy each.
 struct CachedImage: View {
 	let url: URL?
 	@Environment(AppEnvironment.self) private var env
-	@State private var loaded: UIImage?
+	@Environment(\.displayScale) private var scale
+	@State private var loaded: (key: String, image: UIImage)?
 
-	/// Decoded images keyed by `ImageStore.key(for:)`, so a row scrolling back
-	/// into view does not decode again. NSCache evicts under memory pressure.
-	@MainActor private static let decoded = NSCache<NSString, UIImage>()
+	/// Decoded bitmaps keyed by `ImageDecode.key`: the stored object at one
+	/// frame size, so a row scrolling back into view does not decode again and
+	/// a strip photo and a row tile of the same image do not collide. Each
+	/// entry costs its bitmap bytes; past the limit NSCache evicts, as it does
+	/// under memory pressure.
+	@MainActor private static let decoded: NSCache<NSString, UIImage> = {
+		let cache = NSCache<NSString, UIImage>()
+		cache.totalCostLimit = 64 * 1024 * 1024
+		return cache
+	}()
 
 	var body: some View {
-		let image = loaded ?? url.flatMap { Self.decoded.object(forKey: ImageStore.key(for: $0) as NSString) }
-		Group {
-			if let image {
-				Image(uiImage: image).resizable().scaledToFill()
-			} else {
-				CoverFallback()
+		GeometryReader { geo in
+			let pixels = ImageDecode.pixels(geo.size, scale: scale)
+			// Zero on a first layout pass: wait for the real frame before loading.
+			let key = geo.size.width > 0 && geo.size.height > 0 ? url.map { ImageDecode.key($0, pixels: pixels) } : nil
+			let image = key.flatMap { k in loaded?.key == k ? loaded?.image : Self.decoded.object(forKey: k as NSString) }
+			Group {
+				if let image {
+					Image(uiImage: image).resizable().scaledToFill()
+				} else {
+					CoverFallback()
+				}
 			}
+			.frame(width: geo.size.width, height: geo.size.height)
+			.task(id: key) { await load(key: key, pixels: pixels) }
 		}
-		.task(id: url) { await load() }
 	}
 
-	private func load() async {
-		guard let url else { loaded = nil; return }
-		let key = ImageStore.key(for: url) as NSString
-		if let hit = Self.decoded.object(forKey: key) { loaded = hit; return }
-		loaded = nil
-		guard let data = await env.images.data(for: url), let raw = UIImage(data: data) else { return }
-		let ready = await raw.byPreparingForDisplay() ?? raw
-		Self.decoded.setObject(ready, forKey: key)
-		if !Task.isCancelled { loaded = ready }
+	private func load(key: String?, pixels: CGSize) async {
+		guard let url, let key else { return }
+		if let hit = Self.decoded.object(forKey: key as NSString) { loaded = (key, hit); return }
+		guard let data = await env.images.data(for: url) else { return }
+		let decoded = await Task.detached(priority: .userInitiated) {
+			ImageDecode.image(data, toFill: pixels)
+		}.value
+		guard let decoded, !Task.isCancelled else { return }
+		let image = UIImage(cgImage: decoded)
+		Self.decoded.setObject(image, forKey: key as NSString, cost: ImageDecode.cost(of: decoded))
+		loaded = (key, image)
 	}
 }
 
