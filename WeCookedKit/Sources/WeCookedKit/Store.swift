@@ -261,8 +261,10 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 	}
 
 	/// Keep this resource fresh while a screen is visible: fetch on entry, then
-	/// every `interval` if given. Cancelling the calling task ends the loop.
-	/// `Store.invalidate` refetches immediately only for resources being watched.
+	/// every `interval` if given. Either way it counts as watched until the
+	/// calling task is cancelled, which ends it. `Store.invalidate` refetches
+	/// immediately only for resources being watched, and the Store keeps a
+	/// filtered list only while it is watched.
 	public func watch(every interval: Duration? = nil) async {
 		watchers += 1
 		watchersChanged()
@@ -271,7 +273,10 @@ public final class Resource<Value: Codable & Sendable & Equatable>: AnyResource 
 			watchersChanged()
 		}
 		await revalidate()
-		guard let interval else { return }
+		guard let interval else {
+			while !Task.isCancelled { try? await Task.sleep(for: .seconds(3600)) }
+			return
+		}
 		while !Task.isCancelled {
 			try? await Task.sleep(for: interval)
 			if Task.isCancelled { break }

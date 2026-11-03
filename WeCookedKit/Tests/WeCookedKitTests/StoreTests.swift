@@ -119,19 +119,28 @@ struct StoreTests {
 		#expect(Self.store(cache).resource(key).value == nil)
 	}
 
-	@Test func anUnwatchedFilteredResourceIsEvictedAndComesBackWhenWatched() async {
+	@Test func aFilteredResourceIsKeptWhileWatchedAndEvictedAfter() async {
 		let store = Self.store()
 		let key = Key<Note>(name: "f", family: .recipes, evictedWhenUnwatched: true) { _ in Note(text: "hit") }
 		let r = store.resource(key)
-		await r.watch()
+		let watching = Task { await r.watch() }
+		await ShoppingModelTests.until { r.value != nil }
+		for _ in 0..<20 { await Task.yield() }
+		#expect(store.resource(key) === r, "a visible list stays after its fetch")
+		watching.cancel()
+		await watching.value
 		#expect(!store.holds("f"), "nobody watches it, so the Store let it go")
+
 		let plain = store.resource(Self.key { Note(text: "kept") })
-		await plain.watch()
+		let plainWatch = Task { await plain.watch() }
+		plainWatch.cancel()
+		await plainWatch.value
 		#expect(store.holds("n"), "an ordinary key stays")
-		let watching = Task { await r.watch(every: .seconds(60)) }
+
+		let again = Task { await r.watch() }
 		await ShoppingModelTests.until { r.watchers > 0 }
 		#expect(store.resource(key) === r, "a view still holding it watches again: the Store takes it back")
-		watching.cancel()
+		again.cancel()
 	}
 
 	@Test func aFailedRefreshKeepsTheValueAndReportsThePhase() async {
