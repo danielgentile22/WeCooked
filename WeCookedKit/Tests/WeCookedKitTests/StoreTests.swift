@@ -67,6 +67,73 @@ struct StoreTests {
 		#expect(r.value == Note(text: "server after edit"))
 	}
 
+	@Test func anEqualReplyIsNotAssignedOrWritten() async throws {
+		let cache = Self.tempCache()
+		let r = Self.store(cache).resource(Self.key { Note(text: "same") })
+		await r.revalidate()
+		await cache.drain()
+		let file = try #require(
+			try FileManager.default.contentsOfDirectory(
+				at: cache.directory, includingPropertiesForKeys: nil
+			).first)
+		try FileManager.default.removeItem(at: file)
+		let changes = CallCounter()
+		withObservationTracking { _ = r.value } onChange: { _ = changes.next() }
+		await r.revalidate()
+		await cache.drain()
+		#expect(changes.count == 0, "an equal reply leaves the value alone, so nothing re-renders")
+		#expect(!FileManager.default.fileExists(atPath: file.path()), "and writes nothing to disk")
+	}
+
+	@Test func aDifferentReplyIsAssignedAndWritten() async throws {
+		let cache = Self.tempCache()
+		let calls = CallCounter()
+		let r = Self.store(cache).resource(Self.key { Note(text: "v\(calls.next())") })
+		await r.revalidate()
+		await r.revalidate()
+		await cache.drain()
+		#expect(r.value == Note(text: "v2"))
+		#expect(Self.store(cache).resource(Self.key { Note(text: "unused") }).value == Note(text: "v2"))
+	}
+
+	@Test func aSearchIsNotPersistedButTagFiltersAndTheBookAre() {
+		var search = BrowseFilters()
+		search.q = "chick"
+		var tagged = BrowseFilters()
+		tagged.efforts = [.weeknight]
+		#expect(!Key<BrowseResponse>.recipes(search).persisted)
+		#expect(Key<BrowseResponse>.recipes(tagged).persisted)
+		#expect(Key<BrowseResponse>.recipes().persisted)
+		#expect(Key<BrowseResponse>.recipes(search).evictedWhenUnwatched)
+		#expect(Key<BrowseResponse>.recipes(tagged).evictedWhenUnwatched)
+		#expect(!Key<BrowseResponse>.recipes().evictedWhenUnwatched)
+	}
+
+	@Test func anUnpersistedKeyNeitherWritesNorReadsTheDisk() async {
+		let cache = Self.tempCache()
+		let key = Key<Note>(name: "q", family: .recipes, persisted: false) { _ in Note(text: "hit") }
+		await Self.store(cache).resource(key).revalidate()
+		await cache.drain()
+		let files = (try? FileManager.default.contentsOfDirectory(atPath: cache.directory.path())) ?? []
+		#expect(files.isEmpty)
+		#expect(Self.store(cache).resource(key).value == nil)
+	}
+
+	@Test func anUnwatchedFilteredResourceIsEvictedAndComesBackWhenWatched() async {
+		let store = Self.store()
+		let key = Key<Note>(name: "f", family: .recipes, evictedWhenUnwatched: true) { _ in Note(text: "hit") }
+		let r = store.resource(key)
+		await r.watch()
+		#expect(!store.holds("f"), "nobody watches it, so the Store let it go")
+		let plain = store.resource(Self.key { Note(text: "kept") })
+		await plain.watch()
+		#expect(store.holds("n"), "an ordinary key stays")
+		let watching = Task { await r.watch(every: .seconds(60)) }
+		await ShoppingModelTests.until { r.watchers > 0 }
+		#expect(store.resource(key) === r, "a view still holding it watches again: the Store takes it back")
+		watching.cancel()
+	}
+
 	@Test func aFailedRefreshKeepsTheValueAndReportsThePhase() async {
 		let r = Self.store().resource(Self.key { throw APIError.transport(.timedOut) })
 		r.replace(Note(text: "kept"))
