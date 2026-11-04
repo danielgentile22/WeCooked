@@ -1,8 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import db from '$lib/server/db';
-import { createJob } from '$lib/server/jobs';
-import type { GenerateInput } from '$lib/extract';
+import db from '#lib/server/db.js';
+import { createJob } from '#lib/server/jobs.js';
+import type { GenerateInput } from '#lib/extract.js';
 
 // Issue #41: a description and a yield become one generate job, the same
 // checks as POST /api/v1/generations. The draft page shows the deck.

@@ -1,11 +1,11 @@
-import { MEAL_TYPES, CUISINES, PROTEINS, DAMAGES } from '$lib/tags';
-import { hasRecipe, type AsWrittenBody, type CaptureInput, type RecipeDraft } from '$lib/extract';
+import { MEAL_TYPES, CUISINES, PROTEINS, DAMAGES } from '#lib/tags.js';
+import { hasRecipe, type AsWrittenBody, type CaptureInput, type RecipeDraft } from '#lib/extract.js';
 import type { Database } from 'better-sqlite3';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
-import type { ErrorCode } from '$lib/jobs';
-import type { Effort } from '$lib/tags';
+import type { ErrorCode } from '#lib/jobs.js';
+import type { Effort } from '#lib/tags.js';
 import { claudeCall } from './claude';
 import { deriveClaude } from './images';
 import { getObject } from './r2';

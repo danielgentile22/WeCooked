@@ -12,9 +12,9 @@
 	import { onMount, untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto, invalidate } from '$app/navigation';
-	import Chip from '$lib/components/Chip.svelte';
-	import Banner from '$lib/components/Banner.svelte';
-	import { jobDeps, watchJob as followJob } from '$lib/jobs';
+	import Chip from '#lib/components/Chip.svelte';
+	import Banner from '#lib/components/Banner.svelte';
+	import { jobDeps, watchJob as followJob } from '#lib/jobs.js';
 
 	let { data, form } = $props();
 	const r = $derived(data.recipe);
@@ -52,7 +52,7 @@
 		if (next > 0) countStr = String(next);
 	}
 	function switchTo(id: string) {
-		goto(`/recipes/${r.id}?v=${id}`, { noScroll: true });
+		goto(`/recipes/${r.id}?v=${id}`, { reset: false });
 	}
 
 	// The calculate/recalculate job as this tab sees it. Seeded from the server
@@ -91,7 +91,7 @@
 				if (job.status === 'done' && job.result_ref) {
 					calc = null;
 					await goto(`/recipes/${id}?v=${job.result_ref}`, {
-						noScroll: true,
+						reset: false,
 						invalidate: [jobDeps.recipe(id)]
 					});
 				} else if (job.status === 'timeout') {
@@ -310,7 +310,7 @@
 					action="?/deleteRecipe"
 					use:enhance={() =>
 						async ({ result, update }) => {
-							if (result.type === 'redirect') await goto(result.location, { invalidateAll: true });
+							if (result.type === 'redirect') await goto(result.location, { refreshAll: true });
 							else await update();
 						}}
 				>
@@ -402,7 +402,7 @@
 			action="?/deleteVariation"
 			use:enhance={() =>
 				async ({ result, update }) => {
-					if (result.type === 'success') await goto(`/recipes/${r.id}`, { invalidateAll: true });
+					if (result.type === 'success') await goto(`/recipes/${r.id}`, { refreshAll: true });
 					else await update();
 				}}
 		>

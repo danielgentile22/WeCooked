@@ -16,8 +16,8 @@
 	} from '@lucide/svelte';
 	import Banner from './Banner.svelte';
 	import Chip from './Chip.svelte';
-	import { uploadPhoto, type FormImage } from '$lib/images';
-	import { watchJob } from '$lib/jobs';
+	import { uploadPhoto, type FormImage } from '#lib/images.js';
+	import { watchJob } from '#lib/jobs.js';
 	import {
 		adoptCounterpart,
 		loadedBodies,
@@ -25,7 +25,7 @@
 		selection,
 		swapBodies,
 		type FormState
-	} from '$lib/recipeForm';
+	} from '#lib/recipeForm.js';
 	import {
 		MEAL_TYPES,
 		CUISINES,
@@ -36,7 +36,7 @@
 		otherUnits,
 		type RecipeInput,
 		type UnitSystem
-	} from '$lib/tags';
+	} from '#lib/tags.js';
 
 	let {
 		initial = null as Partial<RecipeInput> | null,

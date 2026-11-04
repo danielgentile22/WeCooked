@@ -1,8 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from './ids';
 import { prepared } from './statements';
-import { ERROR_COPY, type ErrorCode, type JobPoll } from '$lib/jobs';
-import type { CoverTarget } from '$lib/extract';
+import { ERROR_COPY, type ErrorCode, type JobPoll } from '#lib/jobs.js';
+import type { CoverTarget } from '#lib/extract.js';
 
 // The in-process job runner (SPEC 6): concurrency 2, transactional claim,
 // startup recovery. Creating a job wakes the runner at once; the 500 ms poll

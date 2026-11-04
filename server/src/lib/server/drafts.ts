@@ -12,7 +12,7 @@ import {
 	type GenerateInput,
 	type RecipeDraft,
 	type StoredDraft
-} from '$lib/extract';
+} from '#lib/extract.js';
 import {
 	cleanBody,
 	type BodyText,
@@ -21,7 +21,7 @@ import {
 	type Effort,
 	type Protein,
 	type RecipeInput
-} from '$lib/tags';
+} from '#lib/tags.js';
 
 // Drafts (SPEC 6.5): every capture job without a recipe is a draft. The job
 // row is the draft; there are no phantom recipe rows. A generate job (issue

@@ -1,12 +1,12 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import db from '$lib/server/db';
+import db from '#lib/server/db.js';
 import {
 	deleteRecipe,
 	restoreRecipe,
 	restoreVariation,
 	listTrash
-} from '$lib/server/recipes';
+} from '#lib/server/recipes.js';
 
 export const load: PageServerLoad = async () => ({ trash: listTrash(db) });
 

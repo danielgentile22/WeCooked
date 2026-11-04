@@ -1,7 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
-import { env } from '$env/dynamic/private';
-import type { CaptureInput, CoverInput, CoverResult, CoverTarget } from '$lib/extract';
+import * as env from '$app/env/private';
+import type { CaptureInput, CoverInput, CoverResult, CoverTarget } from '#lib/extract.js';
 import { claudeCall } from './claude';
 import { draftOf, getDraftJob, isChoosing } from './drafts';
 import { fetchPage, fetchPublic, pageImages, type ResolveFn } from './extract';

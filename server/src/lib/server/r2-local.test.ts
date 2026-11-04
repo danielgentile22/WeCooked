@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const h = vi.hoisted(() => ({ env: {} as Record<string, string>, app: { dev: true } }));
-vi.mock('$env/dynamic/private', () => ({ env: h.env }));
-vi.mock('$app/environment', () => ({
+vi.mock('$app/env/private', () => h.env);
+vi.mock('$app/env', () => ({
 	get dev() {
 		return h.app.dev;
 	}

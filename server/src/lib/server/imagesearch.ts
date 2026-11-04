@@ -1,4 +1,4 @@
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 
 // ADR-043: the cover search. Brave Image Search, one GET per cover job that
 // found nothing on the source page. Only the query (the recipe title) leaves

@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import type { BodyText, UnitSystem } from '$lib/tags';
+import type { BodyText, UnitSystem } from '#lib/tags.js';
 import { claudeCall } from './claude';
 import { BODY_SCHEMA, CONVERSION_RULES } from './extract';
 import { JobError, createJob, requeueJob, type JobHandler } from './jobs';

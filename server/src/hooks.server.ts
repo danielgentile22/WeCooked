@@ -1,16 +1,17 @@
-import { json, redirect, type Handle } from '@sveltejs/kit';
-import { SESSION_COOKIE, issueSessionToken, setSessionCookie } from '$lib/server/session';
-import { bearerToken, gate } from '$lib/server/gate';
-import { env } from '$env/dynamic/private';
-import db from '$lib/server/db'; // opens the database and runs migrations at boot
-import { pruneJobs, recoverInterrupted, startRunner, type Handlers } from '$lib/server/jobs';
-import { extractPaste, extractPhotos, extractUrl } from '$lib/server/extract';
-import { cover, withCover } from '$lib/server/cover';
-import { generate } from '$lib/server/generate';
-import { reconvert } from '$lib/server/reconvert';
-import { scale } from '$lib/server/scale';
-import { shoppingMerge } from '$lib/server/shopping';
-import { http2Transport, makeApnsAuth, pushAfterJob } from '$lib/server/push';
+import { json, redirect } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
+import { SESSION_COOKIE, issueSessionToken, setSessionCookie } from '#lib/server/session.js';
+import { bearerToken, gate } from '#lib/server/gate.js';
+import * as env from '$app/env/private';
+import db from '#lib/server/db.js'; // opens the database and runs migrations at boot
+import { pruneJobs, recoverInterrupted, startRunner, type Handlers } from '#lib/server/jobs.js';
+import { extractPaste, extractPhotos, extractUrl } from '#lib/server/extract.js';
+import { cover, withCover } from '#lib/server/cover.js';
+import { generate } from '#lib/server/generate.js';
+import { reconvert } from '#lib/server/reconvert.js';
+import { scale } from '#lib/server/scale.js';
+import { shoppingMerge } from '#lib/server/shopping.js';
+import { http2Transport, makeApnsAuth, pushAfterJob } from '#lib/server/push.js';
 
 const handlers: Handlers = {
 	// Issue #44: a successful capture queues its cover; a generation does on pick.

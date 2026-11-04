@@ -15,7 +15,7 @@ import {
 	RANGE_WARNING
 } from './scale';
 import type { JobRow } from './jobs';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 
 vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
 vi.mock('./r2', () => ({

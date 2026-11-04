@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import RecipeForm from '$lib/components/RecipeForm.svelte';
-	import { otherUnits } from '$lib/tags';
-	import { jobDeps } from '$lib/jobs';
+	import RecipeForm from '#lib/components/RecipeForm.svelte';
+	import { otherUnits } from '#lib/tags.js';
+	import { jobDeps } from '#lib/jobs.js';
 
 	let { data, form } = $props();
 

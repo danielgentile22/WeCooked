@@ -14,7 +14,7 @@ import {
 	retryReconvert
 } from './recipes';
 import { ulid } from './ids';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 
 let db: Database.Database;
 beforeEach(() => {

@@ -10,9 +10,9 @@
 		ClipboardCheck,
 		Layers
 	} from '@lucide/svelte';
-	import Chip from '$lib/components/Chip.svelte';
-	import { jobDeps, pollJob } from '$lib/jobs';
-	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '$lib/tags';
+	import Chip from '#lib/components/Chip.svelte';
+	import { jobDeps, pollJob } from '#lib/jobs.js';
+	import { MEAL_TYPES, CUISINES, PROTEINS, EFFORTS, DAMAGES } from '#lib/tags.js';
 
 	let { data } = $props();
 
@@ -59,9 +59,9 @@
 	);
 
 	function apply(mutate: (p: URLSearchParams) => void) {
-		const p = new URLSearchParams(page.url.searchParams);
+		const p = new URLSearchParams(page.url.searchParams.toString());
 		mutate(p);
-		goto(`/?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+		goto(`/?${p}`, { replace: true, reset: false });
 	}
 
 	// Search-as-you-type over server-side FTS, debounced.

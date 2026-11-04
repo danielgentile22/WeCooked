@@ -1,10 +1,10 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import db from '$lib/server/db';
-import { retryReconvert, deleteVariation, deleteRecipe } from '$lib/server/recipes';
-import { keepMine, recalcVariation, requestScale, retryScale } from '$lib/server/scale';
-import { recipeView } from '$lib/server/views';
-import { jobDeps } from '$lib/jobs';
+import db from '#lib/server/db.js';
+import { retryReconvert, deleteVariation, deleteRecipe } from '#lib/server/recipes.js';
+import { keepMine, recalcVariation, requestScale, retryScale } from '#lib/server/scale.js';
+import { recipeView } from '#lib/server/views.js';
+import { jobDeps } from '#lib/jobs.js';
 
 export const load: PageServerLoad = async ({ params, url, depends }) => {
 	depends(jobDeps.recipe(params.id));

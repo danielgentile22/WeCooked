@@ -6,7 +6,7 @@ import { createJob, type JobKind, type JobRow } from './jobs';
 import { getDevice, registerDevice } from './devices';
 import { captureNotification, makeApnsAuth, pushAfterJob, type PushTransport } from './push';
 
-vi.mock('$env/dynamic/private', () => ({ env: {} }));
+vi.mock('$app/env/private', () => ({}));
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();

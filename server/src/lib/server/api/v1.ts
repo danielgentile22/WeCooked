@@ -38,9 +38,9 @@ import { backfillThumbnails, saveImage, THUMB_BACKFILL_LIMIT } from '../images';
 import { PUSH_ENVIRONMENTS, registerDevice, type PushEnvironment } from '../devices';
 import { BACKFILL_LIMIT, backfillCovers, findDraftCover, findRecipeCover } from '../cover';
 import { pageContent, pageImages } from '../extract';
-import { asUrl, type CaptureInput, type GenerateInput } from '$lib/extract';
-import { ERROR_COPY } from '$lib/jobs';
-import { CUISINES, DAMAGES, EFFORTS, MEAL_TYPES, PROTEINS, type RecipeInput } from '$lib/tags';
+import { asUrl, type CaptureInput, type GenerateInput } from '#lib/extract.js';
+import { ERROR_COPY } from '#lib/jobs.js';
+import { CUISINES, DAMAGES, EFFORTS, MEAL_TYPES, PROTEINS, type RecipeInput } from '#lib/tags.js';
 import type { Database } from 'better-sqlite3';
 
 // The JSON API for the native client (docs/port/PLAN.md, unit 1). Each

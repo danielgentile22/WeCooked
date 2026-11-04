@@ -13,7 +13,7 @@ import {
 	MAX_WAIT_MS,
 	type JobRow
 } from './jobs';
-import { ERROR_COPY } from '$lib/jobs';
+import { ERROR_COPY } from '#lib/jobs.js';
 
 function testDb() {
 	const db = new Database(':memory:');

@@ -1,4 +1,4 @@
-import db from '$lib/server/db';
+import db from '#lib/server/db.js';
 import type { RequestHandler } from './$types';
 
 // Health check: the database file must be writable (SPEC 9.1).

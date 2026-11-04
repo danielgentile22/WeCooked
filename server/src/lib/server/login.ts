@@ -1,5 +1,5 @@
 import { verify } from '@node-rs/argon2';
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 
 // Shared by the /login form action and POST /api/v1/login.
 // 5 failed attempts per IP per 15 minutes, in memory (SPEC 8.5).
