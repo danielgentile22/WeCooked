@@ -5,7 +5,7 @@ import { claudeCall } from './claude';
 import { createRecipe } from './recipes';
 import { reconvert, RECONVERT_SYSTEM } from './reconvert';
 import type { JobRow } from './jobs';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 
 vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
 vi.mock('./r2', () => ({ getObject: vi.fn(), presignGet: vi.fn(), putObject: vi.fn() }));

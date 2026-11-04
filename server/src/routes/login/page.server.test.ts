@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { verify } from '@node-rs/argon2';
 import { actions } from './+page.server';
 
-vi.mock('$env/dynamic/private', () => ({ env: { APP_PASSWORD_HASH: 'hash' } }));
-vi.mock('$lib/server/session', () => ({ setSessionCookie: vi.fn() }));
+vi.mock('$app/env/private', () => ({ APP_PASSWORD_HASH: 'hash' }));
+vi.mock('#lib/server/session.js', () => ({ setSessionCookie: vi.fn() }));
 // A slow, always-wrong verify, like Argon2 against a bad guess.
 vi.mock('@node-rs/argon2', () => ({
 	verify: vi.fn(() => new Promise<boolean>((r) => setTimeout(() => r(false), 20)))

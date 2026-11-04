@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { Camera, Keyboard, LoaderCircle, Sparkles, WandSparkles, X } from '@lucide/svelte';
-	import Banner from '$lib/components/Banner.svelte';
-	import { uploadPhotos, type FormImage } from '$lib/images';
+	import Banner from '#lib/components/Banner.svelte';
+	import { uploadPhotos, type FormImage } from '#lib/images.js';
 
 	let { form } = $props();
 	let submitting = $state(false);

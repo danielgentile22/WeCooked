@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { env } from '$env/dynamic/private';
-import { dev } from '$app/environment';
+import * as env from '$app/env/private';
+import { dev } from '$app/env';
 import type { Cookies } from '@sveltejs/kit';
 
 // Signed HttpOnly session cookie: HMAC over an issued-at timestamp (SPEC 8.5).

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import {
 		Check,
@@ -14,10 +14,10 @@
 		ShoppingCart,
 		Trash2
 	} from '@lucide/svelte';
-	import Banner from '$lib/components/Banner.svelte';
-	import { jobDeps, pollJob } from '$lib/jobs';
-	import { tickSender } from '$lib/ticks';
-	import type { ShoppingItem, ShoppingState } from '$lib/server/shopping';
+	import Banner from '#lib/components/Banner.svelte';
+	import { jobDeps, pollJob } from '#lib/jobs.js';
+	import { tickSender } from '#lib/ticks.js';
+	import type { ShoppingItem, ShoppingState } from '#lib/server/shopping.js';
 
 	let { data } = $props();
 
@@ -136,7 +136,9 @@
 		} catch {
 			outbox = {};
 		}
-		flush();
+		// Untracked: flush reads the outbox this effect just wrote, and a
+		// tracked read makes the effect re-run itself (Svelte 5.57).
+		untrack(flush);
 		const t = setInterval(refresh, 5000);
 		document.addEventListener('visibilitychange', refresh);
 		return () => {

@@ -2,7 +2,7 @@
 // mapping that seeds the review form from it. Shared so the drafts page
 // (client) never has to import server code for types.
 
-import { otherUnits } from '$lib/tags';
+import { otherUnits } from '#lib/tags.js';
 import type {
 	BodyText,
 	IngredientGroup,
@@ -13,7 +13,7 @@ import type {
 	Effort,
 	Damage,
 	RecipeInput
-} from '$lib/tags';
+} from '#lib/tags.js';
 
 /** A capture job's input_json: pasted text, a url, or image ids. page is the
  *  reduced content of the HTML the phone rendered for url (issue #43).

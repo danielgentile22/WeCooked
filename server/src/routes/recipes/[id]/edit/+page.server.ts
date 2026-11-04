@@ -1,10 +1,10 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import db from '$lib/server/db';
-import { getRecipe, retryReconvert, updateRecipe } from '$lib/server/recipes';
-import { findRecipeCover } from '$lib/server/cover';
-import { presignGet } from '$lib/server/r2';
-import { jobDeps } from '$lib/jobs';
+import db from '#lib/server/db.js';
+import { getRecipe, retryReconvert, updateRecipe } from '#lib/server/recipes.js';
+import { findRecipeCover } from '#lib/server/cover.js';
+import { presignGet } from '#lib/server/r2.js';
+import { jobDeps } from '#lib/jobs.js';
 
 export const load: PageServerLoad = async ({ params, url, depends }) => {
 	depends(jobDeps.recipe(params.id));

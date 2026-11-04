@@ -3,7 +3,7 @@ import { claudeCall } from './claude';
 import { JobError, createJob, requeueJob, type JobHandler, type JobRow } from './jobs';
 import { normaliseYield, scale } from './scale';
 import { ulid } from './ids';
-import type { IngredientGroup } from '$lib/tags';
+import type { IngredientGroup } from '#lib/tags.js';
 import { prepared } from './statements';
 
 // The shopping list (SPEC 7.6, ADR-015, ADR-034): one list forever, built by

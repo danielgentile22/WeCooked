@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import db from '$lib/server/db';
-import { createRecipe } from '$lib/server/recipes';
+import db from '#lib/server/db.js';
+import { createRecipe } from '#lib/server/recipes.js';
 
 export const actions: Actions = {
 	default: async ({ request }) => {

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import db from '$lib/server/db';
-import { parseWait, waitForJobPoll } from '$lib/server/jobs';
+import db from '#lib/server/db.js';
+import { parseWait, waitForJobPoll } from '#lib/server/jobs.js';
 
 // SPEC 6.3 polling contract; ?wait= seconds long-polls (issue #65). Auth via hooks.server.ts.
 export const GET: RequestHandler = async ({ params, url, request }) => {

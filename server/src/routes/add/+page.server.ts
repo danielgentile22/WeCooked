@@ -1,8 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import db from '$lib/server/db';
-import { createJob } from '$lib/server/jobs';
-import { asUrl } from '$lib/extract';
+import db from '#lib/server/db.js';
+import { createJob } from '#lib/server/jobs.js';
+import { asUrl } from '#lib/extract.js';
 
 export const actions: Actions = {
 	paste: async ({ request }) => {

@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { setSessionCookie } from '$lib/server/session';
-import { attemptLogin } from '$lib/server/login';
+import { setSessionCookie } from '#lib/server/session.js';
+import { attemptLogin } from '#lib/server/login.js';
 import type { Actions } from './$types';
 
 export const actions: Actions = {

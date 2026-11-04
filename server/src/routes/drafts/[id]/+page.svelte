@@ -2,10 +2,10 @@
 	import { enhance } from '$app/forms';
 	import { invalidate } from '$app/navigation';
 	import { LoaderCircle, Info, Check, RotateCw } from '@lucide/svelte';
-	import Banner from '$lib/components/Banner.svelte';
-	import Chip from '$lib/components/Chip.svelte';
-	import RecipeForm from '$lib/components/RecipeForm.svelte';
-	import { jobDeps, watchJob } from '$lib/jobs';
+	import Banner from '#lib/components/Banner.svelte';
+	import Chip from '#lib/components/Chip.svelte';
+	import RecipeForm from '#lib/components/RecipeForm.svelte';
+	import { jobDeps, watchJob } from '#lib/jobs.js';
 
 	let { data, form } = $props();
 

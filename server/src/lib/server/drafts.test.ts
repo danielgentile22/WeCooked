@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import candidates from '../../../fixtures/candidates.json';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 import { migrate } from './migrate';
 import { createJob, type JobRow } from './jobs';
 import { enqueueDraftConversion } from './extract';
-import type { BodyPair, RecipeDraft } from '$lib/extract';
+import type { BodyPair, RecipeDraft } from '#lib/extract.js';
 import {
 	discardDraft,
 	draftView,

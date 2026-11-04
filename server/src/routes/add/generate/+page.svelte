@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { Minus, Plus, WandSparkles } from '@lucide/svelte';
-	import Banner from '$lib/components/Banner.svelte';
+	import Banner from '#lib/components/Banner.svelte';
 
 	let { form } = $props();
 	let submitting = $state(false);

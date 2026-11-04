@@ -14,7 +14,7 @@ import {
 	type BodyText,
 	type IngredientGroup,
 	type UnitSystem
-} from '$lib/tags';
+} from '#lib/tags.js';
 
 const now = () => new Date().toISOString();
 

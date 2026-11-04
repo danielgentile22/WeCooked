@@ -1,4 +1,4 @@
-import { onUnauthorized } from '$lib/unauthorized';
+import { onUnauthorized } from '#lib/unauthorized.js';
 
 // A full load, not goto: it drops every poll and timer of the old session.
 window.fetch = onUnauthorized(window.fetch.bind(window), location.origin, () =>

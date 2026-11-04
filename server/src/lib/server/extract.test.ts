@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import Database from 'better-sqlite3';
-import { asUrl, draftToInput, hasRecipe, parseDraft, type RecipeDraft } from '$lib/extract';
+import { asUrl, draftToInput, hasRecipe, parseDraft, type RecipeDraft } from '#lib/extract.js';
 import {
 	assertPublicUrl,
 	extractPaste,
@@ -29,7 +29,7 @@ import { getObject } from './r2';
 vi.mock('./claude', () => ({ claudeCall: vi.fn() }));
 vi.mock('./r2', () => ({ getObject: vi.fn(), presignGet: vi.fn(), putObject: vi.fn() }));
 import { validateInput } from './recipes';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 
 const draft = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
 	title: 'Shakshuka',

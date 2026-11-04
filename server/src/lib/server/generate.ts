@@ -1,5 +1,5 @@
-import { hasRecipe, type GenerateInput, type GenerateResult, type RecipeDraft } from '$lib/extract';
-import { CUISINES, PROTEINS } from '$lib/tags';
+import { hasRecipe, type GenerateInput, type GenerateResult, type RecipeDraft } from '#lib/extract.js';
+import { CUISINES, PROTEINS } from '#lib/tags.js';
 import { claudeCall } from './claude';
 import { RECIPE_DRAFT_SCHEMA, RECIPE_RULES, RECIPE_SHAPE_RULES, fromReply, type ExtractReply } from './extract';
 import { JobError, type JobHandler } from './jobs';

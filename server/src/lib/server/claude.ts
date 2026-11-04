@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import type { Database } from 'better-sqlite3';
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 import { JobError } from './jobs';
 
 // The one Claude API wrapper (SPEC 5.1, 5.9). Every call goes through

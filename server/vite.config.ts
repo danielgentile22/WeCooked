@@ -11,7 +11,10 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			adapter: adapter()
+			adapter: adapter(),
+			// adapter-node 6 dropped the ORIGIN variable; form posts are checked
+			// against this origin in production (CSRF).
+			paths: { origin: 'https://wecooked.kitchen' }
 		})
 	]
 });

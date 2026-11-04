@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { Undo2 } from '@lucide/svelte';
-	import Banner from '$lib/components/Banner.svelte';
+	import Banner from '#lib/components/Banner.svelte';
 
 	let { data, form } = $props();
 

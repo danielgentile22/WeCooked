@@ -1,8 +1,8 @@
 import { createHash, createHmac } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { dev } from '$app/environment';
-import { env } from '$env/dynamic/private';
+import { dev } from '$app/env';
+import * as env from '$app/env/private';
 
 // SPEC 8.6 / ADR-026: private bucket, SigV4 presigned URLs, no aws-sdk.
 // The signing timestamp is rounded to the UTC day so a URL is byte-identical

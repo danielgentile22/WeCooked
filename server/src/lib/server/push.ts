@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http2 from 'node:http2';
 import type { Database } from 'better-sqlite3';
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 import { deleteDevice, getDevice, type PushEnvironment } from './devices';
 import { isCaptureKind, type AfterJob, type JobRow } from './jobs';
 

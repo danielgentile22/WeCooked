@@ -6,49 +6,64 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { env } from '$env/dynamic/private';
-import { migrate } from '$lib/server/migrate';
-import { deviceIdHeader, dispatch, type Method } from '$lib/server/api/dispatch';
-import { routes } from '$lib/server/api/v1';
-import { bearerToken, gate } from '$lib/server/gate';
-import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '$lib/server/session';
-import { claudeCall } from '$lib/server/claude';
-import { scale } from '$lib/server/scale';
-import { reconvert } from '$lib/server/reconvert';
-import { applyMerge, getListId } from '$lib/server/shopping';
-import { coverHandler, enqueueCover, type CoverDeps } from '$lib/server/cover';
-import { getObject } from '$lib/server/r2';
-import type { JobRow } from '$lib/server/jobs';
-import { getDevice } from '$lib/server/devices';
-import type { BodyPair, RecipeDraft } from '$lib/extract';
+import { migrate } from '#lib/server/migrate.js';
+import { deviceIdHeader, dispatch, type Method } from '#lib/server/api/dispatch.js';
+import { routes } from '#lib/server/api/v1.js';
+import { bearerToken, gate } from '#lib/server/gate.js';
+import { issueSessionToken, verifySession, REISSUE_AFTER_MS } from '#lib/server/session.js';
+import { claudeCall } from '#lib/server/claude.js';
+import { scale } from '#lib/server/scale.js';
+import { reconvert } from '#lib/server/reconvert.js';
+import { applyMerge, getListId } from '#lib/server/shopping.js';
+import { coverHandler, enqueueCover, type CoverDeps } from '#lib/server/cover.js';
+import { getObject } from '#lib/server/r2.js';
+import type { JobRow } from '#lib/server/jobs.js';
+import { getDevice } from '#lib/server/devices.js';
+import type { BodyPair, RecipeDraft } from '#lib/extract.js';
 import candidates from '../../../../fixtures/candidates.json';
-import type { RecipeInput } from '$lib/tags';
+import type { RecipeInput } from '#lib/tags.js';
 
 // Integration tests for every /api/v1 route, through the same dispatch the
 // SvelteKit route uses, against a temporary SQLite file. Ids and clocks are
 // fixed so the replies double as decoding fixtures for WeCookedKit.
 
-vi.mock('$env/dynamic/private', () => ({
-	env: {
-		SESSION_SECRET: 'test-secret',
-		APP_PASSWORD_HASH: '',
-		R2_ACCOUNT_ID: 'account',
-		R2_BUCKET: 'bucket',
-		R2_ACCESS_KEY_ID: 'access-key',
-		R2_SECRET_ACCESS_KEY: 'secret-key'
-	}
+// Mutable, so the login hash can be set once it is computed below. Every
+// variable in src/env.ts is listed: Vitest rejects reading a name the mock
+// leaves out, where the server would see it unset.
+const env = vi.hoisted(() => ({
+	SESSION_SECRET: 'test-secret',
+	APP_PASSWORD_HASH: '',
+	R2_ACCOUNT_ID: 'account',
+	R2_BUCKET: 'bucket',
+	R2_ACCESS_KEY_ID: 'access-key',
+	R2_SECRET_ACCESS_KEY: 'secret-key',
+	ANTHROPIC_API_KEY: undefined as string | undefined,
+	APNS_KEY: undefined as string | undefined,
+	APNS_KEY_ID: undefined as string | undefined,
+	APNS_TEAM_ID: undefined as string | undefined,
+	BRAVE_SEARCH_API_KEY: undefined as string | undefined,
+	CLAUDE_EFFORT: undefined as string | undefined,
+	CLAUDE_MODEL: undefined as string | undefined,
+	COVER_MODEL: undefined as string | undefined,
+	DAILY_CALL_CAP: undefined as string | undefined,
+	DATABASE_PATH: undefined as string | undefined,
+	IMAGE_STORE: undefined as string | undefined,
+	IMAGE_STORE_DIR: undefined as string | undefined,
+	IMAGE_STORE_ORIGIN: undefined as string | undefined,
+	MIGRATIONS_DIR: undefined as string | undefined
 }));
-vi.mock('$app/environment', () => ({ dev: true }));
-vi.mock('$lib/server/ids', () => {
+vi.mock('$app/env/private', () => env);
+vi.mock('$app/env', () => ({ dev: true }));
+vi.mock('#lib/server/ids.js', () => {
 	let n = 0;
 	return { ulid: () => `01TEST${String(++n).padStart(20, '0')}` };
 });
-vi.mock('$lib/server/r2', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/r2')>()),
+vi.mock('#lib/server/r2.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/r2.js')>()),
 	putObject: vi.fn(async () => {}),
 	getObject: vi.fn()
 }));
-vi.mock('$lib/server/claude', () => ({ claudeCall: vi.fn() }));
+vi.mock('#lib/server/claude.js', () => ({ claudeCall: vi.fn() }));
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../WeCookedKit/Tests/Fixtures');
 const PASSWORD = 'correct horse';

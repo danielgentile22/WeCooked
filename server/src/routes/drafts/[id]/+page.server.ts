@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import db from '$lib/server/db';
-import type { JobRow } from '$lib/server/jobs';
+import db from '#lib/server/db.js';
+import type { JobRow } from '#lib/server/jobs.js';
 import {
 	discardDraft,
 	draftView,
@@ -11,11 +11,11 @@ import {
 	retryDraft,
 	retryDraftConversion,
 	saveDraft
-} from '$lib/server/drafts';
-import { createJob } from '$lib/server/jobs';
-import type { GenerateInput } from '$lib/extract';
-import { findDraftCover } from '$lib/server/cover';
-import { jobDeps } from '$lib/jobs';
+} from '#lib/server/drafts.js';
+import { createJob } from '#lib/server/jobs.js';
+import type { GenerateInput } from '#lib/extract.js';
+import { findDraftCover } from '#lib/server/cover.js';
+import { jobDeps } from '#lib/jobs.js';
 
 // The draft review page (SPEC 6.5): the job row is the draft. Done jobs seed
 // the form from result_json; failed jobs open it empty with the source text

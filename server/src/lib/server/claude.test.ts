@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import Database from 'better-sqlite3';
 import { migrate } from './migrate';
 import { CALL_TIMEOUT_MS, nyDay, takeQuota, withoutRetryAfter } from './claude';
-import { GIVE_UP_MS } from '$lib/jobs';
+import { GIVE_UP_MS } from '#lib/jobs.js';
 import { JobError } from './jobs';
 
 function testDb() {

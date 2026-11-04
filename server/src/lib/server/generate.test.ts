@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import candidates from '../../../fixtures/candidates.json';
-import type { BodyPair, GenerateResult } from '$lib/extract';
+import type { BodyPair, GenerateResult } from '#lib/extract.js';
 import { claudeCall, takeQuota } from './claude';
 import { EXTRACT_SYSTEM, RECIPE_RULES, type ExtractReply } from './extract';
 import { migrate } from './migrate';

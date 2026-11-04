@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import sharp from 'sharp';
-import type { CaptureInput, CoverResult, RecipeDraft } from '$lib/extract';
+import type { CaptureInput, CoverResult, RecipeDraft } from '#lib/extract.js';
 import { migrate } from './migrate';
 import { createJob, JobError, type JobRow } from './jobs';
 import { claudeCall } from './claude';

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { env } from '$env/dynamic/private';
+import * as env from '$app/env/private';
 import { migrate } from './migrate';
 
 const db = new Database(env.DATABASE_PATH ?? 'local.db');
