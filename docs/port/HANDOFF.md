@@ -103,14 +103,6 @@ half and back). Logs of the last runs are in `logs/`.
   instead of two simulators; see decisions.tsv. The offline half (a tick
   queued without signal) is proven by the `DeviceState` and `ShoppingModel`
   tests only, so tick it on the phone like rows 33, 42 and 50.
-- **The push key.** Create an Apple Push Notification service (APNs) key
-  on the developer website (Keys, "Apple Push Notifications service"; the
-  App Manager API key cannot do it), download the `.p8` once, and set `APNS_KEY` (the file's contents or
-  its base64), `APNS_KEY_ID` and `APNS_TEAM_ID` with `fly secrets set` and
-  in `server/.env`. The key file never goes into the repo. Then the device
-  checklist for issue #42: widget shows the list, a tick updates it,
-  airplane mode keeps it, a share-sheet capture notifies, the tap opens the
-  draft, and Destiny's capture does not buzz the owner's phone.
 - A tap-through of wecooked.kitchen after the next deploy. The curl smoke in
   `logs/unit1-web-smoke.log` covers every page, but six route files were
   rewritten to share code with the API, and a real click-through is the
@@ -354,8 +346,11 @@ issues are the spec; the bullets below are the original wording.
   capture from the Add tab or consumes a share-sheet hand-off, registers
   with `POST /api/v1/devices` on every launch while authorized, and a tap
   opens the draft through the same `DeepLink` as every other entry. The
-  three `APNS_*` secrets are unset until the owner creates the key (below);
-  until then the server logs once at boot and sends nothing. Widget: a
+  push key (`ANG549S2FJ`, sandbox and production) was set on 2026-11-02 as
+  the three `APNS_*` Fly secrets and in `server/.env`; its only copy outside
+  Apple is `~/.config/wecooked/AuthKey_ANG549S2FJ.p8`, since Apple allows one
+  download. Without the secrets the server logs once at boot and sends
+  nothing. Widget: a
   third target, `WeCookedWidget` (WidgetKit, medium and large), shares the
   app group only. `AppEnvironment` rewrites `shopping-widget.json` in the
   app-group container whenever the shopping reply, a tick or the unit
